@@ -1,0 +1,4 @@
+
+# Ignore bundled engine binaries
+*.exe
+/assets/engines/**/stockfish*.exe
