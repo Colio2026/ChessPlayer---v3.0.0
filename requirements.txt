@@ -1,0 +1,3 @@
+PySide6>=6.6
+python-chess>=1.999
+pyyaml>=6.0
