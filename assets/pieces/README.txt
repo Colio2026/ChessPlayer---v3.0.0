@@ -1,1 +1,1 @@
-Piece PNGs (case-sensitive): BB BK BN BP BQ BR / WB WK WN WP WQ WR.
+Place piece PNGs here (BB.png ... WK.png).

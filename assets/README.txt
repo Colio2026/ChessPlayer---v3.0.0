@@ -1,1 +1,0 @@
-Static resources: pieces/, ui.qss, engines/, sounds/.

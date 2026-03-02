@@ -3,7 +3,7 @@ app:
   theme: "grayscale"
 
 paths:
-  data_dir: "${USER_DATA_DIR}"
+  data_dir: "data"
   assets_dir: "assets"
   pieces_dir: "assets/pieces"
   engines_dir: "assets/engines"
@@ -11,15 +11,16 @@ paths:
 pgn_sources:
   active_source:
     type: "archive_file"
-    path: "data/Ciassabase.pgn"
+    path: "data/testbase.pgn"
   additional_sources: []
 
 indexing:
   backend: "sqlite"
   force_rebuild: false
   workers: 1
-  extract_opening: true
-  extract_eco: true
+
+browsing:
+  page_size: 200
 
 engine:
   enabled_on_start: false

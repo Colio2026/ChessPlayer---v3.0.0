@@ -1,10 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
 
-@dataclass(frozen=True)
-class GameId:
-    value: int
-
 @dataclass
 class GameMeta:
     game_id: int

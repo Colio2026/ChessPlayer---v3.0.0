@@ -1,14 +1,8 @@
-import os
-import sys
+from __future__ import annotations
 from pathlib import Path
 
-def is_frozen() -> bool:
-    return hasattr(sys, "_MEIPASS")
-
-def base_path() -> Path:
-    if is_frozen():
-        return Path(sys._MEIPASS)
+def repo_root_from_this_file() -> Path:
     return Path(__file__).resolve().parents[3]
 
 def resolve_path(relative: str) -> Path:
-    return base_path() / relative
+    return repo_root_from_this_file() / relative

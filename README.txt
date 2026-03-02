@@ -1,13 +1,12 @@
-CHESSPLAYER 3.0.0
+CHESSPLAYER v3.0.0 - Phase 2 (Flat Imports)
 
-PySide6 (Qt6) chess database viewer/editor with Stockfish analysis.
+This scaffold is intentionally "flat-import" style:
+- main.py imports `config.*`, `ui.*`, `pgn.*`, `utils.*` directly (no `chessplayer.` prefix).
+- Run from the `src/chessplayer/` directory OR configure VSCode to run that file with cwd=src/chessplayer.
 
-Goals:
-- Scale to single large PGN archive or millions of PGN files (indexed/normalized).
-- Interactive board editing before/after loading a game.
-- All edits stored as PGN variations.
-- On close: prompt to overwrite / save-as / discard (no automatic backups).
-- Branching UI (variation tree).
-- Stockfish toggle with user knobs (time/depth/nodes, MultiPV, update rate, PV length).
-- Filters: player/event/opening/ECO/result/date with sorting.
-- Modern grayscale theme.
+Typical run:
+  cd src/chessplayer
+  python main.py
+
+Index-only:
+  python main.py --index

@@ -1,1 +1,0 @@
-Stockfish lifecycle, options, analysis knobs, publishes latest eval/PV.

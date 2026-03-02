@@ -1,1 +1,0 @@
-Board model, interaction, rendering. Emits move intents to pgn/navigation.
