@@ -1,0 +1,1 @@
+Test targets: indexing correctness, random access, variation navigation, engine knobs, board interaction legality.

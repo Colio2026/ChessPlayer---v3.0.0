@@ -1,0 +1,1 @@
+Application package. Entry point: python -m chessplayer

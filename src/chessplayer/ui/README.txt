@@ -1,0 +1,1 @@
+Qt presentation layer. Wires UI to pgn/, board/, engine/. No PGN parsing or UCI here.

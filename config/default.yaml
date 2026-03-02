@@ -1,0 +1,26 @@
+app:
+  name: "CHESSPLAYER"
+  theme: "grayscale"
+
+paths:
+  data_dir: "${USER_DATA_DIR}"
+  assets_dir: "assets"
+  pieces_dir: "assets/pieces"
+  engines_dir: "assets/engines"
+
+pgn_sources:
+  active_source:
+    type: "archive_file"
+    path: "data/Ciassabase.pgn"
+  additional_sources: []
+
+indexing:
+  backend: "sqlite"
+  force_rebuild: false
+  workers: 1
+  extract_opening: true
+  extract_eco: true
+
+engine:
+  enabled_on_start: false
+  path: "assets/engines/stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
