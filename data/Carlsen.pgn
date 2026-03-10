@@ -107330,7 +107330,7 @@
 30.c8=Q Rxc8 31.Bxc8 b4 32.Bf5 Nc5 33.Ra5 g6 34.Rxc5 gxf5 35.Kf1 a5 36.Ke2 a4
 37.Kd3 b3 38.Kxc3  1-0
 
-[Event "World Blitz 2023"]
+[Event "Test Year"]
 [Site "Samarkand UZB"]
 [Date "2023.12.30"]
 [Round "18.1"]
@@ -107340,19 +107340,9 @@
 [WhiteElo "2732"]
 [BlackElo "2830"]
 [ECO "C88"]
+[TestField "Tested"]
 
-1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.O-O Be7 6.Re1 b5 7.Bb3 O-O 8.a4 b4
-9.d4 d6 10.dxe5 dxe5 11.Nbd2 Bc5 12.h3 Qe7 13.a5 h6 14.Qe2 Be6 15.Bxe6 Qxe6
-16.Nb3 Ba7 17.Be3 Bxe3 18.Qxe3 Rfd8 19.Qe2 Nh5 20.Nc5 Nf4 21.Nxe6 Nxe2+ 22.Kf1 Ng3+
-23.fxg3 fxe6 24.Red1 Kf7 25.Ke2 Rxd1 26.Rxd1 Ke7 27.g4 Rb8 28.Ke3 Rb5 29.g5 hxg5
-30.Nxg5 b3 31.Rc1 Nxa5 32.Nf3 Nc4+ 33.Ke2 bxc2 34.Rxc2 Rxb2 35.Rxb2 Nxb2
-36.Nxe5 Kd6 37.Nf7+ Ke7 38.Ne5 Na4 39.h4 Nc5 40.Ke3 Nd7 41.Nc4 e5 42.g4 Ke6
-43.g5 g6 44.Kf3 Nc5 45.Na5 Nd3 46.Ke3 Nf4 47.Kf3 c5 48.Nc4 Nd3 49.Ke3 Nb4
-50.Na5 Nc2+ 51.Kd3 Nd4 52.Nb7 Nf3 53.Nxc5+ Kd6 54.Nxa6 Nxh4 55.Ke3 Ng2+ 56.Kf3 Nf4
-57.Nb8 Ne6 58.Na6 Nxg5+ 59.Ke3 Ne6 60.Nb4 Nc5 61.Nd5 Ke6 62.Kf3 Kf7 63.Ke3 Kg7
-64.Ne7 Kf6 65.Nc6 Ne6 66.Kf2 Nd4 67.Nb4 Nb5 68.Nd3 Nd6 69.Kf3 Nf7 70.Nc5 Kg5
-71.Kg3 Nd6 72.Kf3 Kh4 73.Nd7 Nf7 74.Nf6 Kh3 75.Kf2 g5 76.Nh5 Kg4 77.Nf6+ Kf4
-78.Kg2 Nd6 79.Nh5+ Kxe4 80.Kg3 Kf5 81.Ng7+ Kf6  0-1
+1. e4 e5 { Test Comment } 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 O-O 8. a4 b4 9. d4 d6 10. dxe5 dxe5 11. Nbd2 Bc5 12. h3 Qe7 13. a5 h6 14. Qe2 Be6 15. Bxe6 Qxe6 16. Nb3 Ba7 17. Be3 Bxe3 18. Qxe3 Rfd8 19. Qe2 Nh5 20. Nc5 Nf4 21. Nxe6 Nxe2+ 22. Kf1 Ng3+ 23. fxg3 fxe6 24. Red1 Kf7 25. Ke2 Rxd1 26. Rxd1 Ke7 27. g4 Rb8 28. Ke3 Rb5 29. g5 hxg5 30. Nxg5 b3 31. Rc1 Nxa5 32. Nf3 Nc4+ 33. Ke2 bxc2 34. Rxc2 Rxb2 35. Rxb2 Nxb2 36. Nxe5 Kd6 37. Nf7+ Ke7 38. Ne5 Na4 39. h4 Nc5 40. Ke3 Nd7 41. Nc4 e5 42. g4 Ke6 43. g5 g6 44. Kf3 Nc5 45. Na5 Nd3 46. Ke3 Nf4 47. Kf3 c5 48. Nc4 Nd3 49. Ke3 Nb4 50. Na5 Nc2+ 51. Kd3 Nd4 52. Nb7 Nf3 53. Nxc5+ Kd6 54. Nxa6 Nxh4 55. Ke3 Ng2+ 56. Kf3 Nf4 57. Nb8 Ne6 58. Na6 Nxg5+ 59. Ke3 Ne6 60. Nb4 Nc5 61. Nd5 Ke6 62. Kf3 Kf7 63. Ke3 Kg7 64. Ne7 Kf6 65. Nc6 Ne6 66. Kf2 Nd4 67. Nb4 Nb5 68. Nd3 Nd6 69. Kf3 Nf7 70. Nc5 Kg5 71. Kg3 Nd6 72. Kf3 Kh4 73. Nd7 Nf7 74. Nf6 Kh3 75. Kf2 g5 76. Nh5 Kg4 77. Nf6+ Kf4 78. Kg2 Nd6 79. Nh5+ Kxe4 80. Kg3 Kf5 81. Ng7+ Kf6 0-1
 
 [Event "World Blitz 2023"]
 [Site "Samarkand UZB"]
