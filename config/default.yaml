@@ -7,6 +7,7 @@ paths:
   assets_dir: "assets"
   pieces_dir: "assets/pieces"
   engines_dir: "assets/engines"
+  tree_dir: "data/trees"
 
 pgn_sources:
   active_source:
@@ -20,7 +21,7 @@ indexing:
   workers: 1
 
 browsing:
-  page_size: 200
+  
 
 engine:
   enabled_on_start: false

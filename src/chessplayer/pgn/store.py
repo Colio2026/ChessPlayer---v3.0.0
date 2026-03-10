@@ -53,9 +53,15 @@ class PgnStore:
             for row in rows
         ]
 
-    def get_source_id_by_path(self, source_path: str | Path, source_type: str | None = None) -> int | None:
+    def get_source_id_by_path(
+        self, source_path: str | Path, source_type: str | None = None
+    ) -> int | None:
         raw = str(Path(source_path).expanduser())
-        normalized = str(Path(raw).expanduser().resolve()) if Path(raw).expanduser().exists() else raw
+        normalized = (
+            str(Path(raw).expanduser().resolve())
+            if Path(raw).expanduser().exists()
+            else raw
+        )
 
         conn = self._connect()
         try:
@@ -73,6 +79,35 @@ class PgnStore:
             conn.close()
 
         return int(row[0]) if row else None
+
+    def count_games(
+        self,
+        query: Query,
+        source_id: int | None = None,
+    ) -> int:
+        """
+        Return the total number of games matching query + source_id.
+        Used by the lazy-loading table model to report rowCount to Qt
+        without fetching any actual rows.
+        """
+        where_sql, params = compile_where(query)
+
+        where_parts = [where_sql]
+        sql_params: list[object] = list(params)
+        if source_id is not None:
+            where_parts.append("source_id = ?")
+            sql_params.append(int(source_id))
+
+        final_where = " AND ".join(part for part in where_parts if part)
+        sql = f"SELECT COUNT(*) FROM games WHERE {final_where}"
+
+        conn = self._connect()
+        try:
+            row = conn.execute(sql, sql_params).fetchone()
+        finally:
+            conn.close()
+
+        return int(row[0]) if row else 0
 
     def list_games(
         self,
