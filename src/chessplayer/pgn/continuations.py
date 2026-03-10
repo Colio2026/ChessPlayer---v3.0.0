@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections import Counter
 import io
+from collections import defaultdict
 from dataclasses import dataclass
 
 import chess
@@ -11,78 +11,80 @@ from pgn.store import PgnStore
 
 
 @dataclass(frozen=True)
-class Continuation:
+class ContinuationStat:
     san: str
     count: int
+    white_wins: int
+    draws: int
+    black_wins: int
+
+    @property
+    def white_score_pct(self) -> float:
+        if self.count <= 0:
+            return 0.0
+        return ((self.white_wins + 0.5 * self.draws) / self.count) * 100.0
+
+
+@dataclass
+class _MutableStat:
+    count: int = 0
+    white_wins: int = 0
+    draws: int = 0
+    black_wins: int = 0
 
 
 def _read_first_game(pgn_text: str) -> chess.pgn.Game | None:
     return chess.pgn.read_game(io.StringIO(pgn_text))
 
 
-def _next_move_after_prefix(game: chess.pgn.Game, prefix_uci: list[str]) -> chess.Move | None:
-    """
-    If game's mainline begins with prefix_uci, return the next mainline move after the prefix.
-    Otherwise None.
-    """
-    b = chess.Board()
-    node: chess.pgn.GameNode = game
-
-    # walk prefix
-    for uci in prefix_uci:
-        if not node.variations:
-            return None
-        mv = chess.Move.from_uci(uci)
-        nxt = None
-        # accept match anywhere among node variations (some games have early branches)
-        for v in node.variations:
-            if v.move == mv:
-                nxt = v
-                break
-        if nxt is None:
-            return None
-        b.push(nxt.move)
-        node = nxt
-
-    # next mainline move (variation[0])
-    if not node.variations:
+def _first_mainline_move(game: chess.pgn.Game) -> chess.Move | None:
+    if not game.variations:
         return None
-    return node.variations[0].move
+    return game.variations[0].move
 
 
-def common_continuations_from_store(
+def root_continuation_stats_from_store(
     store: PgnStore,
     game_ids: list[int],
-    prefix_uci: list[str],
-    max_games: int = 200,
-    max_out: int = 30,
-) -> list[Continuation]:
-    """
-    Sample games by id, count the next move (SAN) after the current prefix.
-    """
-    counts: Counter[str] = Counter()
+    max_out: int = 50,
+) -> list[ContinuationStat]:
+    stats: dict[str, _MutableStat] = defaultdict(_MutableStat)
+    board = chess.Board()
 
-    b = chess.Board()
-    for uci in prefix_uci:
-        b.push(chess.Move.from_uci(uci))
-
-    sample = game_ids[:max_games]
-    for gid in sample:
+    for gid in game_ids:
         try:
             pgn_text = store.open_game_pgn_text(gid)
-            g = _read_first_game(pgn_text)
-            if g is None:
+            game = _read_first_game(pgn_text)
+            if game is None:
                 continue
-            mv = _next_move_after_prefix(g, prefix_uci)
-            if mv is None:
+
+            move = _first_mainline_move(game)
+            if move is None or move not in board.legal_moves:
                 continue
-            # SAN relative to current prefix position
-            if mv not in b.legal_moves:
-                continue
-            san = b.san(mv)
-            counts[san] += 1
+
+            san = board.san(move)
+            result = str(game.headers.get("Result", "")).strip()
+
+            bucket = stats[san]
+            bucket.count += 1
+            if result == "1-0":
+                bucket.white_wins += 1
+            elif result == "0-1":
+                bucket.black_wins += 1
+            else:
+                bucket.draws += 1
         except Exception:
             continue
 
-    out = [Continuation(san=k, count=v) for k, v in counts.most_common(max_out)]
-    return out
+    out = [
+        ContinuationStat(
+            san=san,
+            count=entry.count,
+            white_wins=entry.white_wins,
+            draws=entry.draws,
+            black_wins=entry.black_wins,
+        )
+        for san, entry in stats.items()
+    ]
+    out.sort(key=lambda item: (-item.count, item.san))
+    return out[:max_out]
