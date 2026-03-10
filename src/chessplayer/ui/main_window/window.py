@@ -31,7 +31,7 @@ from pgn.store import IndexHandle, PgnStore, SourceRecord
 from ui.board_model import BoardBridge, BoardListModel
 from ui.engine_panel import EnginePanel
 from ui.game_table_model import GameTableModel
-from ui.pgn_panel import PgnPanel
+from ui.move_notation_panel import MoveNotationPanel
 from ui.query_builder import QueryBuilder
 from ui.variations_panel import VariationsPanel
 from utils.paths import resolve_path
@@ -111,9 +111,8 @@ class MainWindow(QMainWindow):
         self._variations_panel.status_message.connect(self._status.setText)
 
         # PGN panel — navigate on click, wire save buttons
-        self._pgn_panel.navigate_requested.connect(self._navigate_to_ply)
-        self._pgn_panel.enable_save(self._save_game, self._save_game_as)
-        self._pgn_panel.enable_save_to_library(self._save_to_library)
+        self._move_panel.navigate_requested.connect(self._navigate_to_ply)
+        self._move_panel.enable_save(self._save_game, self._save_game_as)
 
         self._choose_initial_source()
         self._on_position_changed()
@@ -245,6 +244,9 @@ class MainWindow(QMainWindow):
         self._engine_panel = EnginePanel(self._config, self)
         right_l.addWidget(self._engine_panel)
 
+        # Board + panels side by side
+        board_panel_split = QSplitter(Qt.Horizontal)
+
         self._board_view = QQuickWidget()
         self._board_view.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._board_view.rootContext().setContextProperty("piecesModel", self._board_model)
@@ -256,17 +258,17 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self, "QML errors", "\n".join([e.toString() for e in errs])
             )
-        right_l.addWidget(self._board_view, 3)
+        board_panel_split.addWidget(self._board_view)
 
         tabs = QTabWidget()
-
         self._variations_panel = VariationsPanel(self._config, self)
         tabs.addTab(self._variations_panel, "Variations")
+        self._move_panel = MoveNotationPanel(self._editor, self)
+        tabs.addTab(self._move_panel, "Moves")
+        board_panel_split.addWidget(tabs)
 
-        self._pgn_panel = PgnPanel(self._editor, self)
-        tabs.addTab(self._pgn_panel, "PGN")
-
-        right_l.addWidget(tabs, 2)
+        board_panel_split.setSizes([520, 420])
+        right_l.addWidget(board_panel_split, 1)
         main_split.addWidget(right)
         main_split.setSizes([520, 900])
 
@@ -478,7 +480,7 @@ class MainWindow(QMainWindow):
         if save_path:
             try:
                 self._editor.export_pgn_to_file(Path(save_path))
-                self._pgn_panel.refresh()
+                self._move_panel.refresh()
                 self._status.setText(f"Saved → {save_path}")
                 return True
             except Exception as exc:
@@ -499,7 +501,7 @@ class MainWindow(QMainWindow):
         try:
             self._editor.export_pgn_to_file(Path(path))
             self._save_path = path        # remember for future Ctrl+S
-            self._pgn_panel.refresh()
+            self._move_panel.refresh()
             self._status.setText(f"Saved → {path}")
             return True
         except Exception as exc:
@@ -508,8 +510,7 @@ class MainWindow(QMainWindow):
 
     def _save_to_library(self) -> None:
         """
-        Replace the original game in the source library file and update
-        the SQLite index offsets. No re-index required.
+        Replace the original game in the source library file and re-index.
         """
         if (
             self._editor.source_pgn_path is None
@@ -527,19 +528,21 @@ class MainWindow(QMainWindow):
             self,
             "Save to Library",
             f"Replace the original game in:\n{self._editor.source_pgn_path}\n\n"
-            "This will overwrite the library file. Continue?",
+            "This will rewrite the library file and trigger a re-index. Continue?",
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
             return
 
         try:
-            self._editor.replace_in_library_file(
-                store=self._store,
-                source_id=self._active_source_id,
-            )
-            self._pgn_panel.refresh()
-            self._status.setText("Saved to library ✓")
+            self._editor.replace_in_library_file()
+            self._move_panel.refresh()
+            self._status.setText("Saved to library — re-indexing...")
+            # Re-index so the library reflects the updated game
+            if self._active_source_type and self._active_source_path:
+                self._start_index_job(
+                    self._active_source_type, self._active_source_path
+                )
         except Exception as exc:
             QMessageBox.critical(self, "Save to Library failed", str(exc))
 
@@ -624,7 +627,7 @@ class MainWindow(QMainWindow):
 
     def _on_position_changed(self) -> None:
         prefix = self._editor.played_prefix_uci()
-        self._pgn_panel.refresh()
+        self._move_panel.refresh()
         self._variations_panel.refresh(prefix)
 
     def _after_user_move(self) -> None:
