@@ -11,7 +11,7 @@ paths:
 pgn_sources:
   active_source:
     type: "archive_file"
-    path: "data/testbase.pgn"
+    path: "data/Carlsen.pgn"
   additional_sources: []
 
 indexing:
