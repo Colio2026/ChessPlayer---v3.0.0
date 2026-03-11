@@ -7,7 +7,6 @@ paths:
   assets_dir: "assets"
   pieces_dir: "assets/pieces"
   engines_dir: "assets/engines"
-  tree_dir: "data/trees"
 
 pgn_sources:
   active_source:
@@ -21,8 +20,23 @@ indexing:
   workers: 1
 
 browsing:
-  
+  page_size: 200
 
 engine:
   enabled_on_start: false
   path: "assets/engines/stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
+
+# ── Coach engine ─────────────────────────────────────────────────────────────
+# coach_db_path    : SQLite database of Nimzowitsch phrases and annotations.
+#                    Relative to data_dir.
+# coach_enabled    : Master on/off switch. Set false to disable coach entirely
+#                    while keeping the tab slot alive.
+# coach_auto_annotate : If true, coach output is written back into the PGN
+#                       as comments automatically on every move.
+# coach_movetime_ms   : How many milliseconds the coach engine spends
+#                       analysing each position before producing output.
+coach:
+  db_path: "data/coach.db"
+  enabled: true
+  auto_annotate: false
+  movetime_ms: 2000
