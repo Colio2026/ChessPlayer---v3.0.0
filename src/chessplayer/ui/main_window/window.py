@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 from core.pgn_edit import PgnEditor
 from pgn.indexer import build_or_rebuild_index_for_source
 from pgn.query import default_multisort
+from config.loader import save_user_config_patch
 from pgn.store import IndexHandle, PgnStore, SourceRecord
 from ui.board_model import BoardBridge, BoardListModel
 from ui.coach_board import CoachBoardWidget
@@ -338,14 +339,57 @@ class MainWindow(QMainWindow):
     # ── Source management ─────────────────────────────────────────────────────
 
     def _choose_initial_source(self) -> None:
-        self._update_source_combo()
-        if not self._store:
-            return
-        sources = self._store.list_sources()
-        if sources and self._active_source_id is None:
-            self._set_active_source(sources[0])
+        """Restore last-used source from config, falling back to first available."""
+        self._restore_active_source_from_config()
 
-    def _set_active_source(self, src: SourceRecord | None) -> None:
+    def _save_active_source_to_user_config(self) -> None:
+        """Persist active source so it reloads on next launch."""
+        try:
+            save_user_config_patch({
+                "ui": {
+                    "last_source_id":   self._active_source_id,
+                    "last_source_type": self._active_source_type,
+                    "last_source_path": self._active_source_path,
+                }
+            })
+        except Exception:
+            pass
+
+    def _restore_active_source_from_config(self) -> None:
+        """On startup, re-select the last-used source from user config."""
+        if not self._store:
+            self._update_source_combo()
+            return
+        ui_cfg      = self._config.get("ui", {})
+        wanted_id   = ui_cfg.get("last_source_id")
+        wanted_type = ui_cfg.get("last_source_type")
+        wanted_path = ui_cfg.get("last_source_path")
+        sources = self._store.list_sources()
+        if not sources:
+            self._update_source_combo()
+            return
+        chosen: SourceRecord | None = None
+        if isinstance(wanted_id, int):
+            for s in sources:
+                if s.source_id == wanted_id:
+                    chosen = s
+                    break
+        if chosen is None and wanted_path:
+            sid = self._store.get_source_id_by_path(
+                wanted_path,
+                wanted_type if isinstance(wanted_type, str) else None,
+            )
+            if sid is not None:
+                for s in sources:
+                    if s.source_id == sid:
+                        chosen = s
+                        break
+        if chosen is None:
+            chosen = sources[0]
+        self._set_active_source(chosen, save_config=False)
+        self._update_source_combo()
+
+    def _set_active_source(self, src: SourceRecord | None, save_config: bool = True) -> None:
         if src is None:
             self._active_source_id   = None
             self._active_source_type = None
@@ -358,6 +402,8 @@ class MainWindow(QMainWindow):
         self._variations_panel.set_source(
             self._store, self._active_source_id, self._active_source_path
         )
+        if save_config:
+            self._save_active_source_to_user_config()
 
     def _source_label(self, src: SourceRecord) -> str:
         return f"[{src.source_type}] {src.path}"
