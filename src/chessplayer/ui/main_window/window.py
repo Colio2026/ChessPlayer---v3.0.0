@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QUrl, Signal, QObject
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import (
     QApplication,
@@ -69,6 +69,10 @@ class _IndexWorker(QObject):
 # ─── Main Window ──────────────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
+    # F2 — single signal the coach widget connects to
+    # emitted with (fen, move_history_uci) on every move and navigation
+    coachRequested = Signal(str, list)
+
     def __init__(self, config: dict) -> None:
         super().__init__()
         self._config = config
@@ -91,6 +95,8 @@ class MainWindow(QMainWindow):
         self._index_worker:    _IndexWorker | None     = None
         self._progress_dialog: QProgressDialog | None  = None
         self._last_indexed_game_count                  = 0
+        # F4 — 'main' or 'coach': whichever board was last interacted with
+        self._active_board: str = "main"
 
         data_dir = resolve_path(self._config["paths"]["data_dir"])
         db_path  = data_dir / "index.sqlite"
@@ -100,6 +106,7 @@ class MainWindow(QMainWindow):
         self._build_menu_bar()
         self._build_toolbar()
         self._build_ui()
+        self._build_shortcuts()
 
         # Bridge signals
         self._bridge.statusChanged.connect(self._status.setText)
@@ -113,6 +120,7 @@ class MainWindow(QMainWindow):
 
         # Variations
         self._variations_panel.status_message.connect(self._status.setText)
+        self._variations_panel.move_selected.connect(self._on_variation_move_selected)
 
         # PGN panel — navigate on click, wire save buttons
         self._pgn_panel.navigate_requested.connect(self._navigate_to_ply)
@@ -303,10 +311,19 @@ class MainWindow(QMainWindow):
         board_split.addWidget(self._board_view)
 
         tabs = QTabWidget()
-        self._variations_panel = VariationsPanel(self._config, self)
-        tabs.addTab(self._variations_panel, "Variations")
         self._pgn_panel = PgnPanel(self._editor, self)
         tabs.addTab(self._pgn_panel, "PGN")
+
+        # F1 — Coach placeholder (Phase G will replace this label)
+        self._coach_placeholder = QLabel(
+            "<center style='color:#666666; font-style:italic; margin-top:40px;'>"
+            "♟&nbsp;&nbsp;Coach panel — coming soon</center>"
+        )
+        self._coach_placeholder.setTextFormat(Qt.RichText)
+        tabs.addTab(self._coach_placeholder, "Coach")
+
+        self._variations_panel = VariationsPanel(self._config, self)
+        tabs.addTab(self._variations_panel, "Lines")
         board_split.addWidget(tabs)
 
         board_split.setSizes([28, 520, 420])
@@ -698,6 +715,10 @@ class MainWindow(QMainWindow):
         white_to_move = self._editor.session.board.turn
         self._pgn_panel.refresh()
         self._variations_panel.refresh(prefix)
+        # F2 — notify coach of every position change
+        self.coachRequested.emit(
+            self._editor.session.board.fen(), list(prefix)
+        )
         # Always trigger analysis so eval updates on navigation, game load, etc.
         self._engine_panel.trigger_analysis(prefix, white_to_move)
 
@@ -711,6 +732,25 @@ class MainWindow(QMainWindow):
             self._on_position_changed()
 
     # ── Dirty close prompt ────────────────────────────────────────────────────
+
+    def _on_variation_move_selected(self, san: str) -> None:
+        """
+        Apply a continuation move (from the Variations tab) to the main board.
+        Converts SAN to a legal move on the current position then applies it.
+        """
+        import chess
+        board = self._editor.session.board
+        try:
+            mv = board.parse_san(san)
+        except Exception:
+            self._status.setText(f"Couldn't apply move: {san}")
+            return
+        res = self._editor.apply_uci_move(mv.uci())
+        if res.ok:
+            self._board_model.rebuild()
+            self._on_position_changed()
+        else:
+            self._status.setText(f"Illegal move: {san}")
 
     def _on_pv_line_clicked(self, base_moves: list, pv_uci: list) -> None:
         """
@@ -758,10 +798,65 @@ class MainWindow(QMainWindow):
         self._coach_board.load_line(
             base_fen, uci_list, san_list, start_idx=clicked_idx
         )
+        self._set_active_board("coach")  # arrow keys follow coach board
 
     def _on_eval_updated(self, result) -> None:
         white_to_move = self._editor.session.board.turn
         self._eval_bar.update_eval(result, white_to_move)
+
+    # ── Keyboard shortcuts (F4) ───────────────────────────────────────────
+
+    def _build_shortcuts(self) -> None:
+        """Wire all keyboard shortcuts.  Called once after _build_ui."""
+        def sc(key, slot):
+            QShortcut(QKeySequence(key), self).activated.connect(slot)
+
+        sc("Left",    self._kb_back)
+        sc("Right",   self._kb_forward)
+        sc("Ctrl+S",  self._save_game)
+        sc("Ctrl+F",  lambda: self._bridge.setFlipped(not self._board_model.flipped()))
+        sc("Ctrl+E",  self._toggle_engine_panel)
+
+        # Track focus: main board clicked
+        self._board_view.mousePressEvent = self._make_focus_handler(
+            "main", self._board_view.__class__.mousePressEvent
+        )
+        # Track focus: coach board back/forward buttons
+        self._coach_board._back_btn.clicked.connect(
+            lambda: self._set_active_board("coach")
+        )
+        self._coach_board._fwd_btn.clicked.connect(
+            lambda: self._set_active_board("coach")
+        )
+        # Coach board becomes active when a line loads
+        # (load_line is called from _on_comment_line_clicked)
+
+    def _make_focus_handler(self, board_name: str, original):
+        def handler(widget_self, event):
+            self._set_active_board(board_name)
+            original(widget_self, event)
+        return handler
+
+    def _set_active_board(self, name: str) -> None:
+        self._active_board = name
+
+    def _toggle_engine_panel(self) -> None:
+        visible = self._engine_panel.isVisible()
+        self._engine_panel.setVisible(not visible)
+
+    def _kb_back(self) -> None:
+        """Left arrow — step back on whichever board was last used."""
+        if self._active_board == "coach":
+            self._coach_board._on_back()
+        else:
+            self._on_back()
+
+    def _kb_forward(self) -> None:
+        """Right arrow — step forward on whichever board was last used."""
+        if self._active_board == "coach":
+            self._coach_board._on_forward()
+        else:
+            self._on_forward()
 
     def closeEvent(self, event) -> None:
         if self._editor.dirty:
