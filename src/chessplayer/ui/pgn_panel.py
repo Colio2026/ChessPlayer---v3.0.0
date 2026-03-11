@@ -8,13 +8,18 @@ import chess
 import chess.pgn
 
 from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices, QFont
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QMenu,
     QPushButton,
+    QSizePolicy,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -49,36 +54,58 @@ class PgnPanel(QWidget):
 
     # ── CSS ───────────────────────────────────────────────────────────────────
     _CSS = """
-        body      { background:#1E1E1E; color:#CCCCCC;
-                    font-family:Consolas,monospace; font-size:10pt;
-                    margin:6px; line-height:1.6; }
-        a              { text-decoration:none; }
-        .mv            { color:#DDDDDD; }
-        .mv:hover      { background:#2A2A2A; }
-        .cur           { color:#0A84FF; font-weight:bold; background:#1A2A3A;
-                         padding:0 2px; border-radius:2px; }
-        .mn            { color:#555555; }
-        .cmt           { color:#D4A017; font-style:italic; }
-        .var           { color:#888888; font-style:italic; }
-        .tog           { color:#4CAF50; font-size:9pt; }
-        .tog:hover     { color:#81C784; }
-        /* ── header card ───────────────────────── */
-        .hcard         { background:#252525; border:1px solid #333333;
-                         border-radius:5px; padding:8px 12px; margin-bottom:8px;
-                         display:block; }
-        .htitle        { color:#E8E8E8; font-size:11pt; font-weight:bold;
-                         display:block; margin-bottom:2px; }
-        .hsubtitle     { color:#AAAAAA; font-size:9pt; display:block;
-                         margin-bottom:6px; }
-        .hresult-1-0   { color:#6EC07A; font-weight:bold; }
-        .hresult-0-1   { color:#E06C6C; font-weight:bold; }
-        .hresult-draw  { color:#C8A96E; font-weight:bold; }
-        .hresult-other { color:#888888; font-weight:bold; }
-        .hmeta         { color:#666666; font-size:8.5pt; display:block;
-                         margin-top:5px; border-top:1px solid #2E2E2E;
-                         padding-top:5px; }
-        .hkey          { color:#555555; }
-        .hval          { color:#888888; }
+        body  { background:#161616; color:#C8C8C8;
+                font-family:'Segoe UI','SF Pro Text',Arial,sans-serif;
+                font-size:10.5pt; margin:10px 12px; line-height:2.0; }
+        a     { text-decoration:none; }
+
+        /* ── moves ───────────────────────────────────── */
+        /* No background on move tokens — clean, flat, Apple-esque */
+        .mp         { display:inline-block;
+                      padding:0px 3px;
+                      margin:0 1px;
+                      white-space:nowrap; }
+        .mp:hover   { color:#FFFFFF; }
+
+        /* Move number — barely-there, 2pt smaller */
+        .mn  { color:#363636; font-size:8.5pt; padding-right:1px; }
+
+        /* Normal move */
+        .mv  { color:#C8C8C8; }
+
+        /* Current move — no box, just bright blue + bold */
+        .mp.cur-pill { background:none; }
+        .cur { color:#4DB8FF; font-weight:700; }
+
+        /* ── comments ───────────────────────────────── */
+        .cmt  { color:#C89520; font-style:italic; }
+
+        /* ── variations — 1.5pt smaller, recessed ───── */
+        .var  { color:#5A5A5A; font-style:italic; font-size:9pt; }
+        .tog  { color:#3A9E50; font-size:9pt; }
+        .tog:hover { color:#5CC870; }
+
+        /* ── header table ────────────────────────────── */
+        .htbl { width:100%; border-collapse:collapse;
+                border:1px solid #282828;
+                border-radius:6px;
+                margin-bottom:12px;
+                font-size:9pt; }
+        .htbl td          { padding:5px 12px;
+                            border-bottom:1px solid #222222; }
+        .htbl tr:last-child td { border-bottom:none; }
+        .htbl tr:nth-child(odd)  td { background:#1A1A1A; }
+        .htbl tr:nth-child(even) td { background:#1E1E1E; }
+        .hfkey { color:#484848; width:28%; white-space:nowrap; }
+        .hfval { color:#C0C0C0; }
+        .htitle-row td    { background:#1E1E1E !important;
+                            padding:10px 12px 8px 12px;
+                            border-bottom:1px solid #2A2A2A; }
+        .htitle           { color:#EEEEEE; font-size:11pt; font-weight:600; }
+        .hresult-1-0      { color:#6EC07A; font-weight:bold; }
+        .hresult-0-1      { color:#E06C6C; font-weight:bold; }
+        .hresult-draw     { color:#C8A96E; font-weight:bold; }
+        .hresult-other    { color:#888888; font-weight:bold; }
     """
 
     def __init__(self, editor: PgnEditor, parent: QWidget | None = None) -> None:
@@ -134,17 +161,81 @@ class PgnPanel(QWidget):
 
         layout.addWidget(toolbar)
 
+        # ── Native header table (Consolas, matches old Moves tab) ──────
+        _FONT = QFont("Consolas", 10)
+        self._header_table = QTableWidget()
+        self._header_table.setColumnCount(2)
+        self._header_table.setHorizontalHeaderLabels(["Field", "Value"])
+        self._header_table.horizontalHeader().setStretchLastSection(True)
+        self._header_table.verticalHeader().setVisible(False)
+        self._header_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._header_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._header_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._header_table.setFont(_FONT)
+        self._header_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._header_table.customContextMenuRequested.connect(
+            self._on_header_right_click
+        )
+        self._header_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self._header_table.setAlternatingRowColors(True)
+        self._hdr_font = _FONT
+
+        # ── Splitter: header table (top) + move browser (bottom) ─────────
+        splitter = QSplitter(Qt.Vertical)
+        splitter.addWidget(self._header_table)
+
         self._browser = QTextBrowser()
         self._browser.setOpenLinks(False)
         self._browser.setReadOnly(True)
         self._browser.anchorClicked.connect(self._on_anchor_clicked)
         self._browser.setContextMenuPolicy(Qt.CustomContextMenu)
         self._browser.customContextMenuRequested.connect(self._on_right_click)
-        layout.addWidget(self._browser, 1)
+        splitter.addWidget(self._browser)
+        splitter.setCollapsible(0, False)
+        splitter.setCollapsible(1, False)
+        layout.addWidget(splitter, 1)
 
     # ── public API ────────────────────────────────────────────────────────────
 
+    def _rebuild_header_table(self) -> None:
+        """Populate the native QTableWidget with current PGN headers."""
+        if not self._editor.loaded:
+            self._header_table.setRowCount(0)
+            return
+        headers  = self._editor.headers()
+        priority = ["Event", "Site", "Date", "Round",
+                    "White", "Black", "Result", "WhiteElo", "BlackElo", "ECO"]
+        keys  = [k for k in priority if k in headers]
+        keys += sorted(k for k in headers if k not in priority)
+        self._header_table.setRowCount(len(keys))
+        for row, key in enumerate(keys):
+            ki = QTableWidgetItem(key)
+            ki.setFont(self._hdr_font)
+            ki.setForeground(QColor("#888888"))
+            vi = QTableWidgetItem(str(headers.get(key, "")))
+            vi.setFont(self._hdr_font)
+            self._header_table.setItem(row, 0, ki)
+            self._header_table.setItem(row, 1, vi)
+        self._header_table.resizeRowsToContents()
+        total_h = self._header_table.horizontalHeader().height()
+        for r in range(self._header_table.rowCount()):
+            total_h += self._header_table.rowHeight(r)
+        self._header_table.setMaximumHeight(total_h + 4)
+
+    def _on_header_right_click(self, pos) -> None:
+        item = self._header_table.itemAt(pos)
+        if item is None:
+            return
+        row = self._header_table.row(item)
+        key = (self._header_table.item(row, 0) or QTableWidgetItem("")).text()
+        menu = QMenu(self)
+        ea = menu.addAction(f'Edit "{key}"')
+        ea.triggered.connect(lambda checked=False, k=key: self._edit_header_field(k))
+        menu.addAction("Add field").triggered.connect(self._add_header)
+        menu.exec(self._header_table.mapToGlobal(pos))
+
     def refresh(self) -> None:
+        self._rebuild_header_table()
         vscroll = self._browser.verticalScrollBar().value()
 
         self._var_counter   = 0
@@ -191,9 +282,6 @@ class PgnPanel(QWidget):
 
         # Headers
         if self._editor.loaded:
-            hdrs = dict(self._editor.loaded.game.headers)
-            parts.append(_render_header_card(hdrs))
-
             current_ply  = len(self._editor.session.board.move_stack)
             current_node = self._editor.current_node
             self._render_mainline(
@@ -228,16 +316,16 @@ class PgnPanel(QWidget):
         while node.variations:
             main = node.variations[0]
 
-            # Move number
+            # Move number + SAN wrapped in a pill
             board = node.board()
             if board.turn == chess.WHITE:
-                out.append(f'<span class="mn">{board.fullmove_number}.</span> ')
+                num_str = f'<span class="mn">{board.fullmove_number}.</span> '
                 need_movenumber = False
             elif need_movenumber:
-                out.append(
-                    f'<span class="mn">{board.fullmove_number}...</span> '
-                )
+                num_str = f'<span class="mn">{board.fullmove_number}...</span> '
                 need_movenumber = False
+            else:
+                num_str = ""
 
             # The move itself
             try:
@@ -252,8 +340,12 @@ class PgnPanel(QWidget):
             self._ply_map[nav_id]       = ply
             self._main_node_map[nav_id] = main
 
+            # Pill: number + move link together
+            pill_cls = "mp cur-pill" if is_current else "mp"
             out.append(
-                f'{anchor}<a href="{nav_id}" class="{cls}">{_e(san)}</a> '
+                f'{anchor}<span class="{pill_cls}">'
+                f'{num_str}<a href="{nav_id}" class="{cls}">{_e(san)}</a>'
+                f'</span> '
             )
 
             # Comment on this move — parens become clickable coach lines
@@ -608,87 +700,79 @@ class PgnPanel(QWidget):
 
 
 def _render_header_card(hdrs: dict) -> str:
-    """Render PGN headers as a styled card above the moves."""
-    # Primary display fields
-    white   = hdrs.get("White",  "?")
-    black   = hdrs.get("Black",  "?")
-    result  = hdrs.get("Result", "*")
-    event   = hdrs.get("Event",  "")
-    site    = hdrs.get("Site",   "")
-    date    = hdrs.get("Date",   "")
-    round_  = hdrs.get("Round",  "")
-    eco     = hdrs.get("ECO",    "")
-    opening = hdrs.get("Opening","")
-    welo    = hdrs.get("WhiteElo","")
-    belo    = hdrs.get("BlackElo","")
+    """Render PGN headers as a styled table above the moves."""
+    white   = hdrs.get("White",   "?")
+    black   = hdrs.get("Black",   "?")
+    result  = hdrs.get("Result",  "*")
+    event   = hdrs.get("Event",   "")
+    site    = hdrs.get("Site",    "")
+    date    = hdrs.get("Date",    "")
+    round_  = hdrs.get("Round",   "")
+    eco     = hdrs.get("ECO",     "")
+    opening = hdrs.get("Opening", "")
+    welo    = hdrs.get("WhiteElo", "")
+    belo    = hdrs.get("BlackElo", "")
 
-    # Result colouring
     if result == "1-0":
         rc = "hresult-1-0"
     elif result == "0-1":
         rc = "hresult-0-1"
-    elif result in ("1/2-1/2", "½-½"):
+    elif result in ("1/2-1/2", "\u00bd-\u00bd"):
         rc = "hresult-draw"
     else:
         rc = "hresult-other"
 
-    # Player line  e.g.  Duda, J  vs  Carlsen, M
-    wstr = _e(white) + (f' <span class="hkey">({_e(welo)})</span>' if welo and welo != "?" else "")
-    bstr = _e(black) + (f' <span class="hkey">({_e(belo)})</span>' if belo and belo != "?" else "")
+    welo_str = (' <span style="color:#555;">({})</span>'.format(_e(welo))
+                if welo and welo != "?" else "")
+    belo_str = (' <span style="color:#555;">({})</span>'.format(_e(belo))
+                if belo and belo != "?" else "")
+    title_html = (
+        '<span class="htitle">{}{}</span>'
+        ' <span style="color:#444;"> vs </span> '
+        '<span class="htitle">{}{}</span>'
+        '&nbsp;&nbsp;<span class="{}">{}</span>'
+    ).format(_e(white), welo_str, _e(black), belo_str, rc, _e(result))
 
-    title = (
-        f'<span class="htitle">'
-        f'{wstr}'
-        f' <span style="color:#555555;"> vs </span>'
-        f'{bstr}'
-        f'  <span class="{rc}">{_e(result)}</span>'
-        f'</span>'
-    )
+    def row(key, val):
+        return (
+            '<tr><td class="hfkey">{}</td>'
+            '<td class="hfval">{}</td></tr>'
+        ).format(_e(key), val)
 
-    # Subtitle line  e.g.  World Blitz — Samarkand UZB  ·  2023.12.30  R18.1
-    parts_sub = []
+    rows = []
+
     if event and event not in ("?", ""):
-        parts_sub.append(_e(event))
-    if site and site not in ("?", ""):
-        parts_sub.append(_e(site))
-    subtitle_left = " — ".join(parts_sub) if parts_sub else ""
-    subtitle_right_parts = []
+        event_val = _e(event)
+        if site and site not in ("?", ""):
+            event_val += ' <span style="color:#555;">\u2014 {}</span>'.format(_e(site))
+        rows.append(row("Event", event_val))
+    elif site and site not in ("?", ""):
+        rows.append(row("Site", _e(site)))
+
     if date and date not in ("?", ""):
-        subtitle_right_parts.append(_e(date))
-    if round_ and round_ not in ("?", ""):
-        subtitle_right_parts.append(f"R{_e(round_)}")
-    subtitle_right = "  ·  ".join(subtitle_right_parts)
-    subtitle_text  = "  ·  ".join(filter(None, [subtitle_left, subtitle_right]))
-    subtitle = f'<span class="hsubtitle">{subtitle_text}</span>' if subtitle_text else ""
+        date_val = _e(date)
+        if round_ and round_ not in ("?", ""):
+            date_val += ' <span style="color:#555;">\u00b7 R{}</span>'.format(_e(round_))
+        rows.append(row("Date", date_val))
 
-    # ECO / Opening line
-    eco_parts = []
     if eco and eco not in ("?", ""):
-        eco_parts.append(f'<span style="color:#7A9EC0;">{_e(eco)}</span>')
-    if opening and opening not in ("?", ""):
-        eco_parts.append(f'<span style="color:#666666;">{_e(opening)}</span>')
-    eco_line = "  ".join(eco_parts)
+        eco_val = '<span style="color:#7A9EC0;">{}</span>'.format(_e(eco))
+        if opening and opening not in ("?", ""):
+            eco_val += ' <span style="color:#666;">{}</span>'.format(_e(opening))
+        rows.append(row("ECO", eco_val))
 
-    # Extra fields — anything not already shown above
-    shown = {"White","Black","Result","Event","Site","Date","Round",
-             "ECO","Opening","WhiteElo","BlackElo"}
-    extra_parts = []
+    shown = {"White", "Black", "Result", "Event", "Site", "Date", "Round",
+             "ECO", "Opening", "WhiteElo", "BlackElo"}
     for k, v in hdrs.items():
         if k not in shown and v not in ("?", ""):
-            extra_parts.append(
-                f'<span class="hkey">{_e(k)}</span> '
-                f'<span class="hval">"{_e(v)}"</span>'
-            )
-    extra_html = ("  <span style='color:#333'>|</span>  ".join(extra_parts)) if extra_parts else ""
+            rows.append(row(k, '<span style="color:#888;">{}</span>'.format(_e(v))))
 
-    # Assemble meta row
-    meta_parts = [p for p in [eco_line, extra_html] if p]
-    meta = (
-        f'<span class="hmeta">{("  <span style='color:#333'>·</span>  ".join(meta_parts))}</span>'
-        if meta_parts else ""
-    )
-
-    return f'<div class="hcard">{title}<br>{subtitle}<br>{meta}</div>'
+    return (
+        '<table class="htbl">'
+        '<tr class="htitle-row"><td colspan="2">{}</td></tr>'
+        '{}'
+        '</table>'
+    ).format(title_html, "".join(rows))
 
 
 def _e(text: str) -> str:
