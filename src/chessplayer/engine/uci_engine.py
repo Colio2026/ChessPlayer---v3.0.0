@@ -2,31 +2,51 @@ from __future__ import annotations
 
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
 @dataclass(frozen=True)
 class BestMove:
-    uci: str
-    ponder: str | None = None
-    score_cp: int | None = None          # centipawns from side-to-move perspective
-    mate_in: int | None = None           # mate distance (+/-)
-    pv_uci: list[str] | None = None      # principal variation (uci moves), best available
+    uci:      str
+    ponder:   str | None       = None
+    score_cp: int | None       = None
+    mate_in:  int | None       = None
+    pv_uci:   list[str] | None = None
+
+
+@dataclass
+class PVLine:
+    """One MultiPV line as it streams in."""
+    rank:     int
+    depth:    int            = 0
+    score_cp: int | None     = None
+    mate_in:  int | None     = None
+    pv_uci:   list[str]      = field(default_factory=list)
 
 
 class UciEngine:
     """
-    Minimal UCI engine wrapper sufficient for:
-      - start/stop
-      - set position
-      - go movetime
-      - capture latest evaluation + PV while thinking
+    UCI engine wrapper with streaming analysis support.
+
+    Streaming API (Lichess-style):
+        start_analysis(moves, multipv, threads, hash_mb, depth)
+            → sends "go infinite" or "go depth N", returns immediately
+        send_stop()
+            → sends "stop", does NOT wait (bestmove arrives via readline)
+        readline()
+            → blocking read of one line from engine stdout
+            → call from a dedicated reader thread
+
+    Blocking API (kept for compatibility):
+        analyze_movetime / analyze_multipv
     """
 
     def __init__(self, engine_exe: Path) -> None:
         self.engine_exe = engine_exe
         self.p: subprocess.Popen[str] | None = None
+
+    # ── lifecycle ─────────────────────────────────────────────────────────────
 
     def start(self) -> None:
         if self.p is not None:
@@ -44,7 +64,7 @@ class UciEngine:
         self._cmd("isready")
         self._wait_for("readyok", timeout_s=10.0)
 
-    def stop(self) -> None:
+    def quit(self) -> None:
         if not self.p:
             return
         try:
@@ -57,66 +77,144 @@ class UciEngine:
             pass
         self.p = None
 
-    def set_position_uci(self, moves: list[str]) -> None:
-        self._cmd("position startpos" + ("" if not moves else " moves " + " ".join(moves)))
+    # keep old name as alias
+    def stop(self) -> None:
+        self.quit()
 
-    def analyze_movetime(self, moves: list[str], movetime_ms: int) -> BestMove:
+    # ── streaming API ─────────────────────────────────────────────────────────
+
+    def start_analysis(
+        self,
+        moves:    list[str],
+        multipv:  int        = 1,
+        threads:  int        = 1,
+        hash_mb:  int        = 64,
+        depth:    int | None = None,
+    ) -> None:
         """
-        Runs `go movetime` and returns bestmove plus last seen score+pv while thinking.
+        Configure engine and start analysis. Returns immediately.
+        Only sends setoption when values differ from last sent values.
+        Does NOT send ucinewgame — that resets the hash which kills perf.
         """
         self.start()
         assert self.p is not None
+        multipv = max(1, min(multipv, 10))
+        # Only resend options if they changed
+        if getattr(self, "_last_multipv", None) != multipv:
+            self._cmd(f"setoption name MultiPV value {multipv}")
+            self._last_multipv = multipv
+        if getattr(self, "_last_threads", None) != threads:
+            self._cmd(f"setoption name Threads value {max(1, threads)}")
+            self._last_threads = threads
+        if getattr(self, "_last_hash", None) != hash_mb:
+            self._cmd(f"setoption name Hash value {max(1, hash_mb)}")
+            self._last_hash = hash_mb
+        self.set_position_uci(moves)
+        if depth and depth > 0:
+            self._cmd(f"go depth {int(depth)}")
+        else:
+            self._cmd("go infinite")
 
-        # new game boundary
+    def send_stop(self) -> None:
+        """
+        Send stop command. Does NOT wait for bestmove — that arrives
+        via the reader thread calling readline().
+        """
+        try:
+            self._cmd("stop")
+        except Exception:
+            pass
+
+    def readline(self) -> str:
+        """Blocking read of one line. Call from a dedicated reader thread."""
+        if not self.p or not self.p.stdout:
+            return ""
+        try:
+            return self.p.stdout.readline().strip()
+        except Exception:
+            return ""
+
+    def set_position_uci(self, moves: list[str]) -> None:
+        self._cmd(
+            "position startpos"
+            + ("" if not moves else " moves " + " ".join(moves))
+        )
+
+    # ── blocking API (kept for compatibility) ─────────────────────────────────
+
+    def analyze_movetime(self, moves: list[str], movetime_ms: int) -> BestMove:
+        results = self.analyze_multipv(moves, movetime_ms=movetime_ms, num_lines=1)
+        return results[0] if results else BestMove(uci="0000")
+
+    def analyze_multipv(
+        self,
+        moves:       list[str],
+        movetime_ms: int        = 250,
+        num_lines:   int        = 1,
+        depth:       int | None = None,
+        threads:     int | None = None,
+        hash_mb:     int | None = None,
+    ) -> list[BestMove]:
+        self.start()
+        assert self.p is not None
+        num_lines = max(1, min(num_lines, 10))
+        if threads is not None:
+            self._cmd(f"setoption name Threads value {max(1, threads)}")
+        if hash_mb is not None:
+            self._cmd(f"setoption name Hash value {max(1, hash_mb)}")
+        self._cmd(f"setoption name MultiPV value {num_lines}")
         self._cmd("ucinewgame")
         self._cmd("isready")
         self._wait_for("readyok", timeout_s=10.0)
-
         self.set_position_uci(moves)
-        self._cmd(f"go movetime {int(movetime_ms)}")
+        if depth and depth > 0:
+            self._cmd(f"go depth {int(depth)}")
+        else:
+            self._cmd(f"go movetime {int(movetime_ms)}")
 
-        last_score_cp: int | None = None
-        last_mate_in: int | None = None
-        last_pv: list[str] | None = None
-
-        t0 = time.time()
-        timeout_s = max(3.0, movetime_ms / 1000.0 + 5.0)
+        best: dict[int, dict] = {}
+        bestmove_uci = "0000"
+        use_depth = bool(depth and depth > 0)
+        t0        = time.time()
+        timeout_s = 120.0 if use_depth else max(3.0, movetime_ms / 1000.0 + 5.0)
 
         while time.time() - t0 < timeout_s:
             line = self._readline()
             if not line:
                 continue
-
             if line.startswith("info "):
-                sc_cp, sc_mate, pv = _parse_info_line(line)
+                sc_cp, sc_mate, pv, idx = _parse_multipv_line(line)
+                if idx is None:
+                    idx = 1
+                entry = best.setdefault(idx, {"score_cp": None, "mate_in": None, "pv": []})
                 if sc_cp is not None:
-                    last_score_cp = sc_cp
-                    last_mate_in = None
+                    entry["score_cp"] = sc_cp
+                    entry["mate_in"]  = None
                 if sc_mate is not None:
-                    last_mate_in = sc_mate
-                    last_score_cp = None
+                    entry["mate_in"]  = sc_mate
+                    entry["score_cp"] = None
                 if pv:
-                    last_pv = pv
-
+                    entry["pv"] = pv
             if line.startswith("bestmove"):
                 parts = line.split()
-                uci = parts[1] if len(parts) >= 2 else "0000"
-                ponder = None
-                if "ponder" in parts:
-                    i = parts.index("ponder")
-                    if i + 1 < len(parts):
-                        ponder = parts[i + 1]
-                return BestMove(
-                    uci=uci,
-                    ponder=ponder,
-                    score_cp=last_score_cp,
-                    mate_in=last_mate_in,
-                    pv_uci=last_pv,
-                )
+                bestmove_uci = parts[1] if len(parts) >= 2 else "0000"
+                break
 
-        raise TimeoutError("Timed out waiting for bestmove")
+        results: list[BestMove] = []
+        for idx in sorted(best.keys()):
+            e  = best[idx]
+            pv = e["pv"] or []
+            results.append(BestMove(
+                uci=pv[0] if pv else (bestmove_uci if idx == 1 else "0000"),
+                score_cp=e["score_cp"],
+                mate_in=e["mate_in"],
+                pv_uci=pv if pv else None,
+            ))
+        if not results:
+            results.append(BestMove(uci=bestmove_uci))
+        return results
 
-    # -------- internals --------
+    # ── internals ─────────────────────────────────────────────────────────────
 
     def _cmd(self, s: str) -> None:
         if not self.p or not self.p.stdin:
@@ -137,38 +235,40 @@ class UciEngine:
         raise TimeoutError(f"Timed out waiting for {token}")
 
 
-def _parse_info_line(line: str) -> tuple[int | None, int | None, list[str] | None]:
-    """
-    Parse UCI 'info' lines. We care about:
-      - score cp <n>
-      - score mate <n>
-      - pv <moves...>
-    Returns (score_cp, mate_in, pv_uci)
-    """
-    score_cp: int | None = None
-    mate_in: int | None = None
-    pv: list[str] | None = None
+# ── parsers ───────────────────────────────────────────────────────────────────
+
+def _parse_multipv_line(
+    line: str,
+) -> tuple[int | None, int | None, list[str] | None, int | None]:
+    score_cp: int | None       = None
+    mate_in:  int | None       = None
+    pv:       list[str] | None = None
+    multipv:  int | None       = None
+    depth:    int | None       = None
 
     parts = line.split()
-    # Example:
-    # info depth 18 seldepth 28 score cp 34 pv e2e4 e7e5 g1f3 ...
-    # info depth 20 score mate 3 pv ...
     try:
+        if "multipv" in parts:
+            multipv = int(parts[parts.index("multipv") + 1])
+        if "depth" in parts:
+            depth = int(parts[parts.index("depth") + 1])
         if "score" in parts:
-            i = parts.index("score")
-            if i + 2 < len(parts):
-                kind = parts[i + 1]
-                val = parts[i + 2]
-                if kind == "cp":
-                    score_cp = int(val)
-                elif kind == "mate":
-                    mate_in = int(val)
+            i    = parts.index("score")
+            kind = parts[i + 1]
+            val  = parts[i + 2]
+            if kind == "cp":
+                score_cp = int(val)
+            elif kind == "mate":
+                mate_in = int(val)
+        if "pv" in parts:
+            j  = parts.index("pv")
+            pv = parts[j + 1:]
     except Exception:
         pass
 
-    if "pv" in parts:
-        j = parts.index("pv")
-        if j + 1 < len(parts):
-            pv = parts[j + 1 :]
+    return score_cp, mate_in, pv, multipv
 
-    return score_cp, mate_in, pv
+
+def _parse_info_line(line: str) -> tuple[int | None, int | None, list[str] | None]:
+    sc_cp, sc_mate, pv, _ = _parse_multipv_line(line)
+    return sc_cp, sc_mate, pv
