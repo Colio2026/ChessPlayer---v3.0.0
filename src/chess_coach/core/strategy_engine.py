@@ -3,74 +3,102 @@ core/strategy_engine.py
 ========================
 Public API entry point. Orchestrates all layers and returns CoachOutput.
 
-Usage:
+Usage
+-----
     from chess_coach import StrategyEngine
-    engine = StrategyEngine(stockfish_path, db_path, pgn_index_path)
-    output: CoachOutput = engine.analyse(board, move_history, player_side)
+    engine = StrategyEngine.from_config(cfg)          # preferred
+    engine = StrategyEngine(stockfish_path, ...)      # manual construction
 
-Layer execution order:
-  1. phase_filter    — classify phase, re-weight signals
-  2. extractors      — run all 6 extractors (with Stockfish eval if available)
-  3. phase_filter    — apply weights to extractor output
-  4. strategy scorers — blitz, flank, fortress, feint
-  5. conflict_resolver — cascade rules → primary/secondary
-  6. CoachOutput     — assemble (narrator/plan_recommender stubs for now)
+    output: CoachOutput = engine.analyse(board, player_side='white')
 
-Stockfish unavailable:
-    If the engine cannot start, analyse() returns a CoachOutput with
-    confidence=0.0 and strategy_primary='general' with a headline
-    indicating the engine is unavailable. All signal lists are empty.
-    The GUI can display this gracefully.
+Config-driven construction (from_config)
+-----------------------------------------
+Reads coach section from the application config dict:
+    cfg['coach']['pgn_source']   — PGN for GM precedents
+    cfg['coach']['phrase_db']    — phrase database path
+    cfg['coach']['min_rating']   — minimum rating filter
+    cfg['coach']['movetime_ms']  — Stockfish analysis time
+    cfg['coach']['auto_index']   — auto-build coach_positions on first run
+    cfg['paths']['data_dir']     — base data directory
+    cfg['engine']['path']        — Stockfish executable
+
+Swapping from Carlsen.pgn to the 6M game database
+---------------------------------------------------
+Change coach.pgn_source in default.yaml to the new PGN path.
+On the next StrategyEngine instantiation, ensure_indexed() detects
+the source change and automatically rebuilds coach_positions from
+the games already indexed by the browser indexer — no manual step.
+
+Layer execution order
+---------------------
+  1. Extractors      — 6 extractors produce MetricSignal list
+  2. Phase filter    — classify phase, re-weight signals
+  3. Strategy scores — blitz, flank, fortress, feint (0.0–1.0)
+  4. Conflict resolver — cascade rules → primary/secondary/confidence
+  5. Plan recommender — move_flags + weakness_squares
+  6. Narrator        — phrase DB slot-filling → CoachOutput
 """
 from __future__ import annotations
 
 import chess
 from pathlib import Path
-from dataclasses import dataclass, field
 
-from core.data_types  import MetricSignal, CoachOutput, GMPrecedent
-from core.board_utils import get_phase
-from core.phase_filter import apply_phase_filter
+from core.data_types        import MetricSignal, CoachOutput
+from core.board_utils       import get_phase
+from core.phase_filter      import apply_phase_filter
 from core.conflict_resolver import resolve
-from extractors.king_safety    import extract_king_safety
-from extractors.space_control  import extract_space_control
-from extractors.piece_mobility import extract_piece_mobility
-from extractors.pawn_structure import extract_pawn_structure
+from extractors.king_safety      import extract_king_safety
+from extractors.space_control    import extract_space_control
+from extractors.piece_mobility   import extract_piece_mobility
+from extractors.pawn_structure   import extract_pawn_structure
 from extractors.material_balance import extract_material_balance
-from extractors.tactic_scanner import extract_tactics
-from strategies.blitz_detector   import score_blitz
-from strategies.flank_detector   import score_flank
+from extractors.tactic_scanner   import extract_tactics
+from strategies.blitz_detector    import score_blitz
+from strategies.flank_detector    import score_flank
 from strategies.fortress_detector import score_fortress
-from strategies.feint_detector   import score_feint
-from database.pattern_matcher import PatternMatcher
-from database.phrase_db       import PhraseDB
+from strategies.feint_detector    import score_feint
+from database.pattern_matcher     import PatternMatcher
+from database.phrase_db           import PhraseDB
+from database.pgn_indexer         import ensure_indexed
+from coach.narrator               import assemble as narrator_assemble
+from coach.plan_recommender       import recommend as plan_recommend
 
 
 class StrategyEngine:
     """
     Main entry point for the chess coach backend.
 
+    Prefer StrategyEngine.from_config(cfg) for application use.
+    Direct construction is available for testing.
+
     Parameters
     ----------
     stockfish_path : str
-        Absolute path to the Stockfish executable.
+        Absolute path to Stockfish executable. Empty string = no engine.
     db_path : str
-        Path to chess_coach.db (phrase database). May be empty string
-        if not yet built — narrator will use fallback phrases.
+        Path to chess_coach.db (phrase DB). Empty = fallback phrases only.
     pgn_index_path : str
-        Path to game_index.db (GM precedent DB). May be empty string.
+        Path to index.sqlite (shared with browser). Empty = no precedents.
+    pgn_source_path : str
+        Path to the PGN configured in coach.pgn_source.
+        Used by ensure_indexed to detect source changes.
     movetime_ms : int
-        Stockfish analysis time per position in milliseconds.
+        Stockfish analysis time per position (ms).
+    min_rating : int
+        Minimum rating filter for GM precedent queries.
+    auto_index : bool
+        If True, call ensure_indexed() on construction.
     """
 
     def __init__(
         self,
-        stockfish_path: str = '',
-        db_path: str = '',
-        pgn_index_path: str = '',
-        pgn_source_path: str = '',
-        movetime_ms: int = 2000,
-        auto_index: bool = True,
+        stockfish_path:  str  = '',
+        db_path:         str  = '',
+        pgn_index_path:  str  = '',
+        pgn_source_path: str  = '',
+        movetime_ms:     int  = 2000,
+        min_rating:      int  = 0,
+        auto_index:      bool = True,
     ) -> None:
         self.stockfish_path  = stockfish_path
         self.db_path         = db_path
@@ -79,41 +107,64 @@ class StrategyEngine:
         self.movetime_ms     = movetime_ms
         self._bridge         = None
         self._engine_ok      = False
-        self._matcher        = PatternMatcher(pgn_index_path)
-        self._phrase_db      = PhraseDB(db_path)
 
-        # Auto-build coach_positions on first run if index.sqlite exists but
-        # coach_positions is empty — uses existing game offsets, no re-parsing.
-        if pgn_index_path:
+        # ── Database layer ────────────────────────────────────────────────
+        self._matcher   = PatternMatcher(pgn_index_path, min_rating=min_rating)
+        self._phrase_db = PhraseDB(db_path)
+
+        # ── Auto-index: build/rebuild coach_positions if needed ───────────
+        # Detects source change automatically — swap coach.pgn_source in
+        # default.yaml and restart; coach_positions rebuilds from the new
+        # games already catalogued by the browser indexer.
+        if auto_index and pgn_index_path:
             try:
-                ensure_indexed(pgn_index_path, stockfish_path, movetime_ms)
+                ensure_indexed(
+                    db_path        = pgn_index_path,
+                    stockfish_path = stockfish_path,
+                    movetime_ms    = min(movetime_ms, 500),
+                    min_rating     = min_rating,
+                    verbose        = False,
+                    pgn_source     = pgn_source_path,
+                )
             except Exception:
                 pass
 
+        # ── Stockfish ─────────────────────────────────────────────────────
         if stockfish_path:
             self._try_start_engine()
 
-        # ── Auto-index on first run ────────────────────────────────────────
-        # If a game_index path is specified but the file doesn't exist yet,
-        # and a source PGN is available, build the index automatically.
-        if (auto_index and pgn_index_path and pgn_source_path
-                and not Path(pgn_index_path).exists()
-                and Path(pgn_source_path).exists()):
-            self._auto_build_index()
+    @classmethod
+    def from_config(cls, cfg: dict) -> 'StrategyEngine':
+        """
+        Construct from the application config dict.
 
-        # ── Wire up DB layer ───────────────────────────────────────────────
-        self._matcher = PatternMatcher(pgn_index_path) if pgn_index_path else PatternMatcher()
-        self._phrase_db = PhraseDB(db_path) if db_path else PhraseDB()
+        Reads coach section — see default.yaml for all keys.
+        This is the preferred constructor for application code.
+        """
+        data_dir   = Path(cfg.get('paths', {}).get('data_dir', 'data'))
+        coach_cfg  = cfg.get('coach', {})
+        engine_cfg = cfg.get('engine', {})
 
-    def _try_start_engine(self) -> None:
-        try:
-            from core.stockfish_bridge import StockfishBridge
-            self._bridge = StockfishBridge(self.stockfish_path, self.movetime_ms)
-            self._bridge.start()
-            self._engine_ok = self._bridge.is_running
-        except Exception:
-            self._engine_ok = False
-            self._bridge = None
+        pgn_source = coach_cfg.get('pgn_source', '')
+        if pgn_source and not Path(pgn_source).is_absolute():
+            pgn_source = str(data_dir.parent / pgn_source)
+
+        phrase_db = coach_cfg.get('phrase_db', 'data/chess_coach.db')
+        if phrase_db and not Path(phrase_db).is_absolute():
+            phrase_db = str(data_dir.parent / phrase_db)
+
+        # index.sqlite is always in data_dir (created by browser indexer)
+        index_path = str(data_dir / 'index.sqlite')
+
+        return cls(
+            stockfish_path  = engine_cfg.get('path', ''),
+            db_path         = phrase_db,
+            pgn_index_path  = index_path,
+            pgn_source_path = pgn_source,
+            movetime_ms     = coach_cfg.get('movetime_ms', 2000),
+            min_rating      = coach_cfg.get('min_rating', 0),
+            auto_index      = coach_cfg.get('auto_index', True),
+        )
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -126,29 +177,27 @@ class StrategyEngine:
         history_signals: list[list[MetricSignal]] | None = None,
     ) -> CoachOutput:
         """
-        Analyse a position and return a CoachOutput.
+        Analyse a position and return a fully assembled CoachOutput.
 
         Parameters
         ----------
         board : chess.Board
-            Current position.
+            Current position to analyse.
         move_history : list[str] | None
-            UCI move strings, oldest first.
+            UCI move strings, oldest first (optional context).
         player_side : str
             'white' | 'black' — the side being coached.
         history_boards : list[chess.Board] | None
-            Board states from last N moves for trend detection.
+            Recent board states for trend detection (flank/feint detectors).
         history_signals : list[list[MetricSignal]] | None
-            Pre-computed signals from previous positions (optional optimisation).
+            Pre-computed signals from previous positions (optimisation).
         """
         if not self._engine_ok and self.stockfish_path:
             self._try_start_engine()
 
-        # ── Graceful degradation if Stockfish unavailable ─────────────────
-        if not self._engine_ok and self.stockfish_path:
-            return self._unavailable_output(player_side, get_phase(board))
+        phase = get_phase(board)
 
-        # ── Step 1: Run extractors ────────────────────────────────────────
+        # ── Step 1: Extractors ────────────────────────────────────────────
         eval_result = None
         if self._engine_ok and self._bridge:
             try:
@@ -156,88 +205,76 @@ class StrategyEngine:
             except Exception:
                 pass
 
-        raw_signals = self._run_extractors(
-            board, history_boards, eval_result
-        )
+        raw_signals = self._run_extractors(board, history_boards, eval_result, phase)
 
-        # ── Step 2: Phase filter — classify and re-weight ─────────────────
+        # ── Step 2: Phase filter ──────────────────────────────────────────
         phase, signals = apply_phase_filter(raw_signals, board)
 
         # ── Step 3: Strategy scoring ──────────────────────────────────────
+        db_feint = self._matcher.db_confirms_feint(board, phase)
         scores = {
-            'blitz':   score_blitz(signals,   player_side, history_signals),
-            'flank':   score_flank(signals,   player_side, history_signals),
+            'blitz':    score_blitz(signals,    player_side, history_signals),
+            'flank':    score_flank(signals,    player_side, history_signals),
             'fortress': score_fortress(signals, player_side, history_signals),
-            'feint':   score_feint(
-                signals, player_side, history_signals,
-                db_confirmation=self._matcher.db_confirms_feint(board, phase)
-                    if hasattr(self, '_matcher') else False,
-            ),
+            'feint':    score_feint(signals,    player_side, history_signals,
+                                   db_confirmation=db_feint),
         }
 
-        # ── Step 4: Context lookup for conflict resolver ───────────────────
+        # ── Step 4: Conflict resolution ───────────────────────────────────
         context = _build_context(signals, player_side)
+        result  = resolve(scores, context, phase, player_side)
 
-        # ── Step 5: Conflict resolution ───────────────────────────────────
-        result = resolve(scores, context, phase, player_side)
-
-        # ── Step 6: Assemble CoachOutput ──────────────────────────────────
-        return CoachOutput(
-            strategy_primary   = result.primary,
-            strategy_secondary = result.secondary,
-            confidence         = result.confidence,
-            phase              = phase,
-            headline           = _headline(result, scores, phase),
-            plan_sentences     = _assemble_plan(
-                self._phrase_db, result.primary, phase, signals
-            ),
-            tactic_hints       = _tactic_hints(signals, player_side),
-            move_flags         = [],
-            weakness_squares   = _weakness_squares(signals, player_side),
-            gm_precedents      = (
-                self._matcher.query(board, result.primary, phase)
-                if hasattr(self, '_matcher') else []
-            ),
-            signal_dump        = signals,
+        # ── Step 5: Plan recommender ──────────────────────────────────────
+        bridge_for_recommender = self._bridge if self._engine_ok else None
+        move_flags, weakness_squares = plan_recommend(
+            board, signals, player_side, result.primary,
+            stockfish_bridge=bridge_for_recommender,
         )
 
-    def _auto_build_index(self) -> None:
-        """Build game_index.db from the source PGN on first run."""
-        try:
-            from database.pgn_indexer import build_index
-            print(f"chess_coach: building game index from {self.pgn_source_path} ...")
-            build_index(
-                pgn_path       = self.pgn_source_path,
-                db_path        = self.pgn_index_path,
-                stockfish_path = self.stockfish_path,
-                movetime_ms    = min(self.movetime_ms, 200),  # fast for indexing
-                verbose        = True,
-            )
-            print(f"chess_coach: game index ready at {self.pgn_index_path}")
-        except Exception as e:
-            print(f"chess_coach: auto-indexing failed ({e}) — pattern matching unavailable")
+        # ── Step 6: GM precedents ─────────────────────────────────────────
+        gm_precedents = self._matcher.query(board, result.primary, phase)
+
+        # ── Step 7: Narrator assembles CoachOutput ────────────────────────
+        return narrator_assemble(
+            result           = result,
+            phase            = phase,
+            signals          = signals,
+            player_side      = player_side,
+            phrase_db        = self._phrase_db,
+            gm_precedents    = gm_precedents,
+            move_flags       = move_flags,
+            weakness_squares = weakness_squares,
+        )
 
     def close(self) -> None:
-        """Shut down the Stockfish engine and DB connections cleanly."""
+        """Shut down engine and DB connections cleanly."""
         if self._bridge and self._engine_ok:
             try:
                 self._bridge.stop()
             except Exception:
                 pass
-        if hasattr(self, '_matcher'):
-            self._matcher.close()
-        if hasattr(self, '_phrase_db'):
-            self._phrase_db.close()
+        self._matcher.close()
+        self._phrase_db.close()
 
-    # ── Internal helpers ──────────────────────────────────────────────────
+    # ── Internal ──────────────────────────────────────────────────────────
+
+    def _try_start_engine(self) -> None:
+        try:
+            from core.stockfish_bridge import StockfishBridge
+            self._bridge = StockfishBridge(self.stockfish_path, self.movetime_ms)
+            self._bridge.start()
+            self._engine_ok = self._bridge.is_running
+        except Exception:
+            self._engine_ok = False
+            self._bridge    = None
 
     def _run_extractors(
         self,
         board: chess.Board,
         history_boards: list[chess.Board] | None,
         eval_result,
+        phase: str,
     ) -> list[MetricSignal]:
-        phase = get_phase(board)
         signals: list[MetricSignal] = []
         signals.extend(extract_king_safety(board, phase))
         signals.extend(extract_space_control(board, history_boards, phase))
@@ -247,88 +284,18 @@ class StrategyEngine:
         signals.extend(extract_tactics(board, phase))
         return signals
 
-    @staticmethod
-    def _unavailable_output(player_side: str, phase: str) -> CoachOutput:
-        return CoachOutput(
-            strategy_primary   = 'general',
-            strategy_secondary = None,
-            confidence         = 0.0,
-            phase              = phase,
-            headline           = 'Stockfish engine unavailable — positional analysis only.',
-            plan_sentences     = ['Check your Stockfish path in settings.',
-                                  'Positional metrics will still function without engine eval.'],
-            tactic_hints       = [],
-            move_flags         = [],
-            weakness_squares   = [],
-            gm_precedents      = self._matcher.query(
-                board, result.primary, phase
-            ),
-            signal_dump        = [],
-        )
-
 
 # ── Module-level helpers ──────────────────────────────────────────────────────
 
-def _assemble_plan(
-    phrase_db: 'PhraseDB',
-    strategy: str,
-    phase: str,
-    signals: list[MetricSignal],
-) -> list[str]:
-    """Fill the 4-slot plan using the phrase DB, fall back to action_hints."""
-    if phrase_db.is_available:
-        fragments = phrase_db.get_fragments(strategy, phase, signals)
-        sentences = []
-        for slot in ('diagnosis', 'evidence', 'plan', 'urgency'):
-            sentences.extend(fragments.get(slot, []))
-        if len(sentences) >= 2:
-            return sentences[:4]
-
-    # Fallback: use action_hints from the top signals
-    hints = [s.action_hint for s in sorted(signals, key=lambda x: x.score, reverse=True)
-             if s.action_hint][:4]
-    if len(hints) >= 2:
-        return hints
-    return ['Position analysed.', 'Phrase database not yet available.']
-
-
 def _build_context(signals: list[MetricSignal], player_side: str) -> dict:
+    """Extract the two values the conflict resolver needs."""
     opp = 'black' if player_side == 'white' else 'white'
-    def get(metric, side):
-        return max((s.score for s in signals if s.metric_name == metric and s.side == side), default=0.0)
+    def get(metric: str, side: str) -> float:
+        return max(
+            (s.score for s in signals if s.metric_name == metric and s.side == side),
+            default=0.0
+        )
     return {
-        'eval_deficit':  get('eval_deficit', player_side),
+        'eval_deficit':  get('eval_deficit',  player_side),
         'king_exposure': get('king_exposure', opp),
     }
-
-
-def _headline(result, scores: dict, phase: str) -> str:
-    strategy_names = {
-        'blitz':   'Kingside Attack',
-        'flank':   'Flank Squeeze',
-        'fortress': 'Fortress Defence',
-        'feint':   'Positional Feint',
-        'general': 'Positional Play',
-    }
-    name = strategy_names.get(result.primary, result.primary.title())
-    conf = result.confidence
-    if result.tie_band and result.secondary:
-        sec  = strategy_names.get(result.secondary, result.secondary.title())
-        return f'{name} or {sec} — two plans in tension (confidence {conf:.0%})'
-    return f'{name} recommended — {phase} ({conf:.0%} confidence)'
-
-
-def _tactic_hints(signals: list[MetricSignal], player_side: str) -> list[str]:
-    tactic_sigs = [s for s in signals
-                   if s.metric_name.startswith('tactic_') and s.side == player_side]
-    tactic_sigs.sort(key=lambda s: s.score, reverse=True)
-    return [s.action_hint for s in tactic_sigs[:3] if s.action_hint]
-
-
-def _weakness_squares(signals: list[MetricSignal], player_side: str) -> list[str]:
-    opp = 'black' if player_side == 'white' else 'white'
-    squares: list[str] = []
-    for s in signals:
-        if s.side == opp and s.score > 0.40:
-            squares.extend(s.key_squares)
-    return list(dict.fromkeys(squares))[:8]

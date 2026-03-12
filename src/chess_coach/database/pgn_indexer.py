@@ -68,6 +68,15 @@ _MAX_PLY            = 60
 _STRATEGY_THRESHOLD = 0.40
 _BATCH_SIZE         = 50   # commit every N games
 
+# Tracks which PGN source was last indexed — enables automatic re-index
+# when coach.pgn_source changes in config (e.g. swapping to 6M game DB)
+_CREATE_META = """
+CREATE TABLE IF NOT EXISTS coach_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"""
+
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS coach_positions (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,24 +109,41 @@ def ensure_indexed(
     movetime_ms: int = 500,
     min_rating: int = 0,
     verbose: bool = False,
+    pgn_source: str = '',
 ) -> bool:
     """
-    Build coach_positions if it doesn't exist or is empty.
+    Build coach_positions if it doesn't exist, is empty, or the
+    configured pgn_source has changed since the last index run.
+
     Called automatically by StrategyEngine on first use.
-    Returns True if indexing was performed, False if already populated.
+    Returns True if indexing was performed, False if already up to date.
+
+    pgn_source : str
+        Path to the PGN file configured in coach.pgn_source.
+        When this changes (e.g. swapping Carlsen.pgn → 6M game DB),
+        coach_positions is wiped and rebuilt automatically from the new
+        games already catalogued in index.sqlite by the browser indexer.
     """
     if not Path(db_path).exists():
         return False
 
     conn = sqlite3.connect(db_path)
+    conn.executescript(_CREATE_META)
     conn.executescript(_CREATE_TABLE)
     conn.commit()
 
+    # Check if source has changed since last index run
     count = conn.execute("SELECT COUNT(*) FROM coach_positions").fetchone()[0]
+    stored_source = _get_meta(conn, 'pgn_source')
+    source_changed = pgn_source and stored_source and stored_source != pgn_source
     conn.close()
 
-    if count > 0:
-        return False   # already indexed
+    if count > 0 and not source_changed:
+        return False   # already indexed with the same source
+
+    if source_changed and verbose:
+        print(f"coach_indexer: pgn_source changed "
+              f"({stored_source!r} → {pgn_source!r}) — rebuilding coach_positions")
 
     build_from_existing_index(
         db_path        = db_path,
@@ -125,8 +151,26 @@ def ensure_indexed(
         movetime_ms    = movetime_ms,
         min_rating     = min_rating,
         verbose        = verbose,
+        pgn_source     = pgn_source,
     )
     return True
+
+
+def _get_meta(conn: sqlite3.Connection, key: str) -> str:
+    """Read a value from coach_meta table."""
+    try:
+        row = conn.execute("SELECT value FROM coach_meta WHERE key=?", (key,)).fetchone()
+        return row[0] if row else ''
+    except sqlite3.Error:
+        return ''
+
+
+def _set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
+    """Write a value to coach_meta table."""
+    conn.execute(
+        "INSERT OR REPLACE INTO coach_meta(key, value) VALUES (?, ?)",
+        (key, value)
+    )
 
 
 def build_from_existing_index(
@@ -135,6 +179,7 @@ def build_from_existing_index(
     movetime_ms: int    = 500,
     min_rating: int     = 0,
     verbose: bool       = True,
+    pgn_source: str     = '',
 ) -> dict:
     """
     Populate coach_positions by reading games already catalogued in index.sqlite.
@@ -149,8 +194,14 @@ def build_from_existing_index(
     conn.commit()
 
     # Clear any partial previous run
+    conn.executescript(_CREATE_META)
     conn.execute("DELETE FROM coach_positions")
     conn.commit()
+
+    # Record which PGN source this index was built from
+    if pgn_source:
+        _set_meta(conn, 'pgn_source', pgn_source)
+        conn.commit()
 
     # Fetch all games — existing schema has white/black/result but not ELO
     rows = conn.execute("""
