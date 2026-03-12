@@ -26,17 +26,24 @@ engine:
   enabled_on_start: false
   path: "assets/engines/stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
 
-# ── Coach engine ─────────────────────────────────────────────────────────────
-# coach_db_path    : SQLite database of Nimzowitsch phrases and annotations.
-#                    Relative to data_dir.
-# coach_enabled    : Master on/off switch. Set false to disable coach entirely
-#                    while keeping the tab slot alive.
-# coach_auto_annotate : If true, coach output is written back into the PGN
-#                       as comments automatically on every move.
-# coach_movetime_ms   : How many milliseconds the coach engine spends
-#                       analysing each position before producing output.
 coach:
-  db_path: "data/coach.db"
-  enabled: true
-  auto_annotate: false
-  movetime_ms: 2000
+  # PGN source used by the coach for GM precedent matching.
+  # This is INDEPENDENT from pgn_sources.active_source (the browser).
+  # To switch to the 6M game database, change this path only.
+  # The coach indexer will detect the change and re-index automatically.
+  pgn_source: "data/Carlsen.pgn"
+
+  # Phrase database — Nimzowitsch coaching language.
+  phrase_db: "data/chess_coach.db"
+
+  # Minimum rating filter for GM precedents.
+  # Set to 0 for Carlsen.pgn (all games are high quality).
+  # Raise to 2400 when switching to the 6M game database.
+  min_rating: 0
+
+  # Stockfish analysis time per position during indexing (ms).
+  # Keep low during development. Raise for production quality evals.
+  movetime_ms: 500
+
+  # Automatically index on first run if coach_positions is empty.
+  auto_index: true
