@@ -226,12 +226,16 @@ def get_king_zone(board: chess.Board, color: chess.Color) -> list[chess.Square]:
     king_file = chess.square_file(king_sq)
     king_rank = chess.square_rank(king_sq)
 
+    toward_opp = 1 if color == chess.WHITE else -1
+
     for df in (-1, 0, 1):
-        for dr in (-1, 0, 1):
+        for dr_step in range(-1, 3):   # -1=behind king, 0=king rank, 1=shield, 2=attack front
             f = king_file + df
-            r = king_rank + dr
+            r = king_rank + (toward_opp * dr_step)
             if 0 <= f <= 7 and 0 <= r <= 7:
-                zone.append(chess.square(f, r))
+                sq = chess.square(f, r)
+                if sq not in zone:
+                    zone.append(sq)
 
     return zone
 
