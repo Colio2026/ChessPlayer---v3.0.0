@@ -25,6 +25,7 @@ Stockfish unavailable:
 from __future__ import annotations
 
 import chess
+from pathlib import Path
 from dataclasses import dataclass, field
 
 from core.data_types  import MetricSignal, CoachOutput, GMPrecedent
@@ -41,6 +42,8 @@ from strategies.blitz_detector   import score_blitz
 from strategies.flank_detector   import score_flank
 from strategies.fortress_detector import score_fortress
 from strategies.feint_detector   import score_feint
+from database.pattern_matcher import PatternMatcher
+from database.phrase_db       import PhraseDB
 
 
 class StrategyEngine:
@@ -65,17 +68,42 @@ class StrategyEngine:
         stockfish_path: str = '',
         db_path: str = '',
         pgn_index_path: str = '',
+        pgn_source_path: str = '',
         movetime_ms: int = 2000,
+        auto_index: bool = True,
     ) -> None:
         self.stockfish_path  = stockfish_path
         self.db_path         = db_path
         self.pgn_index_path  = pgn_index_path
+        self.pgn_source_path = pgn_source_path
         self.movetime_ms     = movetime_ms
         self._bridge         = None
         self._engine_ok      = False
+        self._matcher        = PatternMatcher(pgn_index_path)
+        self._phrase_db      = PhraseDB(db_path)
+
+        # Auto-build coach_positions on first run if index.sqlite exists but
+        # coach_positions is empty — uses existing game offsets, no re-parsing.
+        if pgn_index_path:
+            try:
+                ensure_indexed(pgn_index_path, stockfish_path, movetime_ms)
+            except Exception:
+                pass
 
         if stockfish_path:
             self._try_start_engine()
+
+        # ── Auto-index on first run ────────────────────────────────────────
+        # If a game_index path is specified but the file doesn't exist yet,
+        # and a source PGN is available, build the index automatically.
+        if (auto_index and pgn_index_path and pgn_source_path
+                and not Path(pgn_index_path).exists()
+                and Path(pgn_source_path).exists()):
+            self._auto_build_index()
+
+        # ── Wire up DB layer ───────────────────────────────────────────────
+        self._matcher = PatternMatcher(pgn_index_path) if pgn_index_path else PatternMatcher()
+        self._phrase_db = PhraseDB(db_path) if db_path else PhraseDB()
 
     def _try_start_engine(self) -> None:
         try:
@@ -140,7 +168,11 @@ class StrategyEngine:
             'blitz':   score_blitz(signals,   player_side, history_signals),
             'flank':   score_flank(signals,   player_side, history_signals),
             'fortress': score_fortress(signals, player_side, history_signals),
-            'feint':   score_feint(signals,   player_side, history_signals),
+            'feint':   score_feint(
+                signals, player_side, history_signals,
+                db_confirmation=self._matcher.db_confirms_feint(board, phase)
+                    if hasattr(self, '_matcher') else False,
+            ),
         }
 
         # ── Step 4: Context lookup for conflict resolver ───────────────────
@@ -156,21 +188,46 @@ class StrategyEngine:
             confidence         = result.confidence,
             phase              = phase,
             headline           = _headline(result, scores, phase),
-            plan_sentences     = ['Analysis complete.', 'Narrator pending Phase 5.'],
+            plan_sentences     = _assemble_plan(
+                self._phrase_db, result.primary, phase, signals
+            ),
             tactic_hints       = _tactic_hints(signals, player_side),
             move_flags         = [],
             weakness_squares   = _weakness_squares(signals, player_side),
-            gm_precedents      = [],
+            gm_precedents      = (
+                self._matcher.query(board, result.primary, phase)
+                if hasattr(self, '_matcher') else []
+            ),
             signal_dump        = signals,
         )
 
+    def _auto_build_index(self) -> None:
+        """Build game_index.db from the source PGN on first run."""
+        try:
+            from database.pgn_indexer import build_index
+            print(f"chess_coach: building game index from {self.pgn_source_path} ...")
+            build_index(
+                pgn_path       = self.pgn_source_path,
+                db_path        = self.pgn_index_path,
+                stockfish_path = self.stockfish_path,
+                movetime_ms    = min(self.movetime_ms, 200),  # fast for indexing
+                verbose        = True,
+            )
+            print(f"chess_coach: game index ready at {self.pgn_index_path}")
+        except Exception as e:
+            print(f"chess_coach: auto-indexing failed ({e}) — pattern matching unavailable")
+
     def close(self) -> None:
-        """Shut down the Stockfish engine cleanly."""
+        """Shut down the Stockfish engine and DB connections cleanly."""
         if self._bridge and self._engine_ok:
             try:
                 self._bridge.stop()
             except Exception:
                 pass
+        if hasattr(self, '_matcher'):
+            self._matcher.close()
+        if hasattr(self, '_phrase_db'):
+            self._phrase_db.close()
 
     # ── Internal helpers ──────────────────────────────────────────────────
 
@@ -203,12 +260,37 @@ class StrategyEngine:
             tactic_hints       = [],
             move_flags         = [],
             weakness_squares   = [],
-            gm_precedents      = [],
+            gm_precedents      = self._matcher.query(
+                board, result.primary, phase
+            ),
             signal_dump        = [],
         )
 
 
 # ── Module-level helpers ──────────────────────────────────────────────────────
+
+def _assemble_plan(
+    phrase_db: 'PhraseDB',
+    strategy: str,
+    phase: str,
+    signals: list[MetricSignal],
+) -> list[str]:
+    """Fill the 4-slot plan using the phrase DB, fall back to action_hints."""
+    if phrase_db.is_available:
+        fragments = phrase_db.get_fragments(strategy, phase, signals)
+        sentences = []
+        for slot in ('diagnosis', 'evidence', 'plan', 'urgency'):
+            sentences.extend(fragments.get(slot, []))
+        if len(sentences) >= 2:
+            return sentences[:4]
+
+    # Fallback: use action_hints from the top signals
+    hints = [s.action_hint for s in sorted(signals, key=lambda x: x.score, reverse=True)
+             if s.action_hint][:4]
+    if len(hints) >= 2:
+        return hints
+    return ['Position analysed.', 'Phrase database not yet available.']
+
 
 def _build_context(signals: list[MetricSignal], player_side: str) -> dict:
     opp = 'black' if player_side == 'white' else 'white'
