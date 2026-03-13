@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, QRect
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
-from engine.uci_engine import BestMove
+from chessplayer.engine.uci_engine import BestMove
 
 
 def _cp_to_ratio(cp: int) -> float:

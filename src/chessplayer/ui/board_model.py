@@ -5,7 +5,7 @@ from pathlib import Path
 import chess
 from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt, QObject, Signal, Slot
 
-from core.pgn_edit import PgnEditor
+from chessplayer.core.pgn_edit import PgnEditor
 
 
 def _piece_code(piece: chess.Piece) -> str:

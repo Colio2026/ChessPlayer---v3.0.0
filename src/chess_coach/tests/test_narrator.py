@@ -21,13 +21,13 @@ from pathlib import Path
 import chess
 import pytest
 
-from core.data_types        import MetricSignal, GMPrecedent, CoachOutput
-from core.conflict_resolver import ResolverResult
-from core.board_utils       import get_pawn_hash
-from coach.narrator         import assemble, _build_headline, _build_plan, _template_headline
-from coach.plan_recommender import recommend, _structural_flags, _weakness_squares
-from database.phrase_db     import PhraseDB
-from database.pgn_indexer   import ensure_indexed, _get_meta, _set_meta, _CREATE_META, _CREATE_TABLE
+from chess_coach.core.data_types        import MetricSignal, GMPrecedent, CoachOutput
+from chess_coach.core.conflict_resolver import ResolverResult
+from chess_coach.core.board_utils       import get_pawn_hash
+from chess_coach.coach.narrator         import assemble, _build_headline, _build_plan, _template_headline
+from chess_coach.coach.plan_recommender import recommend, _structural_flags, _weakness_squares
+from chess_coach.database.phrase_db     import PhraseDB
+from chess_coach.database.pgn_indexer   import ensure_indexed, _get_meta, _set_meta, _CREATE_META, _CREATE_TABLE
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

@@ -8,8 +8,8 @@ Signal side = the side that HAS the tactic available (can exploit it).
 """
 from __future__ import annotations
 import chess
-from core.data_types import MetricSignal
-from core.board_utils import square_to_str
+from chess_coach.core.data_types import MetricSignal
+from chess_coach.core.board_utils import square_to_str
 
 
 _PIECE_VALUES = {

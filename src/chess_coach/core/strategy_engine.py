@@ -43,25 +43,25 @@ from __future__ import annotations
 import chess
 from pathlib import Path
 
-from core.data_types        import MetricSignal, CoachOutput
-from core.board_utils       import get_phase
-from core.phase_filter      import apply_phase_filter
-from core.conflict_resolver import resolve
-from extractors.king_safety      import extract_king_safety
-from extractors.space_control    import extract_space_control
-from extractors.piece_mobility   import extract_piece_mobility
-from extractors.pawn_structure   import extract_pawn_structure
-from extractors.material_balance import extract_material_balance
-from extractors.tactic_scanner   import extract_tactics
-from strategies.blitz_detector    import score_blitz
-from strategies.flank_detector    import score_flank
-from strategies.fortress_detector import score_fortress
-from strategies.feint_detector    import score_feint
-from database.pattern_matcher     import PatternMatcher
-from database.phrase_db           import PhraseDB
-from database.pgn_indexer         import ensure_indexed
-from coach.narrator               import assemble as narrator_assemble
-from coach.plan_recommender       import recommend as plan_recommend
+from chess_coach.core.data_types        import MetricSignal, CoachOutput
+from chess_coach.core.board_utils       import get_phase
+from chess_coach.core.phase_filter      import apply_phase_filter
+from chess_coach.core.conflict_resolver import resolve
+from chess_coach.extractors.king_safety      import extract_king_safety
+from chess_coach.extractors.space_control    import extract_space_control
+from chess_coach.extractors.piece_mobility   import extract_piece_mobility
+from chess_coach.extractors.pawn_structure   import extract_pawn_structure
+from chess_coach.extractors.material_balance import extract_material_balance
+from chess_coach.extractors.tactic_scanner   import extract_tactics
+from chess_coach.strategies.blitz_detector    import score_blitz
+from chess_coach.strategies.flank_detector    import score_flank
+from chess_coach.strategies.fortress_detector import score_fortress
+from chess_coach.strategies.feint_detector    import score_feint
+from chess_coach.database.pattern_matcher     import PatternMatcher
+from chess_coach.database.phrase_db           import PhraseDB
+from chess_coach.database.pgn_indexer         import ensure_indexed
+from chess_coach.coach.narrator               import assemble as narrator_assemble
+from chess_coach.coach.plan_recommender       import recommend as plan_recommend
 
 
 class StrategyEngine:

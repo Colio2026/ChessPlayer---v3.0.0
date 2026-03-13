@@ -50,18 +50,18 @@ import chess.pgn
 if __name__ == '__main__':
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from core.board_utils    import get_phase, get_pawn_hash
-from core.data_types     import MetricSignal
-from extractors.king_safety      import extract_king_safety
-from extractors.space_control    import extract_space_control
-from extractors.piece_mobility   import extract_piece_mobility
-from extractors.pawn_structure   import extract_pawn_structure
-from extractors.material_balance import extract_material_balance
-from extractors.tactic_scanner   import extract_tactics
-from strategies.blitz_detector    import score_blitz
-from strategies.flank_detector    import score_flank
-from strategies.fortress_detector import score_fortress
-from strategies.feint_detector    import score_feint
+from chess_coach.core.board_utils    import get_phase, get_pawn_hash
+from chess_coach.core.data_types     import MetricSignal
+from chess_coach.extractors.king_safety      import extract_king_safety
+from chess_coach.extractors.space_control    import extract_space_control
+from chess_coach.extractors.piece_mobility   import extract_piece_mobility
+from chess_coach.extractors.pawn_structure   import extract_pawn_structure
+from chess_coach.extractors.material_balance import extract_material_balance
+from chess_coach.extractors.tactic_scanner   import extract_tactics
+from chess_coach.strategies.blitz_detector    import score_blitz
+from chess_coach.strategies.flank_detector    import score_flank
+from chess_coach.strategies.fortress_detector import score_fortress
+from chess_coach.strategies.feint_detector    import score_feint
 
 _MIN_PLY            = 10
 _MAX_PLY            = 60

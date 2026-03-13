@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QUrl, Signal, QObject
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import (
     QApplication,
@@ -24,20 +24,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.pgn_edit import PgnEditor
-from pgn.indexer import build_or_rebuild_index_for_source
-from pgn.query import default_multisort
-from config.loader import save_user_config_patch
-from pgn.store import IndexHandle, PgnStore, SourceRecord
-from ui.board_model import BoardBridge, BoardListModel
-from ui.coach_board import CoachBoardWidget
-from ui.engine_panel import EnginePanel
-from ui.eval_bar import EvalBar
-from ui.game_table_model import GameTableModel
-from ui.pgn_panel import PgnPanel
-from ui.query_builder import QueryBuilder
-from ui.variations_panel import VariationsPanel
-from utils.paths import resolve_path
+from chessplayer.core.pgn_edit import PgnEditor
+from chessplayer.pgn.indexer import build_or_rebuild_index_for_source
+from chessplayer.pgn.query import default_multisort
+from chessplayer.pgn.store import IndexHandle, PgnStore, SourceRecord
+from chessplayer.ui.board_model import BoardBridge, BoardListModel
+from chessplayer.ui.coach_board import CoachBoardWidget
+from chessplayer.ui.coach_panel import CoachPanel
+from chessplayer.ui.engine_panel import EnginePanel
+from chessplayer.ui.eval_bar import EvalBar
+from chessplayer.ui.game_table_model import GameTableModel
+from chessplayer.ui.pgn_panel import PgnPanel
+from chessplayer.ui.query_builder import QueryBuilder
+from chessplayer.ui.variations_panel import VariationsPanel
+from chessplayer.utils.paths import resolve_path
 
 
 # ─── Index worker ─────────────────────────────────────────────────────────────
@@ -70,10 +70,6 @@ class _IndexWorker(QObject):
 # ─── Main Window ──────────────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
-    # F2 — single signal the coach widget connects to
-    # emitted with (fen, move_history_uci) on every move and navigation
-    coachRequested = Signal(str, list)
-
     def __init__(self, config: dict) -> None:
         super().__init__()
         self._config = config
@@ -96,8 +92,6 @@ class MainWindow(QMainWindow):
         self._index_worker:    _IndexWorker | None     = None
         self._progress_dialog: QProgressDialog | None  = None
         self._last_indexed_game_count                  = 0
-        # F4 — 'main' or 'coach': whichever board was last interacted with
-        self._active_board: str = "main"
 
         data_dir = resolve_path(self._config["paths"]["data_dir"])
         db_path  = data_dir / "index.sqlite"
@@ -107,7 +101,6 @@ class MainWindow(QMainWindow):
         self._build_menu_bar()
         self._build_toolbar()
         self._build_ui()
-        self._build_shortcuts()
 
         # Bridge signals
         self._bridge.statusChanged.connect(self._status.setText)
@@ -121,7 +114,15 @@ class MainWindow(QMainWindow):
 
         # Variations
         self._variations_panel.status_message.connect(self._status.setText)
-        self._variations_panel.move_selected.connect(self._on_variation_move_selected)
+
+        # Coach panel signals
+        self._coach_panel.coach_help_requested.connect(self._on_coach_help_requested)
+        self._coach_panel.gm_load_requested.connect(self._on_gm_load_requested)
+        self._coach_panel.weakness_squares_ready.connect(
+            self._coach_board.set_weakness_squares
+        )
+        # PGN panel right-click "Request Coach Note" → force analysis + insert
+        self._pgn_panel.coach_help_requested.connect(self._coach_panel.request_help)
 
         # PGN panel — navigate on click, wire save buttons
         self._pgn_panel.navigate_requested.connect(self._navigate_to_ply)
@@ -132,7 +133,6 @@ class MainWindow(QMainWindow):
         self._pgn_panel.delete_from_node_requested.connect(self._delete_from_node)
         self._pgn_panel.comment_line_clicked.connect(self._on_comment_line_clicked)
         self._pgn_panel.enable_save(self._save_game, self._save_game_as)
-        self._pgn_panel.enable_save_to_library(self._save_to_library)
 
         self._choose_initial_source()
         self._on_position_changed()
@@ -312,19 +312,12 @@ class MainWindow(QMainWindow):
         board_split.addWidget(self._board_view)
 
         tabs = QTabWidget()
+        self._variations_panel = VariationsPanel(self._config, self)
+        tabs.addTab(self._variations_panel, "Variations")
         self._pgn_panel = PgnPanel(self._editor, self)
         tabs.addTab(self._pgn_panel, "PGN")
-
-        # F1 — Coach placeholder (Phase G will replace this label)
-        self._coach_placeholder = QLabel(
-            "<center style='color:#666666; font-style:italic; margin-top:40px;'>"
-            "♟&nbsp;&nbsp;Coach panel — coming soon</center>"
-        )
-        self._coach_placeholder.setTextFormat(Qt.RichText)
-        tabs.addTab(self._coach_placeholder, "Coach")
-
-        self._variations_panel = VariationsPanel(self._config, self)
-        tabs.addTab(self._variations_panel, "Lines")
+        self._coach_panel = CoachPanel(self._config, self)
+        tabs.addTab(self._coach_panel, "Coach")
         board_split.addWidget(tabs)
 
         board_split.setSizes([28, 520, 420])
@@ -339,57 +332,14 @@ class MainWindow(QMainWindow):
     # ── Source management ─────────────────────────────────────────────────────
 
     def _choose_initial_source(self) -> None:
-        """Restore last-used source from config, falling back to first available."""
-        self._restore_active_source_from_config()
-
-    def _save_active_source_to_user_config(self) -> None:
-        """Persist active source so it reloads on next launch."""
-        try:
-            save_user_config_patch({
-                "ui": {
-                    "last_source_id":   self._active_source_id,
-                    "last_source_type": self._active_source_type,
-                    "last_source_path": self._active_source_path,
-                }
-            })
-        except Exception:
-            pass
-
-    def _restore_active_source_from_config(self) -> None:
-        """On startup, re-select the last-used source from user config."""
-        if not self._store:
-            self._update_source_combo()
-            return
-        ui_cfg      = self._config.get("ui", {})
-        wanted_id   = ui_cfg.get("last_source_id")
-        wanted_type = ui_cfg.get("last_source_type")
-        wanted_path = ui_cfg.get("last_source_path")
-        sources = self._store.list_sources()
-        if not sources:
-            self._update_source_combo()
-            return
-        chosen: SourceRecord | None = None
-        if isinstance(wanted_id, int):
-            for s in sources:
-                if s.source_id == wanted_id:
-                    chosen = s
-                    break
-        if chosen is None and wanted_path:
-            sid = self._store.get_source_id_by_path(
-                wanted_path,
-                wanted_type if isinstance(wanted_type, str) else None,
-            )
-            if sid is not None:
-                for s in sources:
-                    if s.source_id == sid:
-                        chosen = s
-                        break
-        if chosen is None:
-            chosen = sources[0]
-        self._set_active_source(chosen, save_config=False)
         self._update_source_combo()
+        if not self._store:
+            return
+        sources = self._store.list_sources()
+        if sources and self._active_source_id is None:
+            self._set_active_source(sources[0])
 
-    def _set_active_source(self, src: SourceRecord | None, save_config: bool = True) -> None:
+    def _set_active_source(self, src: SourceRecord | None) -> None:
         if src is None:
             self._active_source_id   = None
             self._active_source_type = None
@@ -402,8 +352,6 @@ class MainWindow(QMainWindow):
         self._variations_panel.set_source(
             self._store, self._active_source_id, self._active_source_path
         )
-        if save_config:
-            self._save_active_source_to_user_config()
 
     def _source_label(self, src: SourceRecord) -> str:
         return f"[{src.source_type}] {src.path}"
@@ -614,7 +562,9 @@ class MainWindow(QMainWindow):
             return False
 
     def _save_to_library(self) -> None:
-        """Replace the original game in the source library file (no re-index)."""
+        """
+        Replace the original game in the source library file and re-index.
+        """
         if (
             self._editor.source_pgn_path is None
             or self._editor.source_offset is None
@@ -630,7 +580,8 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.question(
             self,
             "Save to Library",
-            f"Replace the original game in:\n{self._editor.source_pgn_path}\n\nContinue?",
+            f"Replace the original game in:\n{self._editor.source_pgn_path}\n\n"
+            "This will rewrite the library file and trigger a re-index. Continue?",
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
@@ -638,7 +589,12 @@ class MainWindow(QMainWindow):
 
         try:
             self._editor.replace_in_library_file()
-            self._status.setText(f"Saved to library → {self._editor.source_pgn_path.name}")
+            self._status.setText("Saved to library — re-indexing...")
+            # Re-index so the library reflects the updated game
+            if self._active_source_type and self._active_source_path:
+                self._start_index_job(
+                    self._active_source_type, self._active_source_path
+                )
         except Exception as exc:
             QMessageBox.critical(self, "Save to Library failed", str(exc))
 
@@ -757,14 +713,12 @@ class MainWindow(QMainWindow):
     # ── Position change ───────────────────────────────────────────────────────
 
     def _on_position_changed(self) -> None:
+        print(f"[MAIN] _on_position_changed: editor.loaded={hasattr(self._editor, 'loaded') and self._editor.loaded is not None}")
         prefix        = self._editor.played_prefix_uci()
         white_to_move = self._editor.session.board.turn
         self._pgn_panel.refresh()
         self._variations_panel.refresh(prefix)
-        # F2 — notify coach of every position change
-        self.coachRequested.emit(
-            self._editor.session.board.fen(), list(prefix)
-        )
+        self._coach_panel.queue_analysis(self._editor.session.board, history=[], side='white' if white_to_move else 'black')
         # Always trigger analysis so eval updates on navigation, game load, etc.
         self._engine_panel.trigger_analysis(prefix, white_to_move)
 
@@ -778,25 +732,6 @@ class MainWindow(QMainWindow):
             self._on_position_changed()
 
     # ── Dirty close prompt ────────────────────────────────────────────────────
-
-    def _on_variation_move_selected(self, san: str) -> None:
-        """
-        Apply a continuation move (from the Variations tab) to the main board.
-        Converts SAN to a legal move on the current position then applies it.
-        """
-        import chess
-        board = self._editor.session.board
-        try:
-            mv = board.parse_san(san)
-        except Exception:
-            self._status.setText(f"Couldn't apply move: {san}")
-            return
-        res = self._editor.apply_uci_move(mv.uci())
-        if res.ok:
-            self._board_model.rebuild()
-            self._on_position_changed()
-        else:
-            self._status.setText(f"Illegal move: {san}")
 
     def _on_pv_line_clicked(self, base_moves: list, pv_uci: list) -> None:
         """
@@ -844,65 +779,107 @@ class MainWindow(QMainWindow):
         self._coach_board.load_line(
             base_fen, uci_list, san_list, start_idx=clicked_idx
         )
-        self._set_active_board("coach")  # arrow keys follow coach board
 
     def _on_eval_updated(self, result) -> None:
         white_to_move = self._editor.session.board.turn
         self._eval_bar.update_eval(result, white_to_move)
 
-    # ── Keyboard shortcuts (F4) ───────────────────────────────────────────
+    def _on_coach_help_requested(self, output) -> None:
+        """
+        Insert a CoachOutput as a PGN comment at the current move.
+        Plan sentences + top recommended moves as parenthesised SAN tokens.
+        The notation panels convert those tokens to clickable coach:// links.
+        """
+        import chess as _chess
+        board = self._editor.session.board
 
-    def _build_shortcuts(self) -> None:
-        """Wire all keyboard shortcuts.  Called once after _build_ui."""
-        def sc(key, slot):
-            QShortcut(QKeySequence(key), self).activated.connect(slot)
-
-        sc("Left",    self._kb_back)
-        sc("Right",   self._kb_forward)
-        sc("Ctrl+S",  self._save_game)
-        sc("Ctrl+F",  lambda: self._bridge.setFlipped(not self._board_model.flipped()))
-        sc("Ctrl+E",  self._toggle_engine_panel)
-
-        # Track focus: main board clicked
-        self._board_view.mousePressEvent = self._make_focus_handler(
-            "main", self._board_view.__class__.mousePressEvent
+        # Build SAN strings for up to 3 top move_flags
+        priority = {"engine_best": 0, "engine_good": 1,
+                    "attack_target": 2, "kingside_break": 3}
+        ranked = sorted(
+            output.move_flags,
+            key=lambda f: priority.get(f.get("flag", ""), 99)
         )
-        # Track focus: coach board back/forward buttons
-        self._coach_board._back_btn.clicked.connect(
-            lambda: self._set_active_board("coach")
+        san_tokens: list[str] = []
+        seen: set[str] = set()
+        for f in ranked:
+            uci = f.get("move", "")
+            if uci and uci not in seen:
+                try:
+                    san_tokens.append(board.san(_chess.Move.from_uci(uci)))
+                    seen.add(uci)
+                except Exception:
+                    pass
+            if len(san_tokens) == 3:
+                break
+
+        plan_text = "  ".join(output.plan_sentences[:2])
+        rec_part  = (
+            "  Recommended: (" + " ".join(san_tokens) + ")"
+            if san_tokens else ""
         )
-        self._coach_board._fwd_btn.clicked.connect(
-            lambda: self._set_active_board("coach")
-        )
-        # Coach board becomes active when a line loads
-        # (load_line is called from _on_comment_line_clicked)
+        comment = f"\u265f {output.headline}  {plan_text}{rec_part}"
 
-    def _make_focus_handler(self, board_name: str, original):
-        def handler(widget_self, event):
-            self._set_active_board(board_name)
-            original(widget_self, event)
-        return handler
+        self._editor.insert_comment(comment)
+        self._pgn_panel.refresh()
+        self._status.setText("Coach note inserted.")
 
-    def _set_active_board(self, name: str) -> None:
-        self._active_board = name
+    def _on_gm_load_requested(self, prec) -> None:
+        """
+        Load a GM precedent:
+          1. Parse game, navigate to matched ply.
+          2. Load continuation to the coach board.
+          3. Insert continuation as a variation in the current game.
+        """
+        if not self._store:
+            return
+        try:
+            pgn_text = self._store.open_game_pgn_text(int(prec.game_id))
+        except Exception:
+            return
 
-    def _toggle_engine_panel(self) -> None:
-        visible = self._engine_panel.isVisible()
-        self._engine_panel.setVisible(not visible)
+        import chess.pgn as _pgn, io as _io, chess as _chess
 
-    def _kb_back(self) -> None:
-        """Left arrow — step back on whichever board was last used."""
-        if self._active_board == "coach":
-            self._coach_board._on_back()
-        else:
-            self._on_back()
+        game = _pgn.read_game(_io.StringIO(pgn_text))
+        if game is None:
+            return
 
-    def _kb_forward(self) -> None:
-        """Right arrow — step forward on whichever board was last used."""
-        if self._active_board == "coach":
-            self._coach_board._on_forward()
-        else:
-            self._on_forward()
+        base_fen = game.headers.get("FEN", _chess.Board().fen())
+        board    = _chess.Board(base_fen)
+        node     = game
+        for _i in range(prec.ply):
+            if not node.variations:
+                break
+            node = node.variations[0]
+            board.push(node.move)
+
+        # Extract up to 8 continuation moves
+        cont_board = board.copy()
+        uci_list:  list[str] = []
+        san_list:  list[str] = []
+        cont_node = node
+        for _j in range(8):
+            if not cont_node.variations:
+                break
+            cont_node = cont_node.variations[0]
+            move      = cont_node.move
+            san_list.append(cont_board.san(move))
+            cont_board.push(move)
+            uci_list.append(move.uci())
+
+        # Load to coach board
+        self._coach_board.load_line(board.fen(), uci_list, san_list)
+
+        # Insert as variation from current position
+        current_ply = len(self._editor.session.board.move_stack)
+        self._editor.navigate_to_ply(current_ply)
+        for uci in uci_list:
+            res = self._editor.apply_uci_move(uci, promote=False)
+            if not res.ok:
+                break
+
+        self._board_model.rebuild()
+        self._on_position_changed()
 
     def closeEvent(self, event) -> None:
         if self._editor.dirty:

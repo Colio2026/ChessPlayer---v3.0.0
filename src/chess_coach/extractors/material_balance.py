@@ -13,8 +13,8 @@ If eval_result is None, those signals are skipped (graceful degradation).
 """
 from __future__ import annotations
 import chess
-from core.data_types import MetricSignal
-from core.board_utils import square_to_str
+from chess_coach.core.data_types import MetricSignal
+from chess_coach.core.board_utils import square_to_str
 
 _PIECE_VALUES = {
     chess.QUEEN: 900, chess.ROOK: 500,

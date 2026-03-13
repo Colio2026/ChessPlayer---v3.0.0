@@ -26,7 +26,7 @@ Weighted formula (DB-pending):
 Cap: min(raw, 0.64) until db_confirmation=True.
 """
 from __future__ import annotations
-from core.data_types import MetricSignal
+from chess_coach.core.data_types import MetricSignal
 
 _W = dict(eng_disagree=0.35, latent=0.25, overcommit=0.20,
           quiet=0.10, tension=0.10)

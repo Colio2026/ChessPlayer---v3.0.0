@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING
 import chess
 import chess.pgn
 
-from pgn.store import PgnStore
+from chessplayer.pgn.store import PgnStore
 
 if TYPE_CHECKING:
-    from pgn.move_tree import MoveTree
+    from chessplayer.pgn.move_tree import MoveTree
 
 
 # ── Data class ────────────────────────────────────────────────────────────────

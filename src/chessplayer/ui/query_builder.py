@@ -1,7 +1,7 @@
 from __future__ import annotations
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QComboBox, QLineEdit, QLabel
-from pgn.query import Clause, Query
+from chessplayer.pgn.query import Clause, Query
 
 FIELDS = [
     ("White", "white"),

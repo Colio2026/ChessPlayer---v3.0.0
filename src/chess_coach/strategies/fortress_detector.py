@@ -26,7 +26,7 @@ Overextension flip: if overextension signal fires FOR the coached side
   is treated as a counterattack opportunity, boosting the score.
 """
 from __future__ import annotations
-from core.data_types import MetricSignal
+from chess_coach.core.data_types import MetricSignal
 
 _W = dict(deficit=0.35, fixedness=0.25, king_eq=0.15,
           trade=0.10, low_dyn=0.10, overext=0.05)

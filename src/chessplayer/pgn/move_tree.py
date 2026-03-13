@@ -38,9 +38,9 @@ from typing import Callable, Optional
 import chess
 import chess.pgn
 
-from pgn.continuations import ContinuationStat
-from pgn.store import PgnStore
-from utils.paths import resolve_path
+from chessplayer.pgn.continuations import ContinuationStat
+from chessplayer.pgn.store import PgnStore
+from chessplayer.utils.paths import resolve_path
 
 ProgressCb = Callable[[int, str], None]
 CancelCb   = Callable[[], bool]

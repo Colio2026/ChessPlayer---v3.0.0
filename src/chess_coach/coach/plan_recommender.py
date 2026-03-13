@@ -23,7 +23,7 @@ from __future__ import annotations
 import chess
 from typing import Optional
 
-from core.data_types import MetricSignal
+from chess_coach.core.data_types import MetricSignal
 
 _ENGINE_THRESHOLD_BEST = 10    # cp — within this = 'engine_best'
 _ENGINE_THRESHOLD_GOOD = 50    # cp — within this = 'engine_good'

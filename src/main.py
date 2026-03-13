@@ -1,13 +1,14 @@
 import argparse
 from pathlib import Path
 
-from config.loader import load_config
-from app import run_app
-from pgn.indexer import (
+from chessplayer.config.loader import load_config
+from chessplayer.pgn.indexer import (
     build_or_rebuild_index_for_source,
     build_or_rebuild_index_for_sources,
     build_or_update_index,
 )
+from app import run_app
+
 
 
 def _detect_source_type(path_text: str) -> str:

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import chess.pgn
 
-from pgn.models import GameMeta
-from pgn.query import Query, compile_where
+from chessplayer.pgn.models import GameMeta
+from chessplayer.pgn.query import Query, compile_where
 
 
 @dataclass(frozen=True)

@@ -25,8 +25,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.pgn_edit import PgnEditor
-from ui.comment_dialog import CommentDialog
+from chessplayer.core.pgn_edit import PgnEditor
+from chessplayer.ui.comment_dialog import CommentDialog
 
 
 class PgnPanel(QWidget):
@@ -50,6 +50,7 @@ class PgnPanel(QWidget):
     delete_variation_requested  = Signal(object)  # GameNode: remove whole branch
     delete_from_node_requested  = Signal(object)  # GameNode: truncate from here
     comment_line_clicked        = Signal(int, list)  # (base_ply, uci_list)
+    coach_help_requested        = Signal()           # right-click → request coach note
     header_changed              = Signal()
 
     # ── CSS ───────────────────────────────────────────────────────────────────
@@ -602,9 +603,10 @@ class PgnPanel(QWidget):
 
             menu.addSeparator()
 
-        coach_action = menu.addAction("Request Coach Analysis  (coming Phase F)")
-        coach_action.setEnabled(False)
+        coach_action = menu.addAction("♟  Request Coach Note")
+        coach_action.triggered.connect(self.coach_help_requested.emit)
         menu.exec(self._browser.mapToGlobal(pos))
+
 
     def _do_promote_variation(self, node) -> None:
         self.promote_variation_requested.emit(node)

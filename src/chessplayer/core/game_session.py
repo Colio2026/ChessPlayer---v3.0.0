@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import chess
-from core.log import log
+from chessplayer.core.log import log
 
 
 @dataclass(frozen=True)

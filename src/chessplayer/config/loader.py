@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 import yaml
 
-from utils.paths import resolve_path
+from chessplayer.utils.paths import resolve_path
 
 
 def _default_user_data_dir() -> Path:

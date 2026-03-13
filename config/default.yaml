@@ -1,4 +1,5 @@
 app:
+  debug: false
   name: "CHESSPLAYER"
   theme: "grayscale"
 

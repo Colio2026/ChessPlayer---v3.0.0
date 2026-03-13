@@ -40,13 +40,13 @@ import chess
 
 # conftest.py handles sys.path
 
-from core.data_types import MetricSignal
-from extractors.king_safety   import extract_king_safety
-from extractors.space_control import extract_space_control
-from extractors.piece_mobility import extract_piece_mobility
-from extractors.pawn_structure import extract_pawn_structure
-from extractors.material_balance import extract_material_balance
-from extractors.tactic_scanner import extract_tactics
+from chess_coach.core.data_types import MetricSignal
+from chess_coach.extractors.king_safety   import extract_king_safety
+from chess_coach.extractors.space_control import extract_space_control
+from chess_coach.extractors.piece_mobility import extract_piece_mobility
+from chess_coach.extractors.pawn_structure import extract_pawn_structure
+from chess_coach.extractors.material_balance import extract_material_balance
+from chess_coach.extractors.tactic_scanner import extract_tactics
 
 
 # ─────────────────────────────────────────────────────────────────────────────

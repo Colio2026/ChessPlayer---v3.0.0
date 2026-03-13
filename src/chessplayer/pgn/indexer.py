@@ -7,7 +7,7 @@ from typing import Callable, Iterable, Optional
 
 import chess.pgn
 
-from utils.paths import resolve_path
+from chessplayer.utils.paths import resolve_path
 
 ProgressCb = Callable[[int, str], None]
 CancelCb = Callable[[], bool]

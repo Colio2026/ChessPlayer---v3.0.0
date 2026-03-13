@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from engine.uci_engine import BestMove, UciEngine, _parse_multipv_line
-from utils.paths import resolve_path
+from chessplayer.engine.uci_engine import BestMove, UciEngine, _parse_multipv_line
+from chessplayer.utils.paths import resolve_path
 
 _PV_UCI_ROLE = Qt.UserRole
 

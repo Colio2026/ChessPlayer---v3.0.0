@@ -29,8 +29,8 @@ Calibrated so starting position ≈ 0.03, Tal attack position > 0.80.
 """
 from __future__ import annotations
 import chess
-from core.data_types import MetricSignal
-from core.board_utils import get_king_zone, square_to_str
+from chess_coach.core.data_types import MetricSignal
+from chess_coach.core.board_utils import get_king_zone, square_to_str
 
 _SHIELD_MISSING_CLOSE = 0.20
 _SHIELD_MISSING_FAR   = 0.12

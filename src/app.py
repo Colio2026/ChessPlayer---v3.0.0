@@ -1,7 +1,7 @@
 import sys
 from PySide6.QtWidgets import QApplication
 
-from ui.main_window import MainWindow
+from chessplayer.ui.main_window import MainWindow
 
 
 def run_app(config: dict) -> None:

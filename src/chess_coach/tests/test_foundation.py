@@ -23,11 +23,11 @@ import chess.pgn
 
 # sys.path is managed by conftest.py at the package root.
 
-from core.data_types import (
+from chess_coach.core.data_types import (
     MetricSignal, CoachOutput, GMPrecedent,
     SIDES, PHASES, SEVERITIES, STRATEGIES
 )
-from core.board_utils import (
+from chess_coach.core.board_utils import (
     get_phase, get_fen, get_position_key, get_pawn_hash,
     get_move_history, square_to_str, str_to_square,
     get_king_zone, get_king_zone_str, get_pieces_in_zone,

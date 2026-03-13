@@ -4,11 +4,11 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
-from pgn.models import GameMeta
-from pgn.query import Query, default_multisort
+from chessplayer.pgn.models import GameMeta
+from chessplayer.pgn.query import Query, default_multisort
 
 if TYPE_CHECKING:
-    from pgn.store import PgnStore
+    from chessplayer.pgn.store import PgnStore
 
 # Columns shown in the game browser table
 COLUMNS: list[tuple[str, str]] = [

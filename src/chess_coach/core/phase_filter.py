@@ -32,8 +32,8 @@ Phase tag is injected into each MetricSignal.phase field.
 """
 from __future__ import annotations
 import chess
-from core.data_types import MetricSignal
-from core.board_utils import get_phase
+from chess_coach.core.data_types import MetricSignal
+from chess_coach.core.board_utils import get_phase
 
 # Phase multipliers: metric_prefix -> (opening, middlegame, endgame)
 _WEIGHTS: dict[str, tuple[float, float, float]] = {

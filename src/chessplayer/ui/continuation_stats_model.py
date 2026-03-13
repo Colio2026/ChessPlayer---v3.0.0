@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
-from pgn.continuations import ContinuationStat
+from chessplayer.pgn.continuations import ContinuationStat
 
 
 COLUMNS = [

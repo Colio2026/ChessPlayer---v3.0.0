@@ -9,7 +9,7 @@ from pathlib import Path
 import chess
 import chess.pgn
 
-from core.game_session import GameSession, MoveResult
+from chessplayer.core.game_session import GameSession, MoveResult
 
 
 @dataclass

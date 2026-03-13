@@ -29,7 +29,7 @@ from pathlib import Path
 import chess
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import (
     QFrame,
@@ -121,6 +121,90 @@ class _CoachBridge(QObject):
         pass
 
 
+# ── Square overlay ────────────────────────────────────────────────────────────
+
+class _SquareOverlay(QWidget):
+    """
+    Transparent widget that paints coloured trim around specified squares.
+    Sits on top of the QQuickWidget board view inside _BoardContainer.
+    All mouse events pass through.
+    """
+
+    _TRIM_WIDTH = 3   # px — border inset on each side
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_NoSystemBackground)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self._squares: list[str]  = []
+        self._colour:  str        = "#FF5722"
+        self._flip:    bool       = False
+
+    def set_squares(self, squares: list[str], colour: str = "#FF5722") -> None:
+        self._squares = list(squares)
+        self._colour  = colour
+        self.update()
+
+    def set_flip(self, flip: bool) -> None:
+        self._flip = flip
+        self.update()
+
+    def clear(self) -> None:
+        self._squares = []
+        self.update()
+
+    def paintEvent(self, _event) -> None:
+        if not self._squares:
+            return
+        w_sq = self.width()  / 8
+        h_sq = self.height() / 8
+        painter = QPainter(self)
+        pen = QPen(QColor(self._colour), self._TRIM_WIDTH)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        t = self._TRIM_WIDTH
+        for sq_name in self._squares:
+            try:
+                sq   = chess.parse_square(sq_name)
+                file = chess.square_file(sq)
+                rank = chess.square_rank(sq)
+                if self._flip:
+                    file, rank = 7 - file, 7 - rank
+                x = int(file * w_sq)
+                y = int((7 - rank) * h_sq)
+                painter.drawRect(x + t, y + t,
+                                 int(w_sq) - 2 * t - 1,
+                                 int(h_sq) - 2 * t - 1)
+            except Exception:
+                pass
+        painter.end()
+
+
+class _BoardContainer(QWidget):
+    """
+    Stack container: QQuickWidget board on the bottom, _SquareOverlay on top.
+    Both children are always resized to fill the container.
+    """
+
+    def __init__(self, board_view: QQuickWidget, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._board_view = board_view
+        self._board_view.setParent(self)
+        self._overlay = _SquareOverlay(self)
+        self._overlay.raise_()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        rect = self.rect()
+        self._board_view.setGeometry(rect)
+        self._overlay.setGeometry(rect)
+
+    @property
+    def overlay(self) -> _SquareOverlay:
+        return self._overlay
+
+
 # ── Coach Board Widget ────────────────────────────────────────────────────────
 
 class CoachBoardWidget(QFrame):
@@ -192,7 +276,7 @@ class CoachBoardWidget(QFrame):
         scroll.setWidget(self._move_strip_widget)
         root.addWidget(scroll)
 
-        # QQuickWidget — board
+        # QQuickWidget — board, wrapped in _BoardContainer for overlay support
         self._board_view = QQuickWidget()
         self._board_view.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._board_view.rootContext().setContextProperty("piecesModel", self._model)
@@ -200,7 +284,9 @@ class CoachBoardWidget(QFrame):
         self._board_view.setSource(QUrl.fromLocalFile(str(qml_path)))
         self._board_view.setMinimumHeight(200)
         self._board_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        root.addWidget(self._board_view, 1)
+        self._board_container = _BoardContainer(self._board_view)
+        self._board_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        root.addWidget(self._board_container, 1)
 
         # Back / Forward
         nav_row = QHBoxLayout()
@@ -217,6 +303,22 @@ class CoachBoardWidget(QFrame):
         # visibility controlled by parent splitter sizes
 
     # ── public API ────────────────────────────────────────────────────────────
+
+    def set_weakness_squares(
+        self,
+        squares: list[str],
+        colour: str = "#FF5722",
+    ) -> None:
+        """
+        Overlay coloured square trim on the coach board.
+        Call with an empty list to clear.
+        colour : hex colour string, e.g. '#FF5722' (red-orange)
+        """
+        self._board_container.overlay.set_flip(self._model._flip)
+        if squares:
+            self._board_container.overlay.set_squares(squares, colour)
+        else:
+            self._board_container.overlay.clear()
 
     def load_line(
         self,
@@ -263,6 +365,7 @@ class CoachBoardWidget(QFrame):
         self._boards   = []
         self._san_list = []
         self._idx      = 0
+        self._board_container.overlay.clear()
 
     # ── nav ───────────────────────────────────────────────────────────────────
 

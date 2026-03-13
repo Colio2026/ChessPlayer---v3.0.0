@@ -21,7 +21,7 @@ Snapshot fallback: if no history, use snapshot score at reduced
 weight (multiply by 0.80) and add a 'no_history' note.
 """
 from __future__ import annotations
-from core.data_types import MetricSignal
+from chess_coach.core.data_types import MetricSignal
 
 _W = dict(space_qs=0.15, space_ks=0.15, mob_ratio=0.20,
           outpost=0.15, fixedness=0.10, bad_pieces=0.15,

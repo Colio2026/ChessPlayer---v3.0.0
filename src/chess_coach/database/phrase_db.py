@@ -34,7 +34,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from core.data_types import MetricSignal
+from chess_coach.core.data_types import MetricSignal
 
 _FRAGMENT_ORDER = ('diagnosis', 'evidence', 'plan', 'urgency')
 

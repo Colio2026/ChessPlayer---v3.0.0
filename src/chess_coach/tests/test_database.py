@@ -18,11 +18,11 @@ from pathlib import Path
 import chess
 import pytest
 
-from core.data_types        import MetricSignal, GMPrecedent
-from core.board_utils       import get_pawn_hash
-from database.pattern_matcher import PatternMatcher
-from database.phrase_db       import PhraseDB, _fill
-from database.pgn_indexer     import ensure_indexed, _CREATE_TABLE
+from chess_coach.core.data_types        import MetricSignal, GMPrecedent
+from chess_coach.core.board_utils       import get_pawn_hash
+from chess_coach.database.pattern_matcher import PatternMatcher
+from chess_coach.database.phrase_db       import PhraseDB, _fill
+from chess_coach.database.pgn_indexer     import ensure_indexed, _CREATE_TABLE
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -11,8 +11,8 @@ Relative scoring:
 """
 from __future__ import annotations
 import chess
-from core.data_types import MetricSignal
-from core.board_utils import square_to_str, count_legal_moves
+from chess_coach.core.data_types import MetricSignal
+from chess_coach.core.board_utils import square_to_str, count_legal_moves
 
 
 def extract_piece_mobility(

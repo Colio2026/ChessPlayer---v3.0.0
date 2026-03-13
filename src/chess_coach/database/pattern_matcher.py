@@ -29,8 +29,8 @@ from pathlib import Path
 
 import chess
 
-from core.data_types   import GMPrecedent
-from core.board_utils  import get_pawn_hash
+from chess_coach.core.data_types   import GMPrecedent
+from chess_coach.core.board_utils  import get_pawn_hash
 
 _DEFAULT_MIN_RATING = 2400
 _MAX_RESULTS        = 3

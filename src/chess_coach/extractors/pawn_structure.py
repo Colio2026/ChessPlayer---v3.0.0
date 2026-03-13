@@ -13,8 +13,8 @@ Relative scoring:
 """
 from __future__ import annotations
 import chess
-from core.data_types import MetricSignal
-from core.board_utils import square_to_str, get_pawn_hash
+from chess_coach.core.data_types import MetricSignal
+from chess_coach.core.board_utils import square_to_str, get_pawn_hash
 
 
 def extract_pawn_structure(

@@ -13,10 +13,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pgn.continuations import query_continuations
-from pgn.move_tree import MoveTree, build_tree
-from pgn.store import PgnStore
-from ui.continuation_stats_model import ContinuationStatsModel
+from chessplayer.pgn.continuations import query_continuations
+from chessplayer.pgn.move_tree import MoveTree, build_tree
+from chessplayer.pgn.store import PgnStore
+from chessplayer.ui.continuation_stats_model import ContinuationStatsModel
 
 
 class _TreeWorker(QObject):

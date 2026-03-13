@@ -20,7 +20,7 @@ Relative scoring: always evaluated from player_side perspective.
   — reads PLAYER convergence, tempo, sac_delta
 """
 from __future__ import annotations
-from core.data_types import MetricSignal
+from chess_coach.core.data_types import MetricSignal
 
 _W = dict(king_exp=0.40, convergence=0.20, sac_delta=0.15,
           tempo=0.15, def_commit=0.05, pawn_break=0.05)

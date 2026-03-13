@@ -38,9 +38,9 @@ Sourced from the tactics table, one per tactic type, max 3 total.
 """
 from __future__ import annotations
 
-from core.data_types        import CoachOutput, MetricSignal, GMPrecedent
-from core.conflict_resolver import ResolverResult
-from database.phrase_db     import PhraseDB
+from chess_coach.core.data_types        import CoachOutput, MetricSignal, GMPrecedent
+from chess_coach.core.conflict_resolver import ResolverResult
+from chess_coach.database.phrase_db     import PhraseDB
 
 
 _STRATEGY_NAMES: dict[str, str] = {

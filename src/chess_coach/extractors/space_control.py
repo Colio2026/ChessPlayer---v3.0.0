@@ -12,8 +12,8 @@ Trend: linear regression slope over last 5 boards. Fires when |slope| > 0.05/mov
 """
 from __future__ import annotations
 import chess
-from core.data_types import MetricSignal
-from core.board_utils import square_to_str
+from chess_coach.core.data_types import MetricSignal
+from chess_coach.core.board_utils import square_to_str
 
 _WHITE_OPP_RANKS = (4, 5, 6, 7)
 _BLACK_OPP_RANKS = (0, 1, 2, 3)
