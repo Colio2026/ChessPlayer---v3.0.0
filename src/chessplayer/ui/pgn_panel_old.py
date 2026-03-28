@@ -50,8 +50,8 @@ class PgnPanel(QWidget):
     delete_variation_requested  = Signal(object)  # GameNode: remove whole branch
     delete_from_node_requested  = Signal(object)  # GameNode: truncate from here
     comment_line_clicked        = Signal(int, list)  # (base_ply, uci_list)
-    header_changed              = Signal()
     coach_help_requested        = Signal()           # right-click → request coach note
+    header_changed              = Signal()
 
     # ── CSS ───────────────────────────────────────────────────────────────────
     _CSS = """
@@ -606,6 +606,7 @@ class PgnPanel(QWidget):
         coach_action = menu.addAction("♟  Request Coach Note")
         coach_action.triggered.connect(self.coach_help_requested.emit)
         menu.exec(self._browser.mapToGlobal(pos))
+
 
     def _do_promote_variation(self, node) -> None:
         self.promote_variation_requested.emit(node)

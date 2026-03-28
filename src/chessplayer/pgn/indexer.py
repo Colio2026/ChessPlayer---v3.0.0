@@ -109,10 +109,9 @@ def _index_single_pgn_file(
         while True:
             if cancel_cb and cancel_cb():
                 break
-            game = chess.pgn.read_game(text)
-            if game is None:
+            headers = chess.pgn.read_headers(text)
+            if headers is None:
                 break
-            headers = game.headers
             conn.execute(
                 """
                 INSERT INTO games(

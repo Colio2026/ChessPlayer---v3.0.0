@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QTableView,
     QVBoxLayout,
@@ -20,9 +21,10 @@ from chessplayer.ui.continuation_stats_model import ContinuationStatsModel
 
 
 class _TreeWorker(QObject):
-    progress = Signal(int, str)
-    finished = Signal()
-    failed   = Signal(str)
+    progress    = Signal(int, str)
+    total_known = Signal(int)   # emitted once with game count before scanning starts
+    finished    = Signal()
+    failed      = Signal(str)
 
     def __init__(
         self,
@@ -30,15 +32,18 @@ class _TreeWorker(QObject):
         store: PgnStore,
         source_id: int,
         source_path: str,
+        incremental: bool = False,
     ) -> None:
         super().__init__()
         self._config      = config
         self._store       = store
         self._source_id   = source_id
         self._source_path = source_path
+        self._incremental = incremental
 
     def run(self) -> None:
         try:
+            self.total_known.emit(0)   # start indeterminate; build_tree reports actual total
             build_tree(
                 cfg=self._config,
                 source_path=self._source_path,
@@ -46,6 +51,8 @@ class _TreeWorker(QObject):
                 source_id=self._source_id,
                 progress_cb=lambda count, msg: self.progress.emit(count, msg),
                 cancel_cb=None,
+                total_cb=lambda t: self.total_known.emit(t),
+                incremental=self._incremental,
             )
             self.finished.emit()
         except Exception as exc:
@@ -58,13 +65,16 @@ class VariationsPanel(QWidget):
 
     Workflow
     --------
-    1. User clicks "Build Tree" once per library.
-       A background thread replays every game and builds a position→moves
-       hash table, saved to disk as a gzip-pickle (~10-40 MB).
+    1. When a PGN library is loaded, a tree build/update is triggered
+       automatically in the background.
     2. On next launch the tree loads from disk in < 1 second.
     3. Every position change calls refresh(prefix_uci).
        The tree query is a single dict lookup — < 1 ms regardless of
        library size.
+    4. "Rebuild Tree" — full rescan (minutes for large databases).
+       A progress bar shows exact percentage during the scan.
+    5. "Update Tree"  — incremental: only new games added since the last
+       build (near-instant for small additions).
 
     A 100 ms debounce on refresh() means rapid Back/Forward clicks never
     trigger more than one lookup per navigation stop.
@@ -98,25 +108,53 @@ class VariationsPanel(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        # Top row: build button + status label
+        # Top row: buttons + status label
         top_row   = QWidget()
         top_row_l = QHBoxLayout(top_row)
         top_row_l.setContentsMargins(0, 0, 0, 0)
         top_row_l.setSpacing(6)
 
-        self._build_btn = QPushButton("Build Tree")
-        self._build_btn.setToolTip(
-            "Scan the active library once and build a position lookup tree.\n"
-            "Takes a few minutes for large databases — instant every time after."
+        self._rebuild_btn = QPushButton("Rebuild Tree")
+        self._rebuild_btn.setToolTip(
+            "Discard and rebuild the move tree from scratch.\n"
+            "Use this if the library was heavily edited."
         )
-        self._build_btn.clicked.connect(self._on_build_clicked)
-        top_row_l.addWidget(self._build_btn)
+        self._rebuild_btn.clicked.connect(self._on_rebuild_clicked)
+        top_row_l.addWidget(self._rebuild_btn)
+
+        self._update_btn = QPushButton("Update Tree")
+        self._update_btn.setToolTip(
+            "Add games imported since the last build to the existing tree.\n"
+            "Much faster than a full rebuild."
+        )
+        self._update_btn.clicked.connect(self._on_update_clicked)
+        top_row_l.addWidget(self._update_btn)
 
         self._tree_label = QLabel("No tree built")
         self._tree_label.setStyleSheet("color:gray; font-style:italic;")
         top_row_l.addWidget(self._tree_label)
         top_row_l.addStretch(1)
         layout.addWidget(top_row)
+
+        # Progress bar — hidden when idle, shown during build
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setMinimum(0)
+        self._progress_bar.setMaximum(0)   # indeterminate until total_known
+        self._progress_bar.setFixedHeight(14)
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.setStyleSheet(
+            "QProgressBar {"
+            "  background:#1A1A1A; border:1px solid #37474F;"
+            "  border-radius:3px; color:#CFD8DC; font-size:9px;"
+            "}"
+            "QProgressBar::chunk {"
+            "  background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "    stop:0 #1565C0, stop:1 #42A5F5);"
+            "  border-radius:2px;"
+            "}"
+        )
+        self._progress_bar.hide()
+        layout.addWidget(self._progress_bar)
 
         # Status line (games matched)
         self._match_label = QLabel("")
@@ -168,6 +206,20 @@ class VariationsPanel(QWidget):
         self._pending_prefix = list(prefix_uci)
         self._debounce.start()
 
+    def start_tree_build(self, incremental: bool = True) -> None:
+        """
+        Trigger a tree build/update programmatically (called by MainWindow
+        after indexing finishes).
+
+        incremental=True  → only process new games (fast, default)
+        incremental=False → full rebuild from scratch
+        """
+        if not self._store or self._source_id is None or not self._source_path:
+            return
+        if self._thread is not None:
+            return   # already running; the in-progress build will cover it
+        self._start_worker(incremental=incremental)
+
     # ── Tree management ───────────────────────────────────────────────────────
 
     def _try_load_existing_tree(self) -> None:
@@ -182,9 +234,9 @@ class VariationsPanel(QWidget):
             )
         else:
             self._move_tree = None
-            self._set_tree_label("No tree — click Build Tree to scan library", "gray")
+            self._set_tree_label("No tree — will build automatically on load", "gray")
 
-    def _on_build_clicked(self) -> None:
+    def _on_rebuild_clicked(self) -> None:
         if not self._store or self._source_id is None or not self._source_path:
             QMessageBox.information(
                 self, "No source",
@@ -196,17 +248,40 @@ class VariationsPanel(QWidget):
             return
 
         reply = QMessageBox.question(
-            self, "Build move tree",
-            "This will scan every game in the active library.\n"
-            "It may take a few minutes for large databases.\n\nContinue?",
+            self, "Rebuild move tree",
+            "This will discard the existing tree and rescan every game.\n"
+            "It may take several minutes for large databases.\n\nContinue?",
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
             return
 
-        self._build_btn.setEnabled(False)
-        self._set_tree_label("Building…", "orange")
-        self.status_message.emit("Building move tree…")
+        self._start_worker(incremental=False)
+
+    def _on_update_clicked(self) -> None:
+        if not self._store or self._source_id is None or not self._source_path:
+            QMessageBox.information(
+                self, "No source",
+                "Load a PGN library before updating the move tree."
+            )
+            return
+        if self._thread is not None:
+            QMessageBox.information(self, "Busy", "A tree build is already running.")
+            return
+        self._start_worker(incremental=True)
+
+    def _start_worker(self, incremental: bool) -> None:
+        verb = "Updating" if incremental else "Building"
+        self._rebuild_btn.setEnabled(False)
+        self._update_btn.setEnabled(False)
+        self._set_tree_label(f"{verb}…", "orange")
+        self.status_message.emit(f"{verb} move tree…")
+
+        # Progress bar: indeterminate until total_known fires
+        self._progress_bar.setMaximum(0)
+        self._progress_bar.setValue(0)
+        self._progress_bar.setFormat(f"{verb} tree…")
+        self._progress_bar.show()
 
         self._thread = QThread(self)
         self._worker = _TreeWorker(
@@ -214,9 +289,11 @@ class VariationsPanel(QWidget):
             store=self._store,
             source_id=self._source_id,
             source_path=self._source_path,
+            incremental=incremental,
         )
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
+        self._worker.total_known.connect(self._on_total_known)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.failed.connect(self._on_failed)
@@ -225,18 +302,31 @@ class VariationsPanel(QWidget):
         self._thread.finished.connect(self._cleanup)
         self._thread.start()
 
-    def _on_progress(self, _count: int, message: str) -> None:
+    def _on_total_known(self, total: int) -> None:
+        """Switch progress bar from indeterminate to percentage mode."""
+        if total > 0:
+            self._progress_bar.setMaximum(total)
+            self._progress_bar.setFormat("%v / %m games  (%p%)")
+        # total == 0 → keep indeterminate (incremental fast path)
+
+    def _on_progress(self, count: int, message: str) -> None:
         self.status_message.emit(message)
         self._set_tree_label(message, "orange")
+        if self._progress_bar.maximum() > 0:
+            self._progress_bar.setValue(count)
         QApplication.processEvents()
 
     def _on_finished(self) -> None:
-        self._build_btn.setEnabled(True)
+        self._progress_bar.hide()
+        self._rebuild_btn.setEnabled(True)
+        self._update_btn.setEnabled(True)
         self._try_load_existing_tree()
-        self.status_message.emit("Move tree built successfully")
+        self.status_message.emit("Move tree ready")
 
     def _on_failed(self, message: str) -> None:
-        self._build_btn.setEnabled(True)
+        self._progress_bar.hide()
+        self._rebuild_btn.setEnabled(True)
+        self._update_btn.setEnabled(True)
         self._set_tree_label("Build failed", "red")
         QMessageBox.critical(self, "Tree build failed", message)
 

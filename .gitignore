@@ -2,3 +2,9 @@
 # Ignore bundled engine binaries
 *.exe
 /assets/engines/**/stockfish*.exe
+/data/Caissabase.pgn
+/.claude/settings.local.json
+/data/lichess_elite_2020-10.pgn
+/data/index.sqlite-wal
+/data/index.sqlite-shm
+/data/index.sqlite

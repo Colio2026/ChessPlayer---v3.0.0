@@ -263,9 +263,9 @@ class CoachPanel(QWidget):
         if self._ana_worker:
             self._ana_worker.deleteLater()
             self._ana_worker = None
-        self._ana_thread = None
         if self._ana_thread:
             self._ana_thread.deleteLater()
+            self._ana_thread = None
 
     # ── Render ────────────────────────────────────────────────────────────────
 
@@ -426,8 +426,9 @@ class CoachPanel(QWidget):
             "QFrame{background:#1A1F1A;border:1px solid #2E4A2E;border-radius:4px;}"
         )
         tl = QVBoxLayout(self._tactics_frame); tl.setContentsMargins(8, 6, 8, 6); tl.setSpacing(4)
-        QLabel("\u26a1 Tactics", self._tactics_frame).setStyleSheet("color:#A5D6A7;font-weight:bold;font-size:11px;")
-        tl.addWidget(QLabel("\u26a1 Tactics"))
+        _tactics_hdr = QLabel("\u26a1 Tactics")
+        _tactics_hdr.setStyleSheet("color:#A5D6A7;font-weight:bold;font-size:11px;")
+        tl.addWidget(_tactics_hdr)
         self._tactics_lbl = QLabel(""); self._tactics_lbl.setWordWrap(True); self._tactics_lbl.setTextFormat(Qt.RichText)
         self._tactics_lbl.setStyleSheet("color:#C8E6C9;font-size:11px;")
         tl.addWidget(self._tactics_lbl)

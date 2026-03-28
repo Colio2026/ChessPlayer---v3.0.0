@@ -160,6 +160,88 @@ class PgnStore:
             )
         return out
 
+    def list_games_for_tree(
+        self, source_id: int, after_game_id: int = 0
+    ) -> list[tuple[int, str, int, str]]:
+        """
+        Return [(game_id, pgn_path, offset_bytes, result), ...] for tree building.
+
+        Results are sorted by (pgn_path, offset_bytes) so callers can scan each
+        file sequentially with at most one seek per chunk.
+
+        If after_game_id > 0, only games with game_id > after_game_id are
+        returned (incremental update).
+        """
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """SELECT game_id, pgn_path, offset_bytes, result
+                   FROM games
+                   WHERE source_id = ? AND game_id > ?
+                   ORDER BY pgn_path ASC, offset_bytes ASC""",
+                (int(source_id), int(after_game_id)),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [
+            (int(r[0]), str(r[1]), int(r[2]), str(r[3]) if r[3] else "")
+            for r in rows
+        ]
+
+    def list_game_offsets_for_path(self, source_id: int, pgn_path: str) -> list[int]:
+        """
+        Return sorted offset_bytes for every game in one PGN file within a source.
+        Used by build_tree() to split work across parallel worker processes.
+        Returns only integers (not full row tuples) to keep memory small.
+        """
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT offset_bytes FROM games "
+                "WHERE source_id=? AND pgn_path=? "
+                "ORDER BY offset_bytes ASC",
+                (int(source_id), pgn_path),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [int(r[0]) for r in rows]
+
+    def list_pgn_paths_for_source(self, source_id: int) -> list[str]:
+        """Return distinct PGN file paths for a source, ordered alphabetically."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT DISTINCT pgn_path FROM games WHERE source_id=? ORDER BY pgn_path ASC",
+                (int(source_id),),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [str(r[0]) for r in rows]
+
+    def count_games_for_source(self, source_id: int) -> int:
+        """Return total number of games for a source."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM games WHERE source_id=?",
+                (int(source_id),),
+            ).fetchone()
+        finally:
+            conn.close()
+        return int(row[0]) if row else 0
+
+    def get_last_game_id_for_source(self, source_id: int) -> int:
+        """Return the highest game_id for a source, or 0 if no games exist."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT MAX(game_id) FROM games WHERE source_id=?",
+                (int(source_id),),
+            ).fetchone()
+        finally:
+            conn.close()
+        return int(row[0]) if (row and row[0] is not None) else 0
+
     def list_game_ids_for_source(self, source_id: int) -> list[int]:
         conn = self._connect()
         try:
