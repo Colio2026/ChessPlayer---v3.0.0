@@ -45,6 +45,7 @@ Incremental update:
   Single-threaded; near-instant for small additions.
 """
 
+import gc
 import gzip
 import hashlib
 import io
@@ -438,6 +439,7 @@ def build_tree(
                     processed += partial_ok
                     if progress_cb:
                         progress_cb(processed, f"Updating tree: {processed:,} / {total:,} games …")
+            del futs, all_chunks   # free cached partial_data in completed futures
 
         last_game_id = max((r[0] for r in records), default=after_gid)
 
@@ -480,6 +482,10 @@ def build_tree(
                         games_ok,
                         f"Building tree: {games_ok:,} / {total:,} games …"
                     )
+        # Each Future caches its result (partial_data dict) until the Future
+        # object is freed.  800 futures × ~2.4 MB each ≈ 1.9 GB still live
+        # at save time unless we explicitly release the list here.
+        del futs, all_chunks
 
         last_game_id = pgn_store.get_last_game_id_for_source(source_id)
 
@@ -492,5 +498,6 @@ def build_tree(
     if progress_cb:
         progress_cb(total, f"Saving tree ({games_ok:,} games) …")
 
+    gc.collect()   # free stale refs from build process before serialising
     tree.save(cfg)
     return tree

@@ -39,10 +39,11 @@ from __future__ import annotations
 
 import argparse
 import io
+import random
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import chess
 import chess.pgn
@@ -110,6 +111,8 @@ def ensure_indexed(
     min_rating: int = 0,
     verbose: bool = False,
     pgn_source: str = '',
+    max_games: int = 8000,
+    progress_cb: Optional[Callable[[str], None]] = None,
 ) -> bool:
     """
     Build coach_positions if it doesn't exist, is empty, or the
@@ -152,6 +155,8 @@ def ensure_indexed(
         min_rating     = min_rating,
         verbose        = verbose,
         pgn_source     = pgn_source,
+        max_games      = max_games,
+        progress_cb    = progress_cb,
     )
     return True
 
@@ -180,6 +185,8 @@ def build_from_existing_index(
     min_rating: int     = 0,
     verbose: bool       = True,
     pgn_source: str     = '',
+    max_games: int      = 8000,
+    progress_cb: Optional[Callable[[str], None]] = None,
 ) -> dict:
     """
     Populate coach_positions by reading games already catalogued in index.sqlite.
@@ -209,6 +216,20 @@ def build_from_existing_index(
         FROM games
         ORDER BY game_id ASC
     """).fetchall()
+
+    total_available = len(rows)
+    # Sample to keep init fast for large databases (400K games → ~40s vs hours)
+    if max_games > 0 and len(rows) > max_games:
+        rows = random.sample(rows, max_games)
+        rows.sort(key=lambda r: (r[1], r[2]))   # sort for sequential file access
+    total = len(rows)
+
+    if progress_cb:
+        progress_cb(
+            f"Coach indexing {total:,} games"
+            + (f" (sampled from {total_available:,})" if total < total_available else "")
+            + "…"
+        )
 
     stats = {'games_processed': 0, 'positions_indexed': 0, 'skipped': 0}
     batch: list[tuple] = []
@@ -246,9 +267,14 @@ def build_from_existing_index(
             _flush(conn, batch)
             batch.clear()
 
-        if verbose and stats['games_processed'] % 100 == 0:
-            print(f"  {stats['games_processed']} games, "
-                  f"{stats['positions_indexed']} positions indexed...")
+        n = stats['games_processed']
+        if n % 100 == 0 and n > 0:
+            pct = int(n / total * 100) if total else 0
+            msg = f"Coach indexing: {n:,} / {total:,} games ({pct}%)…"
+            if progress_cb:
+                progress_cb(msg)
+            if verbose:
+                print(f"  {msg}")
 
     if batch:
         _flush(conn, batch)

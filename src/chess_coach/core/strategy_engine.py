@@ -99,6 +99,7 @@ class StrategyEngine:
         movetime_ms:     int  = 2000,
         min_rating:      int  = 0,
         auto_index:      bool = True,
+        progress_cb            = None,
     ) -> None:
         self.stockfish_path  = stockfish_path
         self.db_path         = db_path
@@ -125,6 +126,7 @@ class StrategyEngine:
                     min_rating     = min_rating,
                     verbose        = False,
                     pgn_source     = pgn_source_path,
+                    progress_cb    = progress_cb,
                 )
             except Exception:
                 pass
@@ -134,7 +136,7 @@ class StrategyEngine:
             self._try_start_engine()
 
     @classmethod
-    def from_config(cls, cfg: dict) -> 'StrategyEngine':
+    def from_config(cls, cfg: dict, progress_cb=None) -> 'StrategyEngine':
         """
         Construct from the application config dict.
 
@@ -164,6 +166,7 @@ class StrategyEngine:
             movetime_ms     = coach_cfg.get('movetime_ms', 2000),
             min_rating      = coach_cfg.get('min_rating', 0),
             auto_index      = coach_cfg.get('auto_index', True),
+            progress_cb     = progress_cb,
         )
 
     # ── Public API ────────────────────────────────────────────────────────

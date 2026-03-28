@@ -52,8 +52,9 @@ from PySide6.QtWidgets import (
 # ── Workers ───────────────────────────────────────────────────────────────────
 
 class _InitWorker(QObject):
-    ready  = Signal(object)
-    failed = Signal(str)
+    ready    = Signal(object)
+    failed   = Signal(str)
+    progress = Signal(str)   # emitted during coach_positions indexing
 
     def __init__(self, config: dict) -> None:
         super().__init__()
@@ -62,7 +63,10 @@ class _InitWorker(QObject):
     def run(self) -> None:
         try:
             from chess_coach.core.strategy_engine import StrategyEngine
-            self.ready.emit(StrategyEngine.from_config(self._config))
+            self.ready.emit(StrategyEngine.from_config(
+                self._config,
+                progress_cb=lambda msg: self.progress.emit(msg),
+            ))
         except Exception as exc:
             self.failed.emit(str(exc))
 
@@ -168,11 +172,16 @@ class CoachPanel(QWidget):
         self._init_thread.started.connect(self._init_worker.run)
         self._init_worker.ready.connect(self._on_init_ready)
         self._init_worker.failed.connect(self._on_init_failed)
+        self._init_worker.progress.connect(self._on_init_progress)
         self._init_worker.ready.connect(self._init_thread.quit)
         self._init_worker.failed.connect(self._init_thread.quit)
         self._init_thread.finished.connect(self._init_thread.deleteLater)
         self._init_thread.start()
         
+    @Slot(str)
+    def _on_init_progress(self, msg: str) -> None:
+        self._set_status(msg, busy=True)
+
     @Slot(object)
     def _on_init_ready(self, engine) -> None:
         print("[COACH] Init READY")

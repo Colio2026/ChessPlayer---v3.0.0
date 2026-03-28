@@ -1,10 +1,19 @@
+# Large data files
+data/*.pgn
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
+data/trees/
 
-# Ignore bundled engine binaries
+# Engines
 *.exe
 /assets/engines/**/stockfish*.exe
-/data/Caissabase.pgn
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Claude
 /.claude/settings.local.json
-/data/lichess_elite_2020-10.pgn
-/data/index.sqlite-wal
-/data/index.sqlite-shm
-/data/index.sqlite
