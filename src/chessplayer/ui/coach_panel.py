@@ -146,6 +146,18 @@ class CoachPanel(QWidget):
         self._pending_board   = board.copy()
         self._pending_history = [b.copy() for b in (history or [])]
         self._pending_side    = side
+        if side == "white":
+            self._side_lbl.setText("\u2659 White")
+            self._side_lbl.setStyleSheet(
+                "background:#1B2A2A; color:#80CBC4; font-weight:bold; font-size:11px;"
+                " border:1px solid #2E4A4A; border-radius:4px; padding:2px 10px;"
+            )
+        else:
+            self._side_lbl.setText("\u265f Black")
+            self._side_lbl.setStyleSheet(
+                "background:#2A1B2A; color:#CE93D8; font-weight:bold; font-size:11px;"
+                " border:1px solid #4A2E4A; border-radius:4px; padding:2px 10px;"
+            )
         if self._active and self._ready:
             print("[COACH] Starting debounce...")
             self._debounce.start()
@@ -365,6 +377,13 @@ class CoachPanel(QWidget):
         )
         self._toggle_btn.clicked.connect(lambda: self._set_active(not self._active))
         tb.addWidget(self._toggle_btn)
+        self._side_lbl = QLabel("\u2659 White")
+        self._side_lbl.setFixedHeight(28)
+        self._side_lbl.setStyleSheet(
+            "background:#1B2A2A; color:#80CBC4; font-weight:bold; font-size:11px;"
+            " border:1px solid #2E4A4A; border-radius:4px; padding:2px 10px;"
+        )
+        tb.addWidget(self._side_lbl)
         tb.addStretch(1)
         self._insert_btn = QPushButton("\U0001f4cb  Insert Note")
         self._insert_btn.setFixedHeight(28)

@@ -155,9 +155,11 @@ class CoachBoardWidget(QFrame):
         self._qml_path   = qml_path
 
         # State
-        self._boards:   list[chess.Board] = []   # boards[0] = start, boards[N] = after N moves
-        self._san_list: list[str]         = []
-        self._idx       = 0                       # current board index
+        self._boards:          list[chess.Board] = []   # boards[0] = start, boards[N] = after N moves
+        self._san_list:        list[str]         = []
+        self._idx              = 0                       # current board index
+        self._start_fullmove:  int               = 1
+        self._start_turn:      bool              = chess.WHITE
 
         # ── board model + bridge ──────────────────────────────────────────────
         self._model  = _CoachBoardModel(pieces_dir)
@@ -271,6 +273,8 @@ class CoachBoardWidget(QFrame):
         """
         # Build board states: boards[0]=base, boards[k]=after k moves
         start = chess.Board(base_fen)
+        self._start_fullmove = start.fullmove_number
+        self._start_turn     = start.turn
         self._boards   = [start.copy()]
         self._san_list = list(san_list)
 
@@ -293,9 +297,11 @@ class CoachBoardWidget(QFrame):
         self._refresh_labels()
 
     def clear(self) -> None:
-        self._boards   = []
-        self._san_list = []
-        self._idx      = 0
+        self._boards          = []
+        self._san_list        = []
+        self._idx             = 0
+        self._start_fullmove  = 1
+        self._start_turn      = chess.WHITE
         self._set_indicators([])
 
     # ── nav ───────────────────────────────────────────────────────────────────
@@ -332,7 +338,7 @@ class CoachBoardWidget(QFrame):
             if item.widget():
                 item.widget().deleteLater()
 
-        # "Start" label
+        # "Start" label (shown as the fullmove number context)
         start_lbl = QLabel("Start")
         start_lbl.setStyleSheet(
             "color:#4FC3F7; font-weight:bold;" if self._idx == 0
@@ -340,17 +346,25 @@ class CoachBoardWidget(QFrame):
         )
         self._move_strip_layout.addWidget(start_lbl)
 
+        move_num = self._start_fullmove
+        turn     = self._start_turn      # chess.WHITE = True, chess.BLACK = False
         for i, san in enumerate(self._san_list):
             sep = QLabel("→")
             sep.setStyleSheet("color:#444444;")
             self._move_strip_layout.addWidget(sep)
 
-            lbl = QLabel(san)
+            # e.g. "15.g4" for white, "15…h5" for black (en-dash · not ellipsis)
+            prefix = f"{move_num}." if turn == chess.WHITE else f"{move_num}…"
+            lbl = QLabel(f"{prefix}{san}")
             is_cur = (i + 1 == self._idx)
             lbl.setStyleSheet(
                 "color:#4FC3F7; font-weight:bold; text-decoration:underline;"
                 if is_cur else "color:#AAAAAA;"
             )
             self._move_strip_layout.addWidget(lbl)
+
+            if turn == chess.BLACK:
+                move_num += 1   # fullmove number increments after black plays
+            turn = not turn     # alternate sides
 
         self._move_strip_layout.addStretch(1)
