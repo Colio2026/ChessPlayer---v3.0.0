@@ -45,7 +45,7 @@ import chess
 from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, Qt
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
+    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 
@@ -54,7 +54,7 @@ from PySide6.QtWidgets import (
 class _InitWorker(QObject):
     ready    = Signal(object)
     failed   = Signal(str)
-    progress = Signal(str)   # emitted during coach_positions indexing
+    progress = Signal(int, int, str)   # current, total, message
 
     def __init__(self, config: dict) -> None:
         super().__init__()
@@ -65,7 +65,7 @@ class _InitWorker(QObject):
             from chess_coach.core.strategy_engine import StrategyEngine
             self.ready.emit(StrategyEngine.from_config(
                 self._config,
-                progress_cb=lambda msg: self.progress.emit(msg),
+                progress_cb=lambda n, total, msg: self.progress.emit(n, total, msg),
             ))
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -190,22 +190,28 @@ class CoachPanel(QWidget):
         self._init_thread.finished.connect(self._init_thread.deleteLater)
         self._init_thread.start()
         
-    @Slot(str)
-    def _on_init_progress(self, msg: str) -> None:
+    @Slot(int, int, str)
+    def _on_init_progress(self, n: int, total: int, msg: str) -> None:
         self._set_status(msg, busy=True)
+        if total > 0:
+            self._init_bar.setMaximum(total)
+            self._init_bar.setValue(n)
+            self._init_bar.setVisible(True)
 
     @Slot(object)
     def _on_init_ready(self, engine) -> None:
         print("[COACH] Init READY")
         self._engine = engine
         self._ready  = True
+        self._init_bar.setVisible(False)
         self._toggle_btn.setEnabled(True)
-        self._set_status("Coach ready", busy=False)
+        self._set_status("Coach ready — turn ON to analyse", busy=False)
         if self._active and self._pending_board is not None:
             self._debounce.start()
 
     @Slot(str)
     def _on_init_failed(self, msg: str) -> None:
+        self._init_bar.setVisible(False)
         self._set_status(f"Coach unavailable: {msg}", busy=False)
 
     # ── Toggle ────────────────────────────────────────────────────────────────
@@ -409,6 +415,17 @@ class CoachPanel(QWidget):
         self._status_lbl.hide()
         sr.addWidget(self._status_lbl, 1)
         root.addLayout(sr)
+
+        # Init progress bar (visible only while indexing)
+        self._init_bar = QProgressBar()
+        self._init_bar.setFixedHeight(6)
+        self._init_bar.setTextVisible(False)
+        self._init_bar.setStyleSheet(
+            "QProgressBar{background:#1A1A1A;border:none;border-radius:3px;}"
+            "QProgressBar::chunk{background:#42A5F5;border-radius:3px;}"
+        )
+        self._init_bar.setVisible(False)
+        root.addWidget(self._init_bar)
 
         # Badge row
         br = QHBoxLayout(); br.setSpacing(8)

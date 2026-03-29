@@ -42,6 +42,7 @@ import io
 import random
 import sqlite3
 import sys
+from itertools import groupby
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -112,7 +113,7 @@ def ensure_indexed(
     verbose: bool = False,
     pgn_source: str = '',
     max_games: int = 8000,
-    progress_cb: Optional[Callable[[str], None]] = None,
+    progress_cb: Optional[Callable[[int, int, str], None]] = None,
 ) -> bool:
     """
     Build coach_positions if it doesn't exist, is empty, or the
@@ -186,7 +187,7 @@ def build_from_existing_index(
     verbose: bool       = True,
     pgn_source: str     = '',
     max_games: int      = 8000,
-    progress_cb: Optional[Callable[[str], None]] = None,
+    progress_cb: Optional[Callable[[int, int, str], None]] = None,
 ) -> dict:
     """
     Populate coach_positions by reading games already catalogued in index.sqlite.
@@ -221,60 +222,69 @@ def build_from_existing_index(
     # Sample to keep init fast for large databases (400K games → ~40s vs hours)
     if max_games > 0 and len(rows) > max_games:
         rows = random.sample(rows, max_games)
-        rows.sort(key=lambda r: (r[1], r[2]))   # sort for sequential file access
+    # Sort for sequential file access — open each PGN file only once
+    rows.sort(key=lambda r: (r[1], r[2]))
     total = len(rows)
 
     if progress_cb:
-        progress_cb(
-            f"Coach indexing {total:,} games"
-            + (f" (sampled from {total_available:,})" if total < total_available else "")
-            + "…"
-        )
+        label = (f" (sampled from {total_available:,})" if total < total_available else "")
+        progress_cb(0, total, f"Coach indexing {total:,} games{label}…")
 
     stats = {'games_processed': 0, 'positions_indexed': 0, 'skipped': 0}
     batch: list[tuple] = []
 
-    for row in rows:
-        game_id, pgn_path, offset_bytes, white, black, result = row
-        rating_w = rating_b = 0   # existing indexer doesn't store ELO
-
-        if min_rating > 0 and rating_w < min_rating and rating_b < min_rating:
-            stats['skipped'] += 1
-            continue
-
+    # Group rows by pgn_path — open each file once and seek between games
+    for pgn_path, group_iter in groupby(rows, key=lambda r: r[1]):
+        group = list(group_iter)
         try:
-            game = _load_game_at_offset(pgn_path, offset_bytes)
-        except Exception:
-            stats['skipped'] += 1
+            with open(pgn_path, 'rb') as raw:
+                text = io.TextIOWrapper(raw, encoding='utf-8', errors='replace', newline='')
+                for row in group:
+                    game_id, _, offset_bytes, white, black, result = row
+                    rating_w = rating_b = 0   # existing indexer doesn't store ELO
+
+                    if min_rating > 0 and rating_w < min_rating and rating_b < min_rating:
+                        stats['skipped'] += 1
+                        continue
+
+                    try:
+                        text.seek(offset_bytes)
+                        game = chess.pgn.read_game(text)
+                    except Exception:
+                        stats['skipped'] += 1
+                        continue
+
+                    if game is None:
+                        stats['skipped'] += 1
+                        continue
+
+                    positions = _walk_game(
+                        game, game_id, white or '', black or '',
+                        rating_w, rating_b, result or '',
+                        bridge,
+                    )
+
+                    batch.extend(positions)
+                    stats['games_processed'] += 1
+                    stats['positions_indexed'] += len(positions)
+
+                    if len(batch) >= _BATCH_SIZE * 10:
+                        _flush(conn, batch)
+                        batch.clear()
+
+                    n = stats['games_processed']
+                    if n % 50 == 0:   # fire every 50 games for smooth bar updates
+                        pct = int(n / total * 100) if total else 0
+                        msg = f"Coach indexing: {n:,} / {total:,} games ({pct}%)…"
+                        if progress_cb:
+                            progress_cb(n, total, msg)
+                        if verbose:
+                            print(f"  {msg}")
+
+                text.detach()   # release raw so the with-block closes it cleanly
+        except (FileNotFoundError, OSError):
+            stats['skipped'] += len(group)
             continue
-
-        if game is None:
-            stats['skipped'] += 1
-            continue
-
-        # Override headers from DB values (more reliable than PGN headers)
-        positions = _walk_game(
-            game, game_id, white or '', black or '',
-            rating_w, rating_b, result or '',
-            bridge,
-        )
-
-        batch.extend(positions)
-        stats['games_processed'] += 1
-        stats['positions_indexed'] += len(positions)
-
-        if len(batch) >= _BATCH_SIZE * 10:
-            _flush(conn, batch)
-            batch.clear()
-
-        n = stats['games_processed']
-        if n % 100 == 0 and n > 0:
-            pct = int(n / total * 100) if total else 0
-            msg = f"Coach indexing: {n:,} / {total:,} games ({pct}%)…"
-            if progress_cb:
-                progress_cb(msg)
-            if verbose:
-                print(f"  {msg}")
 
     if batch:
         _flush(conn, batch)
@@ -284,8 +294,12 @@ def build_from_existing_index(
         try: bridge.stop()
         except Exception: pass
 
+    n = stats['games_processed']
+    done_msg = f"Coach ready  ·  {n:,} games indexed"
+    if progress_cb:
+        progress_cb(total, total, done_msg)   # signals 100% to the UI bar
     if verbose:
-        print(f"\nDone. {stats['games_processed']} games processed, "
+        print(f"\nDone. {n} games processed, "
               f"{stats['positions_indexed']} positions indexed, "
               f"{stats['skipped']} skipped.")
     return stats
