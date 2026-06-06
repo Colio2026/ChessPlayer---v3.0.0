@@ -7,28 +7,29 @@ A desktop chess analysis and coaching application for Windows. Browse large PGN 
 ## Table of Contents
 
 1. [Features](#features)
-2. [Requirements](#requirements)
-3. [Installation](#installation)
-4. [Stockfish Setup](#stockfish-setup)
-5. [Running the App](#running-the-app)
-6. [Configuration](#configuration)
-7. [Using the App](#using-the-app)
+2. [Screenshots](#screenshots)
+3. [Requirements](#requirements)
+4. [Installation](#installation)
+5. [Stockfish Setup](#stockfish-setup)
+6. [Running the App](#running-the-app)
+7. [Configuration](#configuration)
+8. [Using the App](#using-the-app)
    - [Game Browser](#game-browser)
    - [Board & PGN Panel](#board--pgn-panel)
    - [Engine Panel](#engine-panel)
    - [Variations Panel](#variations-panel)
    - [Chess Coach](#chess-coach)
-8. [Indexing PGN Files](#indexing-pgn-files)
-9. [Project Architecture](#project-architecture)
-   - [Directory Layout](#directory-layout)
-   - [Module Map](#module-map)
-   - [Dependency Rules](#dependency-rules)
-   - [Signal Flow](#signal-flow)
-10. [Chess Coach Pipeline](#chess-coach-pipeline)
-11. [Database Schema](#database-schema)
-12. [Configuration System](#configuration-system)
-13. [Development Scripts](#development-scripts)
-14. [Contributing](#contributing)
+9. [Indexing PGN Files](#indexing-pgn-files)
+10. [Project Architecture](#project-architecture)
+    - [Directory Layout](#directory-layout)
+    - [Module Map](#module-map)
+    - [Dependency Rules](#dependency-rules)
+    - [Signal Flow](#signal-flow)
+11. [Chess Coach Pipeline](#chess-coach-pipeline)
+12. [Database Schema](#database-schema)
+13. [Configuration System](#configuration-system)
+14. [Development Scripts](#development-scripts)
+15. [Contributing](#contributing)
 
 ---
 
@@ -40,6 +41,18 @@ A desktop chess analysis and coaching application for Windows. Browse large PGN 
 - **Continuation Statistics** — see how often a position arises in your loaded library and what the top continuations are, powered by an O(1) position-tree lookup
 - **Chess Coach** — Nimzowitsch-style strategic coaching: what's wrong with the position, why, what to do, and why now; weak squares highlighted on a secondary board with historical GM precedents
 - **Offline-first** — all analysis, coaching, and database queries run locally
+
+---
+
+## Screenshots
+
+**PGN Editor — game browser, interactive board, and engine analysis**
+
+![PGN Editor](docs/screenshots/ChessPNGEditorAlpha.png)
+
+**Chess Coach — strategic coaching panel with weak-square overlay**
+
+![Chess Coach](docs/screenshots/ChessCoachAlpha.png)
 
 ---
 
