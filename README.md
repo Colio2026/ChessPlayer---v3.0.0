@@ -54,6 +54,10 @@ A desktop chess analysis and coaching application for Windows. Browse large PGN 
 
 ![Chess Coach](docs/screenshots/ChessCoachAlpha.png)
 
+**Stockfish Integration — live evaluation bar and multi-PV analysis**
+
+![Stockfish Integration](docs/screenshots/StockFishIntegration.png)
+
 ---
 
 ## Requirements
@@ -201,14 +205,57 @@ Shows how often the current position appears in your loaded game library and wha
 
 ### Chess Coach
 
-Click **Request Coach Analysis** to get a structured coaching message for the current position:
+The Coach tab analyses the current position and produces a fully structured strategic recommendation in natural language — no bullet points, no engine gibberish. Every word is assembled from a curated phrase database sourced from Aaron Nimzowitsch's *My System* (1925), the foundational text of prophylactic positional chess. Nimzowitsch was the first theorist to describe chess in terms of strategic principles — pawn chains, blockades, overprotection, outposts, the prophylactic move — and his language maps cleanly onto the four strategies the coach detects. The result is coaching that reads like a chess teacher, not a search engine.
 
-1. **Diagnosis** — what structural or tactical problem exists
-2. **Evidence** — the signals that support the diagnosis (weak squares, pawn fixedness, king exposure, etc.)
-3. **Plan** — a concrete recommendation (which piece to reroute, which pawn to advance, etc.)
-4. **Urgency** — why this needs to happen now
+#### What the coach identifies
 
-Weak squares identified by the coach are overlaid as corner indicators on the secondary board.
+The coach classifies every position into one of four strategic categories:
+
+| Strategy | What it means |
+|---|---|
+| **Blitz** | Direct assault on an exposed king — concentrate attackers, open lines, strike before the defence consolidates |
+| **Flank** | Positional squeeze — restrict mobility, occupy outposts, cramp the opponent until the position collapses of its own weight |
+| **Fortress** | Blockade defence — when objectively worse, seal open files, fix the pawn structure, and hold the wall |
+| **Feint** | Wing misdirection — hold tension deliberately, bait a commitment to one wing, then switch to the other |
+
+The strategy is shown as a badge alongside a confidence score and the detected game phase (opening / middlegame / endgame). When two strategies score within 8% of each other the coach surfaces both and notes the tension between plans.
+
+#### What the output looks like
+
+Each coaching response has four ordered parts:
+
+1. **Headline** — one sentence naming the strategy, phase, and confidence
+2. **Plan sentences** — up to four sentences assembled in sequence: *what is wrong → why we know → what to do → why right now*
+3. **Tactics** — separate tactical observations (pins, forks, skewers, discoveries) shown in a distinct section
+4. **Weak squares** — every square identified by the extractors, listed and overlaid as corner indicators on the coach board
+
+**Example — Fortress detected in an opening position:**
+
+```
+FORTRESS                                                       29% · opening
+
+Fortress Defence is suggested — opening (29% confidence).
+
+  Our pieces are restricted — this is not a failure. In the fortress
+  strategy, restriction is the design.
+
+  The move count tells the story — our pieces command more squares.
+  This is the first measure of positional advantage.
+
+  Development demands activity. Every piece must have a purpose;
+  every tempo must be spent wisely.
+
+  The isolated pawn will not defend itself. Attack it now while
+  every piece can participate in the assault.
+
+⚡ Tactics
+  The fork on c5 wins material by force — one of the attacked
+  pieces must be surrendered.
+
+Weak squares: a7 · b5 · b6 · b8 · c6 · c7 · e6 · e7
+```
+
+Clicking **Coach ON / OFF** in the toolbar enables or disables analysis. The side badge (White / Black) controls which player is being coached. Analysis runs automatically on each move.
 
 ---
 
@@ -331,29 +378,99 @@ User drags piece on QML board
 
 ## Chess Coach Pipeline
 
-The coaching backend in `src/chess_coach/` runs a six-stage analysis pipeline on every position:
+The coaching backend (`src/chess_coach/`) is a fully deterministic, auditable analysis pipeline. There are no AI calls at runtime. Every coaching sentence is assembled from a curated SQLite phrase database using slot-filling — the same phrase template can produce different text depending on the specific squares, files, and pieces the extractors identify.
 
-| Stage | Module | What it does |
-|---|---|---|
-| 1. Extract | `extractors/` (6 modules) | Measure board features → list of `MetricSignal` objects |
-| 2. Phase filter | `phase_filter.py` | Classify opening / middlegame / endgame, re-weight signals |
-| 3. Score strategies | `strategies/` (4 detectors) | Score each strategy 0.0–1.0 (blitz, flank, fortress, feint) |
-| 4. Resolve conflict | `conflict_resolver.py` | Cascade rules → pick primary strategy + confidence |
-| 5. Recommend plan | `plan_recommender.py` | Select weak squares, set move flags |
-| 6. Narrate | `narrator.py` | Slot-fill phrase templates → `CoachOutput` |
+### The seven-stage pipeline
 
-**Extractors** and the signals they produce:
+```
+chess.Board
+    │
+    ▼
+1. Extractors ──────── six modules measure board features
+    │                  → list[MetricSignal]
+    ▼
+2. Phase filter ─────── classify opening / middlegame / endgame
+    │                   re-weight signals for the current phase
+    ▼
+3. Strategy scoring ─── four detectors score 0.0 – 1.0 each
+    │                   blitz · flank · fortress · feint
+    ▼
+4. Conflict resolver ── 5-rule priority cascade picks primary + confidence
+    │                   outputs ResolverResult (primary, secondary, tie_band)
+    ▼
+5. Plan recommender ─── selects weakness_squares and move_flags
+    │                   optionally consults Stockfish for move scoring
+    ▼
+6. GM precedents ─────── PatternMatcher queries coach_positions table
+    │                    returns 0–3 matching GM games
+    ▼
+7. Narrator ─────────── slot-fills phrase templates → CoachOutput
+                         headline + plan_sentences + tactic_hints
+```
 
-| Extractor | Signals |
+### Stage 1 — Extractors
+
+Six independent modules each measure one aspect of the position and emit `MetricSignal` objects. A `MetricSignal` carries a normalised score (0.0–1.0), the side it applies to, a machine-readable cause tag, the key squares and pieces involved, a severity tier, and an `action_hint` — a plain-English fallback written by the extractor for use if no phrase DB entry matches.
+
+| Extractor | Signals produced |
 |---|---|
 | `king_safety.py` | `king_exposure`, `sacrifice_delta` |
 | `space_control.py` | `space_delta_queenside`, `space_delta_kingside` |
 | `piece_mobility.py` | `piece_mobility_ratio` |
 | `pawn_structure.py` | `pawn_fixedness`, `weak_pawns`, `passed_pawn` |
-| `material_balance.py` | `material_imbalance` |
+| `material_balance.py` | `material_imbalance`, `eval_deficit` (from Stockfish) |
 | `tactic_scanner.py` | `tactic_pin`, `tactic_fork`, `tactic_skewer`, `tactic_discovery` |
 
-Coaching phrases are stored in `data/chess_coach.db` and are sourced from Nimzowitsch's *My System*. Phrases are keyed by `strategy / metric / severity / fragment_type / cause_tag` and support slot substitution (`{square}`, `{file}`, `{piece}`, `{side}`, `{target}`).
+No extractor ever produces English text — that is the narrator's job. No narrator ever produces scores — that is the extractor's job. This separation is a hard architectural rule.
+
+### Stage 3 — Strategy scoring
+
+Each of the four strategy detectors reads the full `MetricSignal` list and returns a score between 0.0 and 1.0. The detectors also accept optional history (recent board states and prior signal lists) to detect trends like a kingside space expansion building toward a blitz, or a feint that has been prepared over several moves.
+
+### Stage 4 — Conflict resolver
+
+The resolver applies a five-rule priority cascade to the raw strategy scores:
+
+| Rule | Condition | Effect |
+|---|---|---|
+| 1 — Eval check | Stockfish eval deficit > 1.5 pawns | Fortress score gets +0.25 bonus |
+| 2 — King emergency | Opponent king exposure > 0.80 | Blitz overrides Flank regardless of score |
+| 3 — Phase override | Endgame + both Blitz and Flank > 0.65 | Flank promoted over Blitz |
+| 4 — Tie band | Primary and secondary within 0.08 | Both strategies surfaced, `tie_band = True` |
+| 5 — Feint gate | Feint is top scorer but no GM DB confirmation | Feint demoted to secondary |
+
+A strategy must score above **0.65** to be considered "fired". Below that threshold the highest scorer still wins but with lower confidence. The feint gate (Rule 5) is intentional — misdirection is only named as the primary recommendation when the GM pattern database confirms it has been used by strong players from this position.
+
+### Stage 6 — Phrase database
+
+`data/chess_coach.db` contains two tables:
+
+- **`phrases`** — keyed by `strategy / phase / metric / severity / fragment_type / cause_tag`. Each row is one sentence template attributed to a chapter of *My System*.
+- **`tactics`** — keyed by `tactic_type / phase / severity`. One row per tactical pattern type.
+
+The narrator queries the database for each of the four output slots in order — *diagnosis → evidence → plan → urgency* — picking the highest-priority phrase that matches the leading signal. If a specific phrase for `(strategy, metric, severity)` is not found, the query falls back first to `strategy=general`, then relaxes severity to `any`. If the database produces no match at all, the signal's own `action_hint` is used instead.
+
+Phrase templates support five placeholders filled from `MetricSignal` data at query time:
+
+| Placeholder | Filled with |
+|---|---|
+| `{square}` | First key square (e.g. `g7`) |
+| `{file}` | File letter of the first key square (e.g. `g`) |
+| `{piece}` | First key piece descriptor (e.g. `Ng5`) |
+| `{side}` | `White` or `Black` |
+| `{target}` | Second key square, if present |
+
+Example phrase template and result:
+
+```
+Template:  "The pawn cover before the {side} king has been shattered —
+            the {square} square gapes like an open wound."
+
+Filled:    "The pawn cover before the Black king has been shattered —
+            the g7 square gapes like an open wound."
+```
+
+All phrases carry a `source` field citing the chapter of *My System* they were drawn from, a `voice` field (`nimzowitsch` or `neutral`), and a `priority` integer (1–10) used to rank competing matches.
 
 ---
 
