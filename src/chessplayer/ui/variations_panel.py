@@ -82,6 +82,7 @@ class VariationsPanel(QWidget):
 
     status_message = Signal(str)
     move_selected  = Signal(str)   # emits SAN of the clicked continuation
+    tree_built     = Signal()      # emitted when a build/update completes successfully
 
     def __init__(self, config: dict, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -322,6 +323,7 @@ class VariationsPanel(QWidget):
         self._update_btn.setEnabled(True)
         self._try_load_existing_tree()
         self.status_message.emit("Move tree ready")
+        self.tree_built.emit()
 
     def _on_failed(self, message: str) -> None:
         self._progress_bar.hide()

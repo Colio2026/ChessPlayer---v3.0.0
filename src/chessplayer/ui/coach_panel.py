@@ -29,6 +29,7 @@ Signals → MainWindow
 """
 from __future__ import annotations
 
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -162,6 +163,40 @@ class CoachPanel(QWidget):
             print("[COACH] Starting debounce...")
             self._debounce.start()
 
+    def start_reindex(self) -> None:
+        """Called by MainWindow after the move tree build completes.
+        Triggers coach indexing when coach_positions is empty (first run or new PGN).
+        No-op if init is already running or coach_positions already has data.
+        """
+        if self._init_thread is not None:
+            return  # init already in progress
+
+        # Quick DB check — only re-init if coach_positions is actually empty.
+        # This preserves the one-time training model: once indexed, never re-runs.
+        data_dir = Path(self._config.get('paths', {}).get('data_dir', 'data'))
+        db_path  = str(data_dir / 'index.sqlite')
+        try:
+            conn = sqlite3.connect(db_path)
+            try:
+                count = conn.execute("SELECT COUNT(*) FROM coach_positions").fetchone()[0]
+            except Exception:
+                count = 0
+            conn.close()
+            if count > 0:
+                return  # already indexed
+        except Exception:
+            pass  # DB not accessible — fall through and let _start_init() handle it
+
+        # coach_positions is empty — close stale engine (if any) and re-init
+        if self._ready and self._engine is not None:
+            try:
+                self._engine.close()
+            except Exception:
+                pass
+            self._engine = None
+            self._ready  = False
+        self._start_init()
+
     def request_help(self) -> None:
         """Force one analysis + flag result for PGN insertion. Auto-activates."""
         if not self._active:
@@ -188,8 +223,13 @@ class CoachPanel(QWidget):
         self._init_worker.ready.connect(self._init_thread.quit)
         self._init_worker.failed.connect(self._init_thread.quit)
         self._init_thread.finished.connect(self._init_thread.deleteLater)
+        self._init_thread.finished.connect(self._cleanup_init)
         self._init_thread.start()
         
+    def _cleanup_init(self) -> None:
+        self._init_worker = None
+        self._init_thread = None
+
     @Slot(int, int, str)
     def _on_init_progress(self, n: int, total: int, msg: str) -> None:
         self._set_status(msg, busy=True)
@@ -411,6 +451,7 @@ class CoachPanel(QWidget):
         self._spinner = QLabel("\u23f3"); self._spinner.setFixedWidth(22); self._spinner.hide()
         sr.addWidget(self._spinner)
         self._status_lbl = QLabel("")
+        self._status_lbl.setWordWrap(True)
         self._status_lbl.setStyleSheet("color:#78909C; font-size:11px;")
         self._status_lbl.hide()
         sr.addWidget(self._status_lbl, 1)

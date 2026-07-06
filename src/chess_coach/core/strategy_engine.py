@@ -122,11 +122,12 @@ class StrategyEngine:
                 ensure_indexed(
                     db_path        = pgn_index_path,
                     stockfish_path = stockfish_path,
-                    movetime_ms    = min(movetime_ms, 500),
+                    movetime_ms    = 5,
                     min_rating     = min_rating,
                     verbose        = False,
                     pgn_source     = pgn_source_path,
                     progress_cb    = progress_cb,
+                    force          = False,
                 )
             except Exception:
                 pass

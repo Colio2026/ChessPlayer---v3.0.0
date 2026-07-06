@@ -121,6 +121,7 @@ class MainWindow(QMainWindow):
         # Variations
         self._variations_panel.status_message.connect(self._status.setText)
         self._variations_panel.move_selected.connect(self._on_variation_move_selected)
+        self._variations_panel.tree_built.connect(self._coach_panel.start_reindex)
 
         # Coach panel signals
         self._coach_panel.coach_help_requested.connect(self._on_coach_help_requested)
