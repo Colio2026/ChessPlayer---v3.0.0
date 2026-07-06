@@ -39,15 +39,18 @@ from __future__ import annotations
 
 import argparse
 import io
-import random
+import multiprocessing
+import os
 import sqlite3
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from itertools import groupby
 from pathlib import Path
 from typing import Callable, Optional
 
 import chess
 import chess.pgn
+import chess.polyglot
 
 if __name__ == '__main__':
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -108,12 +111,12 @@ CREATE INDEX IF NOT EXISTS idx_cp_strategy  ON coach_positions (strategy_tag, ph
 def ensure_indexed(
     db_path: str,
     stockfish_path: str = '',
-    movetime_ms: int = 500,
+    movetime_ms: int = 5,
     min_rating: int = 0,
     verbose: bool = False,
     pgn_source: str = '',
-    max_games: int = 8000,
     progress_cb: Optional[Callable[[int, int, str], None]] = None,
+    force: bool = False,
 ) -> bool:
     """
     Build coach_positions if it doesn't exist, is empty, or the
@@ -142,7 +145,7 @@ def ensure_indexed(
     source_changed = pgn_source and stored_source and stored_source != pgn_source
     conn.close()
 
-    if count > 0 and not source_changed:
+    if count > 0 and not source_changed and not force:
         return False   # already indexed with the same source
 
     if source_changed and verbose:
@@ -156,7 +159,6 @@ def ensure_indexed(
         min_rating     = min_rating,
         verbose        = verbose,
         pgn_source     = pgn_source,
-        max_games      = max_games,
         progress_cb    = progress_cb,
     )
     return True
@@ -179,133 +181,217 @@ def _set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
     )
 
 
-def build_from_existing_index(
-    db_path: str,
-    stockfish_path: str = '',
-    movetime_ms: int    = 500,
-    min_rating: int     = 0,
-    verbose: bool       = True,
-    pgn_source: str     = '',
-    max_games: int      = 8000,
-    progress_cb: Optional[Callable[[int, int, str], None]] = None,
-) -> dict:
-    """
-    Populate coach_positions by reading games already catalogued in index.sqlite.
-    Uses pgn_path + offset_bytes to seek directly — no re-parsing of the full file.
+# Computed once at import time; workers restore these into sys.path on spawn
+_CHESS_COACH_DIR = str(Path(__file__).resolve().parent.parent)   # src/chess_coach/
+_SRC_DIR         = str(Path(__file__).resolve().parent.parent.parent)  # src/
 
-    Returns summary: {games_processed, positions_indexed, skipped}.
-    """
-    bridge = _start_engine(stockfish_path, movetime_ms, verbose)
 
-    conn = sqlite3.connect(db_path)
+def _process_chunk(args: tuple) -> tuple:
+    """
+    Worker: process a slice of game rows and write coach_positions to a temp SQLite file.
+    Returns (games_processed, positions_indexed, skipped, temp_sqlite_path).
+    Must be a module-level function so ProcessPoolExecutor can pickle it on Windows.
+    """
+    # On Windows the worker starts a fresh interpreter — restore sys.path so
+    # chess_coach imports (and core.stockfish_bridge) resolve correctly.
+    for _p in (_SRC_DIR, _CHESS_COACH_DIR):
+        if _p not in sys.path:
+            sys.path.insert(0, _p)
+
+    chunk_id, rows_chunk, db_path, stockfish_path, movetime_ms, min_rating = args
+
+    tmp_path = db_path + f".chunk_{chunk_id}.tmp"
+    conn = sqlite3.connect(tmp_path)
     conn.executescript(_CREATE_TABLE)
     conn.commit()
 
-    # Clear any partial previous run
-    conn.executescript(_CREATE_META)
-    conn.execute("DELETE FROM coach_positions")
-    conn.commit()
+    bridge = _start_engine(stockfish_path, movetime_ms, False)
+    seen: dict = {}
+    batch: list = []
+    n_games = n_positions = n_skipped = 0
 
-    # Record which PGN source this index was built from
-    if pgn_source:
-        _set_meta(conn, 'pgn_source', pgn_source)
-        conn.commit()
-
-    # Fetch all games — existing schema has white/black/result but not ELO
-    rows = conn.execute("""
-        SELECT game_id, pgn_path, offset_bytes, white, black, result
-        FROM games
-        ORDER BY game_id ASC
-    """).fetchall()
-
-    total_available = len(rows)
-    # Sample to keep init fast for large databases (400K games → ~40s vs hours)
-    if max_games > 0 and len(rows) > max_games:
-        rows = random.sample(rows, max_games)
-    # Sort for sequential file access — open each PGN file only once
-    rows.sort(key=lambda r: (r[1], r[2]))
-    total = len(rows)
-
-    if progress_cb:
-        label = (f" (sampled from {total_available:,})" if total < total_available else "")
-        progress_cb(0, total, f"Coach indexing {total:,} games{label}…")
-
-    stats = {'games_processed': 0, 'positions_indexed': 0, 'skipped': 0}
-    batch: list[tuple] = []
-
-    # Group rows by pgn_path — open each file once and seek between games
-    for pgn_path, group_iter in groupby(rows, key=lambda r: r[1]):
+    for pgn_path, group_iter in groupby(
+        sorted(rows_chunk, key=lambda r: (r[1], r[2])),
+        key=lambda r: r[1],
+    ):
         group = list(group_iter)
         try:
             with open(pgn_path, 'rb') as raw:
                 text = io.TextIOWrapper(raw, encoding='utf-8', errors='replace', newline='')
                 for row in group:
                     game_id, _, offset_bytes, white, black, result = row
-                    rating_w = rating_b = 0   # existing indexer doesn't store ELO
-
-                    if min_rating > 0 and rating_w < min_rating and rating_b < min_rating:
-                        stats['skipped'] += 1
-                        continue
-
                     try:
                         text.seek(offset_bytes)
                         game = chess.pgn.read_game(text)
                     except Exception:
-                        stats['skipped'] += 1
+                        n_skipped += 1
+                        continue
+                    if game is None:
+                        n_skipped += 1
                         continue
 
-                    if game is None:
-                        stats['skipped'] += 1
+                    rating_w = _parse_elo(game.headers.get('WhiteElo', ''))
+                    rating_b = _parse_elo(game.headers.get('BlackElo', ''))
+                    if min_rating > 0 and rating_w < min_rating and rating_b < min_rating:
+                        n_skipped += 1
                         continue
 
                     positions = _walk_game(
                         game, game_id, white or '', black or '',
                         rating_w, rating_b, result or '',
-                        bridge,
+                        bridge, seen,
                     )
-
                     batch.extend(positions)
-                    stats['games_processed'] += 1
-                    stats['positions_indexed'] += len(positions)
+                    n_games     += 1
+                    n_positions += len(positions)
 
                     if len(batch) >= _BATCH_SIZE * 10:
                         _flush(conn, batch)
                         batch.clear()
 
-                    n = stats['games_processed']
-                    if n % 50 == 0:   # fire every 50 games for smooth bar updates
-                        pct = int(n / total * 100) if total else 0
-                        msg = f"Coach indexing: {n:,} / {total:,} games ({pct}%)…"
-                        if progress_cb:
-                            progress_cb(n, total, msg)
-                        if verbose:
-                            print(f"  {msg}")
-
-                text.detach()   # release raw so the with-block closes it cleanly
+                text.detach()
         except (FileNotFoundError, OSError):
-            stats['skipped'] += len(group)
-            continue
+            n_skipped += len(group)
 
     if batch:
         _flush(conn, batch)
-
     conn.close()
+
     if bridge:
         try: bridge.stop()
         except Exception: pass
 
-    n = stats['games_processed']
+    return n_games, n_positions, n_skipped, tmp_path
+
+
+def build_from_existing_index(
+    db_path: str,
+    stockfish_path: str = '',
+    movetime_ms: int    = 5,
+    min_rating: int     = 0,
+    verbose: bool       = True,
+    pgn_source: str     = '',
+    progress_cb: Optional[Callable[[int, int, str], None]] = None,
+) -> dict:
+    """
+    Populate coach_positions by reading games already catalogued in index.sqlite.
+    Spawns one worker process per CPU core; each writes to a temp SQLite file
+    which is merged into the main DB at the end.
+
+    Returns summary: {games_processed, positions_indexed, skipped}.
+    """
+    # ── Setup main DB ─────────────────────────────────────────────────────────
+    conn = sqlite3.connect(db_path)
+    conn.executescript(_CREATE_TABLE)
+    conn.executescript(_CREATE_META)
+    conn.execute("DELETE FROM coach_positions")
+    if pgn_source:
+        _set_meta(conn, 'pgn_source', pgn_source)
+    conn.commit()
+
+    rows = conn.execute("""
+        SELECT game_id, pgn_path, offset_bytes, white, black, result
+        FROM games ORDER BY game_id ASC
+    """).fetchall()
+    conn.close()
+
+    rows.sort(key=lambda r: (r[1], r[2]))
+    total = len(rows)
+
+    if progress_cb:
+        progress_cb(0, total, f"Coach has analysed 0% of games in PGN"
+                              f" — this may take a while (0 / {total:,})")
+
+    # ── Parallel processing ───────────────────────────────────────────────────
+    n_workers  = max(1, min(multiprocessing.cpu_count() - 1, 8))
+    chunk_size = max(50, total // max(1, n_workers * 100))
+    chunks     = [rows[i:i + chunk_size] for i in range(0, total, chunk_size)]
+
+    if verbose:
+        print(f"Spawning {n_workers} workers, {len(chunks)} chunks, {total:,} games")
+
+    args_list = [
+        (i, chunk, db_path, stockfish_path, movetime_ms, min_rating)
+        for i, chunk in enumerate(chunks)
+    ]
+
+    overall    = {'games_processed': 0, 'positions_indexed': 0, 'skipped': 0}
+    temp_paths: list[str] = []
+
+    with ProcessPoolExecutor(max_workers=n_workers) as executor:
+        futures = {executor.submit(_process_chunk, a): a[0] for a in args_list}
+        for future in as_completed(futures):
+            try:
+                n_games, n_pos, n_skip, tmp_path = future.result()
+            except Exception as exc:
+                if verbose:
+                    print(f"Chunk failed: {exc}")
+                continue
+
+            overall['games_processed']  += n_games
+            overall['positions_indexed'] += n_pos
+            overall['skipped']           += n_skip
+            temp_paths.append(tmp_path)
+
+            done = overall['games_processed']
+            pct  = int(done / total * 100) if total else 0
+            msg  = (f"Coach has analysed {pct}% of games in PGN"
+                    f" — this may take a while ({done:,} / {total:,})")
+            if progress_cb:
+                progress_cb(done, total, msg)
+            if verbose:
+                print(f"  {msg}")
+
+    # ── Merge temp files into main DB ─────────────────────────────────────────
+    main_conn = sqlite3.connect(db_path)
+    for tmp_path in temp_paths:
+        try:
+            safe = tmp_path.replace("'", "''")
+            main_conn.execute(f"ATTACH DATABASE '{safe}' AS tmp_db")
+            main_conn.execute("""
+                INSERT INTO coach_positions
+                    (game_id, ply, fen, pawn_hash, strategy_tag, phase,
+                     eval_cp, player_white, player_black, rating_white,
+                     rating_black, result, key_move, annotation)
+                SELECT game_id, ply, fen, pawn_hash, strategy_tag, phase,
+                       eval_cp, player_white, player_black, rating_white,
+                       rating_black, result, key_move, annotation
+                FROM tmp_db.coach_positions
+            """)
+            main_conn.execute("DETACH DATABASE tmp_db")
+            main_conn.commit()
+        except Exception as exc:
+            if verbose:
+                print(f"Merge failed for {tmp_path}: {exc}")
+        finally:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+    n        = overall['games_processed']
     done_msg = f"Coach ready  ·  {n:,} games indexed"
     if progress_cb:
-        progress_cb(total, total, done_msg)   # signals 100% to the UI bar
+        progress_cb(total, total, done_msg)
     if verbose:
         print(f"\nDone. {n} games processed, "
-              f"{stats['positions_indexed']} positions indexed, "
-              f"{stats['skipped']} skipped.")
-    return stats
+              f"{overall['positions_indexed']} positions indexed, "
+              f"{overall['skipped']} skipped.")
+
+    main_conn.close()
+    return overall
 
 
 # ── Internal helpers ────────────────────────────────────────────────────────
+
+def _parse_elo(val: str) -> int:
+    """Parse ELO from a PGN header value. Returns 0 for missing or non-numeric."""
+    try:
+        v = (val or '').strip().strip('?')
+        return int(v) if v.isdigit() else 0
+    except (ValueError, AttributeError):
+        return 0
+
 
 def _load_game_at_offset(pgn_path: str, offset_bytes: int) -> Optional[chess.pgn.Game]:
     """Seek to a byte offset in the PGN and parse exactly one game."""
@@ -322,8 +408,14 @@ def _walk_game(
     rating_w: int, rating_b: int,
     result: str,
     bridge,
+    seen: dict,
 ) -> list[tuple]:
-    """Walk mainline positions ply 10–60 and return DB row tuples."""
+    """Walk mainline positions ply 10–60 and return DB row tuples.
+
+    seen: shared dict mapping Zobrist hash → (strategy_tag, phase, eval_cp).
+    Positions already in seen skip extractors and Stockfish entirely — the
+    first occurrence of any position pays the full cost; every repeat is free.
+    """
     rows: list[tuple] = []
     board = game.board()
     node  = game
@@ -339,19 +431,24 @@ def _walk_game(
         ply += 1
 
         if _MIN_PLY <= ply <= _MAX_PLY:
-            fen       = board.fen()
+            z_hash    = chess.polyglot.zobrist_hash(board)
             pawn_hash = get_pawn_hash(board)
-            phase     = get_phase(board)
+            fen       = board.fen()
 
-            eval_cp: Optional[int] = None
-            if bridge:
-                try:
-                    ev = bridge.get_eval(fen)
-                    eval_cp = ev.centipawns
-                except Exception:
-                    pass
-
-            strategy_tag = _classify(board, phase)
+            if z_hash in seen:
+                # Reuse cached result — skip extractors and Stockfish
+                strategy_tag, phase, eval_cp = seen[z_hash]
+            else:
+                phase   = get_phase(board)
+                eval_cp = None
+                if bridge:
+                    try:
+                        ev = bridge.get_eval(fen)
+                        eval_cp = ev.centipawns
+                    except Exception:
+                        pass
+                strategy_tag = _classify(board, phase)
+                seen[z_hash] = (strategy_tag, phase, eval_cp)
 
             rows.append((
                 game_id, ply, fen, pawn_hash, strategy_tag, phase,
@@ -368,7 +465,12 @@ def _walk_game(
 
 
 def _classify(board: chess.Board, phase: str) -> str:
-    """Classify a position using the live detector stack."""
+    """Classify a position using the live detector stack.
+
+    Scores from both sides and uses the dominant perspective so that
+    positions where Black is the active player are not misclassified
+    as 'fortress' simply because White's score is low.
+    """
     try:
         sigs: list[MetricSignal] = []
         sigs.extend(extract_king_safety(board, phase))
@@ -378,12 +480,20 @@ def _classify(board: chess.Board, phase: str) -> str:
         sigs.extend(extract_material_balance(board, phase=phase))
         sigs.extend(extract_tactics(board, phase))
 
-        scores = {
+        w_scores = {
             'blitz':    score_blitz(sigs,    'white'),
             'flank':    score_flank(sigs,    'white'),
             'fortress': score_fortress(sigs, 'white'),
             'feint':    score_feint(sigs,    'white'),
         }
+        b_scores = {
+            'blitz':    score_blitz(sigs,    'black'),
+            'flank':    score_flank(sigs,    'black'),
+            'fortress': score_fortress(sigs, 'black'),
+            'feint':    score_feint(sigs,    'black'),
+        }
+        # Use whichever side shows the stronger pattern
+        scores = b_scores if max(b_scores.values()) > max(w_scores.values()) else w_scores
         best = max(scores, key=lambda k: scores[k])
         return best if scores[best] >= _STRATEGY_THRESHOLD else 'general'
     except Exception:
@@ -426,7 +536,7 @@ def main() -> None:
     )
     parser.add_argument('--db',         required=True, help='Path to existing index.sqlite')
     parser.add_argument('--stockfish',  default='',    help='Path to Stockfish (optional)')
-    parser.add_argument('--movetime',   type=int, default=500)
+    parser.add_argument('--movetime',   type=int, default=5)
     parser.add_argument('--min-rating', type=int, default=0)
     parser.add_argument('--quiet',      action='store_true')
     args = parser.parse_args()
@@ -442,6 +552,7 @@ def main() -> None:
         min_rating     = args.min_rating,
         verbose        = not args.quiet,
     )
+
 
 
 if __name__ == '__main__':
