@@ -10,7 +10,7 @@ Features
 --------
 - Reuses the existing BoardView.qml unchanged (same context-property names)
 - Own read-only board model; the main game board is never touched
-- Move-label strip: SAN moves shown inline, current one highlighted cyan
+- Inline PGN-style move display (clickable, matching the PGN panel style)
 - Back / Forward buttons to step through the sequence
 - Weakness squares highlighted natively in QML via highlightSquares context property
 - Revealed automatically when a note-line link is clicked; hidden when closed
@@ -38,8 +38,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -130,8 +130,9 @@ class CoachBoardWidget(QFrame):
     A collapsible panel that shows a coach-recommended move line on a
     read-only board.  Sits below the game archive in the left panel.
 
-    Weakness squares are highlighted natively inside QML via the
-    'highlightSquares' context property — no overlay widget needed.
+    Move notation is displayed as inline PGN-style text (matching the PGN
+    panel), with each move being a clickable link that jumps the board to
+    that position.
 
     Parameters
     ----------
@@ -155,9 +156,9 @@ class CoachBoardWidget(QFrame):
         self._qml_path   = qml_path
 
         # State
-        self._boards:          list[chess.Board] = []   # boards[0] = start, boards[N] = after N moves
+        self._boards:          list[chess.Board] = []
         self._san_list:        list[str]         = []
-        self._idx              = 0                       # current board index
+        self._idx              = 0
         self._start_fullmove:  int               = 1
         self._start_turn:      bool              = chess.WHITE
 
@@ -173,9 +174,9 @@ class CoachBoardWidget(QFrame):
         # Title bar
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
-        title_lbl = QLabel("♟  Coach Line")
-        title_lbl.setStyleSheet("color:#4FC3F7; font-weight:bold;")
-        title_row.addWidget(title_lbl)
+        self._title_lbl = QLabel("♟  Coach Line")
+        self._title_lbl.setStyleSheet("color:#4FC3F7; font-weight:bold; font-size:11px;")
+        title_row.addWidget(self._title_lbl)
         title_row.addStretch(1)
         close_btn = QPushButton("✕")
         close_btn.setFixedSize(20, 20)
@@ -185,21 +186,7 @@ class CoachBoardWidget(QFrame):
         title_row.addWidget(close_btn)
         root.addLayout(title_row)
 
-        # Move-label strip (scrollable)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFixedHeight(30)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("background:transparent; border:none;")
-        self._move_strip_widget = QWidget()
-        self._move_strip_layout = QHBoxLayout(self._move_strip_widget)
-        self._move_strip_layout.setContentsMargins(0, 0, 0, 0)
-        self._move_strip_layout.setSpacing(4)
-        scroll.setWidget(self._move_strip_widget)
-        root.addWidget(scroll)
-
-        # QQuickWidget — board view with QML-native highlights
+        # Board view
         self._board_view = QQuickWidget()
         self._board_view.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._board_view.rootContext().setContextProperty("piecesModel",       self._model)
@@ -210,7 +197,27 @@ class CoachBoardWidget(QFrame):
         self._board_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         root.addWidget(self._board_view, 1)
 
-        # Back / Forward
+        # Inline PGN-style move display (clickable links)
+        self._move_display = QTextBrowser()
+        self._move_display.setFixedHeight(72)
+        self._move_display.setOpenLinks(False)
+        self._move_display.anchorClicked.connect(self._on_anchor_clicked)
+        self._move_display.setStyleSheet("""
+            QTextBrowser {
+                background:#0D0D1A; border:1px solid #1E1E3A; border-radius:3px;
+                font-family:monospace; font-size:11px; color:#CFD8DC; padding:2px;
+            }
+            QScrollBar:vertical {
+                width:5px; background:#0D0D1A;
+            }
+            QScrollBar::handle:vertical {
+                background:#1E1E3A; border-radius:2px; min-height:20px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0; }
+        """)
+        root.addWidget(self._move_display)
+
+        # Back / Forward navigation
         nav_row = QHBoxLayout()
         nav_row.setContentsMargins(0, 0, 0, 0)
         self._back_btn = QPushButton("◀  Back")
@@ -224,18 +231,15 @@ class CoachBoardWidget(QFrame):
 
     # ── public API ────────────────────────────────────────────────────────────
 
+    def set_title(self, title: str) -> None:
+        """Update the header label (e.g. 'Coach Line — #1  +0.36')."""
+        self._title_lbl.setText(f"♟  {title}")
+
     def set_weakness_squares(
         self,
         squares: list[str],
         colour: str = "#FF5722",
     ) -> None:
-        """
-        Mark named squares as weak on the coach board (e.g. ["e4", "d5"]).
-        Each square gets a top-left dot — type "weak".
-        Call with an empty list to clear.
-        More indicator types (strong, tactic, king_danger) can be added later
-        via set_square_indicators() once the coach backend exposes them.
-        """
         indicators = []
         for sq_name in squares:
             try:
@@ -250,7 +254,6 @@ class CoachBoardWidget(QFrame):
         self._set_indicators(indicators)
 
     def _set_indicators(self, indicators: list[dict]) -> None:
-        """Push indicator list to QML. Context property updates are reactive."""
         self._board_view.rootContext().setContextProperty("squareIndicators", indicators)
 
     def load_line(
@@ -258,7 +261,7 @@ class CoachBoardWidget(QFrame):
         base_fen: str,
         uci_list: list[str],
         san_list: list[str],
-        start_idx: int = -1,
+        start_idx: int = 0,
     ) -> None:
         """
         Load a note line and display it on the coach board.
@@ -269,9 +272,8 @@ class CoachBoardWidget(QFrame):
         uci_list  : UCI moves in the line
         san_list  : SAN labels — same length as uci_list
         start_idx : which move to land on (0-based into uci_list).
-                    -1 means the last move (full line).
+                    0 (default) = starting position; use len(uci_list)-1 for end.
         """
-        # Build board states: boards[0]=base, boards[k]=after k moves
         start = chess.Board(base_fen)
         self._start_fullmove = start.fullmove_number
         self._start_turn     = start.turn
@@ -286,12 +288,8 @@ class CoachBoardWidget(QFrame):
             except Exception:
                 break
 
-        # start_idx is 0-based into uci_list; boards[k] = after k moves
-        if start_idx < 0:
-            self._idx = len(self._boards) - 1
-        else:
-            # clamp to valid board range
-            self._idx = min(start_idx + 1, len(self._boards) - 1)
+        # Clamp to valid board index (boards[0] = start, boards[k] = after k moves)
+        self._idx = min(max(0, start_idx), len(self._boards) - 1)
 
         self._refresh_board()
         self._refresh_labels()
@@ -302,6 +300,7 @@ class CoachBoardWidget(QFrame):
         self._idx             = 0
         self._start_fullmove  = 1
         self._start_turn      = chess.WHITE
+        self._move_display.clear()
         self._set_indicators([])
 
     # ── nav ───────────────────────────────────────────────────────────────────
@@ -318,6 +317,18 @@ class CoachBoardWidget(QFrame):
             self._refresh_board()
             self._refresh_labels()
 
+    def _on_anchor_clicked(self, url) -> None:
+        link = url.toString()
+        if link.startswith('move:'):
+            try:
+                idx = int(link[5:])
+                if 0 <= idx < len(self._boards):
+                    self._idx = idx
+                    self._refresh_board()
+                    self._refresh_labels()
+            except ValueError:
+                pass
+
     def _on_close(self) -> None:
         self.clear()
         self.closed.emit()
@@ -332,39 +343,71 @@ class CoachBoardWidget(QFrame):
         self._fwd_btn.setEnabled(self._idx < len(self._boards) - 1)
 
     def _refresh_labels(self) -> None:
-        # Clear old labels
-        while self._move_strip_layout.count():
-            item = self._move_strip_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        """Build inline PGN-style HTML with each move as a clickable anchor."""
+        parts: list[str] = []
 
-        # "Start" label (shown as the fullmove number context)
-        start_lbl = QLabel("Start")
-        start_lbl.setStyleSheet(
-            "color:#4FC3F7; font-weight:bold;" if self._idx == 0
-            else "color:#666666;"
-        )
-        self._move_strip_layout.addWidget(start_lbl)
+        # "Start" link — navigates to the starting position
+        if self._idx == 0:
+            parts.append('<a name="cur"></a>')
+            parts.append(
+                '<a href="move:0" style="color:#4FC3F7;font-weight:bold;'
+                'text-decoration:none;">Start</a>'
+            )
+        else:
+            parts.append(
+                '<a href="move:0" style="color:#455A64;text-decoration:none;">Start</a>'
+            )
+        parts.append('&nbsp;&nbsp;')
 
         move_num = self._start_fullmove
-        turn     = self._start_turn      # chess.WHITE = True, chess.BLACK = False
-        for i, san in enumerate(self._san_list):
-            sep = QLabel("→")
-            sep.setStyleSheet("color:#444444;")
-            self._move_strip_layout.addWidget(sep)
+        turn     = self._start_turn
 
-            # e.g. "15.g4" for white, "15…h5" for black (en-dash · not ellipsis)
-            prefix = f"{move_num}." if turn == chess.WHITE else f"{move_num}…"
-            lbl = QLabel(f"{prefix}{san}")
-            is_cur = (i + 1 == self._idx)
-            lbl.setStyleSheet(
-                "color:#4FC3F7; font-weight:bold; text-decoration:underline;"
-                if is_cur else "color:#AAAAAA;"
+        for i, san in enumerate(self._san_list):
+            board_idx = i + 1
+
+            # Move number prefix
+            if turn == chess.WHITE:
+                parts.append(f'<span style="color:#546E7A;">{move_num}.&nbsp;</span>')
+            elif i == 0:
+                # Line starts on black's move
+                parts.append(f'<span style="color:#546E7A;">{move_num}…&nbsp;</span>')
+
+            # Escape SAN for HTML (bishop 'B', captures 'x', promotions '=Q', etc.)
+            san_html = (
+                san.replace('&', '&amp;')
+                   .replace('<', '&lt;')
+                   .replace('>', '&gt;')
             )
-            self._move_strip_layout.addWidget(lbl)
+
+            if board_idx == self._idx:
+                parts.append('<a name="cur"></a>')
+                style = (
+                    'background-color:#1A3A4A;color:#4FC3F7;font-weight:bold;'
+                    'text-decoration:none;padding:0 2px;'
+                )
+            elif turn == chess.WHITE:
+                style = 'color:#CFD8DC;text-decoration:none;'
+            else:
+                style = 'color:#90A4AE;text-decoration:none;'
+
+            parts.append(f'<a href="move:{board_idx}" style="{style}">{san_html}</a>')
 
             if turn == chess.BLACK:
-                move_num += 1   # fullmove number increments after black plays
-            turn = not turn     # alternate sides
+                parts.append('&nbsp;&nbsp;')
+                move_num += 1
+            else:
+                parts.append('&nbsp;')
 
-        self._move_strip_layout.addStretch(1)
+            turn = not turn
+
+        html = (
+            '<body style="margin:4px 4px;padding:0;font-family:monospace;'
+            'font-size:11px;line-height:1.7;word-wrap:break-word;">'
+            + ''.join(parts)
+            + '</body>'
+        )
+        self._move_display.setHtml(html)
+
+        # Scroll so the current move is visible
+        if self._idx >= 0:
+            self._move_display.scrollToAnchor("cur")

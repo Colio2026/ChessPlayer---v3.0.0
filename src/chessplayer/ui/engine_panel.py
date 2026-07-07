@@ -73,6 +73,7 @@ class EnginePanel(QWidget):
 
     move_ready      = Signal(str)
     eval_updated    = Signal(object)   # BestMove | None
+    all_pvs_updated = Signal(list)     # list[BestMove] — all current MultiPV lines
     pv_line_clicked = Signal(object, object)
 
     _MOVETIME_OPTIONS: list[tuple[str, int]] = [
@@ -497,6 +498,20 @@ class EnginePanel(QWidget):
             self._pv_table.setItem(row_idx, 2, line_item)
 
         self._pv_table.resizeRowsToContents()
+
+        # Emit all current PV lines for the coach multi-line display
+        pvs = []
+        for rank in rows:
+            d  = self._pv_data[rank]
+            pv = d.get('pv', [])
+            pvs.append(BestMove(
+                uci      = pv[0] if pv else '0000',
+                score_cp = d.get('score_cp'),
+                mate_in  = d.get('mate_in'),
+                pv_uci   = pv,
+            ))
+        if pvs:
+            self.all_pvs_updated.emit(pvs)
 
     @staticmethod
     def _format_score(data: dict) -> str:

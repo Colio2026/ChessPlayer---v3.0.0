@@ -241,6 +241,13 @@ class CoachOutput:
     weakness_squares:   list[str]              = field(default_factory=list)
     gm_precedents:      list[GMPrecedent]      = field(default_factory=list)
     signal_dump:        list[MetricSignal]     = field(default_factory=list)
+    # Each row: (human_label, before_pawns, after_pawns, delta_from_player_pov)
+    # Populated by explainer.py when a PV breakdown is available.
+    metrics_table:      list[tuple]            = field(default_factory=list)
+    # Stockfish PV line — populated when coach explains a concrete line
+    pv_san:             list[str]              = field(default_factory=list)
+    pv_uci:             list[str]              = field(default_factory=list)
+    pv_line_text:       str                    = ''   # "11. Nf3 Nc6  12. Bb5 a6"
 
     def __post_init__(self) -> None:
         if self.strategy_primary not in STRATEGIES:
@@ -259,8 +266,8 @@ class CoachOutput:
             )
         if self.phase not in PHASES:
             raise ValueError(f"CoachOutput.phase must be one of {PHASES}, got {self.phase!r}")
-        if not (2 <= len(self.plan_sentences) <= 4):
+        if not (1 <= len(self.plan_sentences) <= 8):
             raise ValueError(
-                f"CoachOutput.plan_sentences must contain 2–4 sentences, "
+                f"CoachOutput.plan_sentences must contain 1–8 sentences, "
                 f"got {len(self.plan_sentences)}"
             )
