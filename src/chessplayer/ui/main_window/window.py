@@ -116,16 +116,20 @@ class MainWindow(QMainWindow):
         # Engine
         self._engine_panel.move_ready.connect(self._on_engine_move)
         self._engine_panel.eval_updated.connect(self._on_eval_updated)
+        self._engine_panel.eval_updated.connect(self._coach_panel.on_pv_updated)
+        self._engine_panel.all_pvs_updated.connect(self._coach_panel.on_all_pvs_updated)
         self._engine_panel.pv_line_clicked.connect(self._on_pv_line_clicked)
 
         # Variations
         self._variations_panel.status_message.connect(self._status.setText)
         self._variations_panel.move_selected.connect(self._on_variation_move_selected)
-        self._variations_panel.tree_built.connect(self._coach_panel.start_reindex)
 
         # Coach panel signals
         self._coach_panel.coach_help_requested.connect(self._on_coach_help_requested)
         self._coach_panel.gm_load_requested.connect(self._on_gm_load_requested)
+        self._coach_panel.pv_line_load_requested.connect(
+            lambda fen, uci, san, title: self._on_pv_line_load_requested(fen, uci, san, title)
+        )
         self._coach_panel.weakness_squares_ready.connect(
             self._coach_board.set_weakness_squares
         )
@@ -725,6 +729,10 @@ class MainWindow(QMainWindow):
 
     def _on_position_changed(self) -> None:
         print(f"[MAIN] _on_position_changed: editor.loaded={hasattr(self._editor, 'loaded') and self._editor.loaded is not None}")
+        # Coach board is tied to a specific position — clear it whenever the main board moves
+        if self._coach_board.isVisible():
+            self._coach_board.clear()
+            self._coach_board.hide()
         prefix        = self._editor.played_prefix_uci()
         white_to_move = self._editor.session.board.turn
         self._pgn_panel.refresh()
@@ -855,6 +863,26 @@ class MainWindow(QMainWindow):
         self._editor.insert_comment(comment)
         self._pgn_panel.refresh()
         self._status.setText("Coach note inserted.")
+
+    def _on_pv_line_load_requested(
+        self, base_fen: str, pv_uci: list, pv_san: list, title: str = ''
+    ) -> None:
+        """
+        Load a Stockfish PV line into the Coach Board so the user can
+        step through it move by move using the vertical move list.
+        """
+        if not pv_uci or not base_fen:
+            return
+        san_labels = pv_san if pv_san else pv_uci
+        self._coach_board.set_title(title or "Coach Line")
+        self._coach_board.load_line(base_fen, pv_uci, san_labels)
+        self._coach_board.show()
+        # Ensure the coach board splitter pane is open
+        sizes = self._left_split.sizes()
+        if sizes[1] < 80:
+            total = sum(sizes)
+            self._left_split.setSizes([max(total - 300, 100), 300])
+        self._set_active_board("coach")
 
     def _on_gm_load_requested(self, prec) -> None:
         """

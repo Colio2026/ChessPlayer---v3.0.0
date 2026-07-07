@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -214,6 +215,39 @@ class UciEngine:
             results.append(BestMove(uci=bestmove_uci))
         return results
 
+    def get_eval_terms_fen(self, fen: str) -> dict[str, float]:
+        """
+        Run Stockfish's eval command on a FEN position and return term scores.
+
+        All values are from White's perspective in pawn units (positive = White
+        advantage). Does NOT require a search — eval is near-instant (~2 ms).
+
+        Returns dict with keys like 'material', 'mobility', 'king_safety',
+        'space', 'threats', 'passed_pawns', 'nnue', 'classical', 'final'.
+        Returns empty dict on timeout or engine error.
+        """
+        self.start()
+        assert self.p is not None
+        self._cmd(f"position fen {fen}")
+        self._cmd("eval")
+        result: dict[str, float] = {}
+        t0 = time.time()
+        while time.time() - t0 < 5.0:
+            line = self._readline()
+            if not line:
+                continue
+            parsed = _parse_eval_row(line)
+            if parsed:
+                result[parsed[0]] = parsed[1]
+            # Break on the very last summary line that Stockfish prints.
+            # SF12-15 ends with:  "Evaluation: N (white side)"
+            # SF16+   ends with:  "Final evaluation       N (white side) [...]"
+            # Must read all the way to this line so nothing stays in the stdout
+            # buffer to poison the next eval call's read loop.
+            if line.startswith('Evaluation:') or line.lower().startswith('final evaluation'):
+                break
+        return result
+
     # ── internals ─────────────────────────────────────────────────────────────
 
     def _cmd(self, s: str) -> None:
@@ -236,6 +270,31 @@ class UciEngine:
 
 
 # ── parsers ───────────────────────────────────────────────────────────────────
+
+_EVAL_FLOAT_RE = re.compile(r'[-+]?\d+\.\d+')
+
+
+def _parse_eval_row(line: str) -> tuple[str, float] | None:
+    """
+    Parse one data row from Stockfish's eval table output.
+
+    Row format (4 pipe-separated columns):
+        "  Term Name  |  white_mg  white_eg  |  black_mg  black_eg  |  total"
+    Returns (snake_case_term_name, total_value) or None for header/separator rows.
+    """
+    if '|' not in line:
+        return None
+    parts = line.split('|')
+    if len(parts) < 4:
+        return None
+    term_raw = parts[0].strip()
+    if not term_raw or term_raw.startswith(('-', '=')) or 'Term' in term_raw:
+        return None
+    nums = _EVAL_FLOAT_RE.findall(parts[-1])
+    if not nums:
+        return None
+    return term_raw.lower().replace(' ', '_'), float(nums[0])
+
 
 def _parse_multipv_line(
     line: str,

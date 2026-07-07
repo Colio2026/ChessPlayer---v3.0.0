@@ -14,7 +14,7 @@ All methods return typed results. Callers never touch UCI strings.
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -85,6 +85,81 @@ class MoveCandidate:
     san:         str
     eval_result: EvalResult
     rank:        int
+
+
+# ── Eval breakdown types ──────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class EvalBreakdown:
+    """
+    Stockfish's own eval term scores for a position.
+
+    All values are from White's perspective in pawn units.
+    Positive = White advantage. Computed via Stockfish's 'eval' command.
+    """
+    material:     float = 0.0
+    imbalance:    float = 0.0
+    pawns:        float = 0.0
+    knights:      float = 0.0
+    bishops:      float = 0.0
+    rooks:        float = 0.0
+    queens:       float = 0.0
+    mobility:     float = 0.0
+    king_safety:  float = 0.0
+    threats:      float = 0.0
+    passed_pawns: float = 0.0
+    space:        float = 0.0
+    classical:    float = 0.0
+    nnue:         float = 0.0
+    final:        float = 0.0
+
+
+@dataclass
+class PVExplanation:
+    """
+    Explanation of a Stockfish PV line derived from eval term deltas.
+
+    Produced by StockfishBridge.explain_pv(). Consumed by coach/explainer.py.
+    The coach no longer generates its own strategic opinion — it explains WHY
+    Stockfish's recommended line makes positional sense.
+    """
+    pv_uci:          list[str]
+    eval_before:     EvalBreakdown
+    eval_after:      EvalBreakdown
+    deltas:          dict[str, float]
+    dominant_term:   str
+    dominant_delta:  float
+    is_tactical:     bool
+    strategy:        str
+    confidence:      float
+    pv_san:          list[str]
+    tactic_move_idx: int
+
+
+# ── Module-level helpers ──────────────────────────────────────────────────────
+
+def _derive_strategy(
+    dominant_term:  str,
+    dominant_delta: float,
+    before:         EvalBreakdown,
+    after:          EvalBreakdown,
+    player_side:    str,
+) -> str:
+    """Map the dominant eval term delta to one of the four strategy labels."""
+    flip        = 1.0 if player_side == 'white' else -1.0
+    total_delta = (after.final - before.final) * flip
+
+    if dominant_term == 'king_safety':
+        return 'blitz' if total_delta > 0 else 'fortress'
+    if dominant_term in ('space', 'mobility'):
+        return 'flank'
+    if dominant_term == 'threats':
+        return 'blitz' if total_delta > 0.5 else 'feint'
+    if dominant_term in ('material', 'pawns', 'knights', 'bishops', 'rooks', 'queens'):
+        return 'blitz' if dominant_delta > 0 else 'fortress'
+    if dominant_term == 'passed_pawns':
+        return 'flank'
+    return 'flank'
 
 
 # ── Bridge ────────────────────────────────────────────────────────────────────
@@ -238,6 +313,129 @@ class StockfishBridge:
         """
         moves = self.get_top_moves(board, n=1)
         return moves[0] if moves else None
+
+    def get_eval_breakdown(self, board: chess.Board) -> EvalBreakdown:
+        """
+        Return Stockfish's own eval term breakdown for a position.
+
+        Uses the 'eval' command (near-instant, no search required).
+        Values are in pawn units, White's perspective.
+        Returns a zeroed EvalBreakdown on engine error.
+        """
+        self._assert_running()
+        try:
+            raw = self._engine.get_eval_terms_fen(board.fen())  # type: ignore
+        except Exception:
+            return EvalBreakdown()
+        return EvalBreakdown(
+            material     = raw.get('material',     0.0),
+            imbalance    = raw.get('imbalance',    0.0),
+            pawns        = raw.get('pawns',        0.0),
+            knights      = raw.get('knights',      0.0),
+            bishops      = raw.get('bishops',      0.0),
+            rooks        = raw.get('rooks',        0.0),
+            queens       = raw.get('queens',       0.0),
+            mobility     = raw.get('mobility',     0.0),
+            king_safety  = raw.get('king_safety',  0.0),
+            threats      = raw.get('threats',      0.0),
+            passed_pawns = raw.get('passed_pawns', raw.get('passed', 0.0)),
+            space        = raw.get('space',        0.0),
+            classical    = raw.get('classical',    0.0),
+            nnue         = raw.get('nnue',         0.0),
+            final        = raw.get('final',        0.0),
+        )
+
+    def explain_pv(
+        self,
+        board:       chess.Board,
+        pv_uci:      list[str],
+        player_side: str = 'white',
+        max_moves:   int = 4,
+    ) -> Optional[PVExplanation]:
+        """
+        Explain WHY Stockfish recommends the given PV line.
+
+        Evaluates the current position and the position after max_moves of the PV
+        using Stockfish's own eval term breakdown, then computes the dominant
+        positional change to derive strategy and confidence.
+
+        Returns None if the bridge is not running or PV is empty.
+        """
+        self._assert_running()
+        if not pv_uci:
+            return None
+
+        # Build board states for each position in the PV
+        boards: list[chess.Board] = [board.copy()]
+        pv_san: list[str] = []
+        for uci in pv_uci[:max_moves]:
+            b = boards[-1].copy()
+            try:
+                move = chess.Move.from_uci(uci)
+                pv_san.append(b.san(move))
+                b.push(move)
+            except Exception:
+                break
+            boards.append(b)
+
+        if len(boards) < 2:
+            return None
+
+        # Eval breakdown for each position (current + each PV step)
+        breakdowns: list[EvalBreakdown] = []
+        for b in boards:
+            try:
+                bd = self.get_eval_breakdown(b)
+            except Exception:
+                bd = EvalBreakdown()
+            breakdowns.append(bd)
+
+        before = breakdowns[0]
+        after  = breakdowns[-1]
+
+        # Per-term deltas from the player's perspective
+        flip = 1.0 if player_side == 'white' else -1.0
+        positional_terms = (
+            'king_safety', 'mobility', 'space', 'threats',
+            'passed_pawns', 'material', 'pawns',
+        )
+        deltas: dict[str, float] = {
+            term: (getattr(after, term, 0.0) - getattr(before, term, 0.0)) * flip
+            for term in positional_terms
+        }
+
+        dominant_term  = max(deltas, key=lambda k: abs(deltas[k]))
+        dominant_delta = deltas[dominant_term]
+
+        # Find the single move with the biggest eval jump (tactic detection)
+        max_jump        = 0.0
+        tactic_move_idx = -1
+        for i in range(1, len(breakdowns)):
+            jump = abs(breakdowns[i].final - breakdowns[i - 1].final)
+            if jump > max_jump:
+                max_jump        = jump
+                tactic_move_idx = i
+
+        nnue_classical_gap = abs(after.nnue - after.classical)
+        is_tactical = max_jump > 1.5 or nnue_classical_gap > 1.0
+
+        strategy   = _derive_strategy(dominant_term, dominant_delta, before, after, player_side)
+        raw_conf   = min(1.0, abs(dominant_delta) / 2.0)
+        confidence = 0.50 + raw_conf * 0.50
+
+        return PVExplanation(
+            pv_uci          = list(pv_uci[:max_moves]),
+            eval_before     = before,
+            eval_after      = after,
+            deltas          = deltas,
+            dominant_term   = dominant_term,
+            dominant_delta  = dominant_delta,
+            is_tactical     = is_tactical,
+            strategy        = strategy,
+            confidence      = confidence,
+            pv_san          = pv_san,
+            tactic_move_idx = tactic_move_idx if max_jump > 1.5 else -1,
+        )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
