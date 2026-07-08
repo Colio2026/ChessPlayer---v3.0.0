@@ -1,9 +1,13 @@
 # Large data files
 data/*.pgn
+data/annotated_pgns/*.pgn
 data/*.sqlite
 data/*.sqlite-wal
 data/*.sqlite-shm
 data/trees/
+data/annotated_pgns/
+data/training_raw.jsonl
+data\training_raw.jsonl
 
 # Engines
 *.exe
