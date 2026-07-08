@@ -50,7 +50,7 @@ A desktop chess analysis and coaching application for Windows. Browse large PGN 
 
 ![PGN Editor](docs/screenshots/ChessPNGEditorAlpha.png)
 
-**Chess Coach — strategic coaching panel with weak-square overlay**
+**Chess Coach — strategic coaching panel with Stockfish16 Evaluation Terms**
 
 ![Chess Coach](docs/screenshots/ChessCoachAlpha.png)
 
