@@ -70,56 +70,149 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
     # ── Tactical themes ───────────────────────────────────────────────────────
     "pin": [
         "pin", "pinned", "absolute pin", "relative pin", "pinning",
+        "break the pin", "breaking the pin", "unpin", "unpinned",
+        "bound hand and foot",           # "bound hand and foot" = completely pinned
+        "nail",                          # "nailed down", "nailed to"
+        "pin is decisive", "pin decides",
+        "exploit the pin", "maintain the pin",
+        "the pin on",                    # "the pin on the rook", "the pin on f3"
+        "absolute pin",                  # repeated from above but common phrase
+        "pin to the king", "pinned to the king",
     ],
     "fork": [
         "fork", "double attack", "forking",
+        "knight fork", "royal fork", "rook fork",  # named fork types
+        "attacks two pieces", "attacks two",        # describing a fork without the word
+        "simultaneous attack on",
+        "threatens two", "win two pieces",
+        "fork the king", "fork threat",
+        "forks the",                               # "forks the queen and rook"
     ],
     "skewer": [
         "skewer", "skewering",
+        "reverse pin",                  # technical alternate name for skewer
+        "skewers the",                  # "skewers the rook", "skewers the queen"
+        "attacks through",              # "the bishop attacks through the rook"
+        "forced to move to avoid",      # "king forced to move to avoid losing"
+        "in front of the king",         # piece is in front → skewer potential
     ],
     "discovered_attack": [
         "discovered attack", "discovery", "unmasking",
+        "x-ray", "x ray attack",                        # Lichess: xRayAttack
+        "double check",                                  # Lichess: doubleCheck
+        "discovered check",                             # Lichess: discoveredCheck
+        "reveal", "reveals a check", "uncovers",
     ],
     "deflection": [
         "deflect", "deflection", "lure away", "draw away",
+        "capturing defender", "capturing the defender",  # Lichess: capturingDefender
     ],
     "decoy": [
         "decoy", "lure", "entice",
+        "attraction",                                    # Lichess: attraction
+        "draw the king",
+        "force the king",
+        "lure the king",
+        "tempt",
+        "bait",
+        "draw the queen",
+        "pulled to",
+        "drag the king",
     ],
     "overloading": [
         "overloaded", "overloading", "too many duties", "cannot defend both",
-        "guard too many", "protecting too much"
+        "guard too many", "protecting too much",
+        "two duties", "two tasks", "serving two",
+        "overtaxed", "over-taxed", "over taxed",
+        "juggling", "cannot be in two places",
+        "defend two", "protect two",
     ],
     "zwischenzug": [
         "zwischenzug", "in-between move", "intermezzo", "intermediate move",
+        "in between move", "interpolat",
+        "before recapturing", "before taking",
+        "before capturing",
+        "check first", "with check first",
+        "plays in between", "prior to recapturing",
+        "intermediate check", "in-between check",
+        "before the capture", "before taking back",
+        "first wins", "intermediate winning",
     ],
     "interference": [
         "interference", "interfer",
+        "blocks the line",             # "blocks the line of communication"
+        "cuts off",                    # "cuts off the rook from defending"
+        "interposing",
+        "intercept",
+        "blocking the connection",
+        "cutting off communication",
+        "interrupt",
+        "blocks the diagonal",
+        "blocks the file",
+        "block the connection",
     ],
     "clearance": [
         "clearance", "clearing the",
+        "vacate", "vacating",
+        "clear the square", "clears the square",
+        "clear the diagonal", "clears the diagonal",
+        "clear the file", "clears the file",
+        "make room for",
+        "vacates",
+        "clear the way", "clears the way",
+        "remove from the diagonal",
+        "empty the square",
     ],
     "back_rank": [
-        "back rank", "back-rank", "first rank mate", "back rank weakness",
+        "back rank", "back-rank", "backrank", "first rank mate", "back rank weakness",
+        "back rank mate",                             # Lichess: backRankMate
     ],
     "sacrifice": [
         "sacrifice", "sacrific",
         "sac ",                    # "the sac on h7" (space prevents matching "sack")
         "gives the exchange",
         "offers the exchange",
+        # merged from positional_sacrifice
+        "positional sacrifice", "long-term sacrifice", "positional pawn sacrifice",
+        "strategic sacrifice", "long term compensation",
+        "material is only temporary", "gives up material for",
+        "long-term compensation", "long term investment",
+        "sacrifices a pawn for", "pawn is only temporary",
     ],
     "exchange_sacrifice": [
         "exchange sacrifice", "rook for bishop", "rook for knight",
         "sacrifices the exchange",
+        "gives up the exchange",
+        "positional exchange sacrifice",
+        "rook versus bishop", "rook versus knight",
+        "give the exchange",
+        "giving the exchange",
+        "exchange for positional",
+        "exchange for compensation",
+        "exchange for a pawn",
+        "exchange is justified",
     ],
     "combination": [
-        "combination", "combinational", "tactical sequence",
+        "combination", "combinational",
+        "brilliant combination", "beautiful combination",
+        "winning combination",
+        "tactical motif",
+        "forcing sequence", "forced sequence",
+        "series of forcing moves",
+        "tactical blow",
     ],
     "mating_attack": [
-        "mate", "checkmate", "mating", "mating net", "mating attack",
+        "checkmate", "mating", "mating net", "mating attack",
+        "smothered mate", "smothered",
+        "arabian mate", "anastasia", "hook mate", "boden", "epaulette mate",
+        "pillsbury", "opera mate", "morphy's mate", "morphy mate",
+        "vukovic", "corner mate", "swallow's tail", "swallowstail",
+        "blind swine", "triangle mate", "balestra",
     ],
     "trapped_piece": [
-        "trapped", "has no escape", "caught", "no retreat",
+        "trapped", "has no escape", "no retreat",
+        "no safe square", "no good square", "nowhere to go",
+        "cannot escape", "piece is lost", "piece cannot move",
     ],
 
     # ── Piece concepts ────────────────────────────────────────────────────────
@@ -129,10 +222,19 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "no way to drive", "strong post", "permanent post",
         "strong position for the knight", "knight cannot be",
         "knight stands well", "knight is well placed",
+        "support point",               # Nimzowitsch / Steinitz term for outpost-like square
+        "stronghold",                  # "stronghold on e5", "stronghold for the knight"
+        "cannot be forced away",
+        "knight is firmly placed",
+        "no way to attack",            # "no way to attack the knight"
+        "denying the opposing pieces",
+        "strong square for",
     ],
     "blockade": [
         "blockade", "blockader", "blockading", "sitting in front",
         "blocked in", "block the pawn",
+        "the blockader", "elastic blockader", "blockading piece",
+        "knight blockades", "bishop blockades",
     ],
     "bad_bishop": [
         "bad bishop", "bad piece", "problem child", "shut in", "shut out",
@@ -140,70 +242,177 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "passive bishop", "inactive bishop", "locked bishop",
         "bishop is inferior", "bishop inside the pawn chain",
         "bishop condemned", "bishop is passive",
+        "bishop blocked by its own pawns",
+        "bishop of the wrong color",
+        "bishop is blocked",
+        "exchange off his bad bishop", "exchange the bad bishop",
+        "inferior to the knight",      # bad bishop is inferior to knight in closed positions
+        "bishop has no scope",
+        "bishop is useless",
+        "suffers from bad bishop",
+        "same color as",               # "same color as the pawns" = bad bishop
+        "color of a bishop",
     ],
     "good_bishop": [
-        "good bishop", "active bishop", "activates the white bishop", "activates the black bishop"
+        "good bishop", "active bishop", "activates the white bishop", "activates the black bishop",
+        "superior bishop",
+        "bishop proves superior",
+        "bishop is strong",
+        "dominant bishop",
+        "bishop is active",
+        "bishop controls",
+        "bishop sweeps",
+        "bishop outshines",
+        "bishop reigns",
+        "long diagonal",
+        "bishop exploits the diagonal",
+        "bishop dominates",
+        "bishop is superior to the knight",
     ],
     "bishop_pair": [
         "bishop pair", "two bishops", "pair of bishops",
+        "the two bishops",
+        "bishop pair advantage",
+        "give up the bishop pair", "surrendering the bishop pair",
+        "relinquish the bishops",
+        "bishop pair is strong", "bishop pair proves",
+        "both bishops",
+        "double bishops",
+        "retain the bishops",
+        "bishop pair compensates",
     ],
     "piece_activity": [
-        "active", "activity", "active piece", "activation", "piece play",
+        "piece play", "activation", "piece activity",
         "centralize", "centralized", "centralizing", "mobilize",
-        "active bishop", "passive bishop", "active role",
         "aggressively posted", "well posted", "actively placed",
-        "bishop proves", "bishop is strong", "bishop is superior",
         "piece becomes active", "pieces become active",
-    ],
-    "overprotection": [
-        "overprotect", "overprotection", "over-protect",
+        "active rook", "rook becomes active", "activate the rook",
+        "activate the knight", "knight becomes active",
+        "pieces are active", "pieces become dominant",
+        "piece coordination improves",
     ],
     "battery": [
         "battery", "doubled rooks", "queen and rook", "rook and queen",
         "doubling on",
+        "stacking", "stack the rook", "stack on", "piling up", "pile up on",
+        "rooks on the same", "double on the", "collinear",
+        "queen and bishop battery", "bishop battery",
+        "rook battery", "queen behind the rook",
+        "double the rooks", "rooks are doubled",
+        "align along", "lined up",
     ],
     "rook_seventh": [
         "seventh rank", "seventh row", "on the seventh", "rook on the 7",
         "absolute seventh",
-    ],
-    "rook_open_file": [
-        "rook on the open", "open file for the rook", "rook seizes",
-        "rook occupies", "rook enters",
+        "pig on the", "pigs on the", "pig on 7",
+        "second rank",
+        "master of the seventh", "dominate the seventh",
+        "rook on the seventh", "rooks on the seventh",
+        "invades the seventh", "penetrates to the seventh",
+        "on the 7th rank", "rook reaches the seventh",
+        "two rooks on the seventh", "seventh rank is decisive",
     ],
 
     # ── Pawn structure ────────────────────────────────────────────────────────
     "passed_pawn": [
         "passed pawn", "passer", "queening", "promotion", "advancing pawn",
         "unstoppable pawn", "past the pawn",
+        "underpromot", "under-promot", "queening square",
     ],
     "isolated_pawn": [
         "isolated", "isolating", "IQP", "isolated queen pawn", "isolated pawn",
     ],
     "backward_pawn": [
-        "backward pawn", "backward d-pawn", "cannot advance", "cannot be supported",
+        "backward pawn", "backward d-pawn",
+        "saddled with",
+        "laggard pawn",
+        "chronic weakness",
+        "fixed weakness",
+        "immovable pawn",
+        "doom of the backward pawn",
+        "backward pawn as a weakness",
+        "weak pawn on",
+        "transfers the weakness",
+        "cannot be advanced",
+        "square in front of the pawn",
+        "pawn cannot move",
+        "the pawn is a target",
     ],
     "doubled_pawn": [
         "doubled pawn", "doubled pawns",
+        "double the pawns", "doubling the pawns",
+        "saddled with doubled",
+        "doubled c-pawns", "doubled f-pawns", "doubled b-pawns",
+        "structural damage",
+        "pawn on the same file",
+        "two pawns on the same",
+        "weakened pawn structure",
+        "broken pawn structure",
     ],
     "pawn_majority": [
         "pawn majority", "queenside majority", "kingside majority",
         "mobile majority",
+        "extra pawn",
+        "numerical pawn advantage",
+        "outnumber the pawns",
+        "more pawns on the",
+        "passed pawn from the majority",
+        "pawn roller",
+        "advancing majority",
+        "majority on the queenside", "majority on the kingside",
     ],
     "pawn_chain": [
-        "pawn chain", "chain", "head of the chain", "base of the chain",
-        "pawn wedge",
+        "pawn chain", "head of the chain", "base of the chain",
+        "pawn wedge", "attack the base", "attack the chain",
+        "break the chain", "undermine the chain",
     ],
     "pawn_break": [
         "pawn break", "pawn advance", "break through", "break open",
+        "liberating move",
+        "freeing advance",
+        "pawn breaks open",
+        "advance the pawn",
+        "push the pawn",
+        "break the center",
+        "en passant",                  # Lichess: enPassant → pawn_break
+        "pawn lever",
+        "structural break",
+        "open the position",
+        "explode the center",
     ],
     "pawn_storm": [
         "pawn storm", "pawn advance", "storming", "pawn avalanche",
+        "advance the pawns",
+        "advance on the kingside",
+        "advance on the queenside",
+        "attack with pawns",
+        "h4-h5", "g4-g5", "f4-f5",    # typical kingside storm moves
+        "a4-a5", "b4-b5", "c4-c5",    # typical queenside storm moves
+        "pawn roller",
+        "rolling pawns",
+        "advancing the pawns",
     ],
     "pawn_weakness": [
         "pawn weakness", "weak pawn", "pawn defect",
+        "pawn structure weakness",
+        "structural defect",
+        "weak pawns on",
+        "exploiting the weak pawn",
+        "target the pawn",
+        "attack the weakness",
+        "pressure on the pawn",
+        "exploit the weakness",
+        "probe the weakness",
     ],
     "pawn_island": [
         "pawn island", "isolated group",
+        "three pawn islands", "two pawn islands",
+        "split pawns",
+        "scattered pawns",
+        "disconnected pawns",
+        "pawn islands advantage",
+        "fewer pawn islands",
+        "more pawn islands",
     ],
 
     # ── King and structure ────────────────────────────────────────────────────
@@ -214,6 +423,16 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
     "king_activity": [
         "king march", "king to the center", "active king", "king joins",
         "king walk", "king becomes active",
+        "shouldering",
+        "outflanking", "outflank",
+        "king advances", "king penetrates", "king invades",
+        "king centralizes", "king supports",
+        "king escorts the pawn", "king enters the game",
+        "king takes part", "king is a strong piece",
+        "king becomes a fighter", "king joins the attack",
+        "king marches to", "active use of the king",
+        "king activity", "king centralization",
+        "king participates", "king in the center",
     ],
     "weak_square": [
         "weak square", "color weakness", "weakened squares", "hole",
@@ -221,32 +440,87 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
     ],
     "open_file": [
         "open file", "half-open", "semi-open file", "open d-file",
-        "open e-file", "open c-file",
+        "open e-file", "open c-file", "opens the file",
+        "half open",
+        "opening the file",
+        "open the f-file", "open the g-file", "open the b-file",
+        "files in the centre",
+        "control of the file",
+        "file is open",
+        "file for his rook",
+        "exploit the file",
+        # merged from rook_open_file
+        "rook on the open", "open file for the rook", "file for the rook",
+        "rook seizes", "rook occupies", "rook enters",
+        "rooks need open files",
+        "occupy the open file", "occupy the file",
+        "seize the file", "seizes the file",
+        "file belongs to",
+        "pressure down the file",
+        "control the file", "controls the file", "dominate the file",
+        "rook penetrates", "rook dominates the file",
+        "rooks have open files", "rooks will penetrate",
+        "rook lifts",
+        "files for the rooks",
+        "open the file",
+        "half open file",
     ],
 
     # ── Strategic themes ──────────────────────────────────────────────────────
     "space_advantage": [
         "space advantage", "more space", "cramped", "lack of space",
-        "restricts", "restricted", "constricted",
-    ],
-    "initiative": [
-        "initiative", "keeps the initiative", "seizes the initiative",
-        "maintains pressure", "attacking chances",
+        "constricted",
+        "squeeze", "squeezing", "squeezed",
+        "strangle", "strangled",
+        "stifling", "stifle",
+        "choke", "choking",
+        "suffocating", "suffocation",
+        "no room to maneuver", "no maneuvering room", "maneuvering room",
+        "lack of elbow room", "elbow room",
+        "no room to breathe", "room to breathe",
+        "acute lack of space",
+        "control of space",
+        "greater mobility",
+        "pieces lack mobility",
+        "free his game", "free the game",
+        "cannot maneuver",
+        "obstructing each other",
+        "pieces obstruct",
+        "siege",
     ],
     "tempo": [
-        "tempo", "tempi", "gains a tempo", "loss of time", "wasted tempo", "gains time", "gain of tempo", "loss of tempo"
+        "tempo", "tempi", "gains a tempo", "loss of time", "wasted tempo",
+        "gains time", "gain of tempo", "loss of tempo",
+        "loses a tempo", "tempo advantage", "with gain of time",
+        "time advantage", "with tempo",
     ],
     "zugzwang": [
-        "zugzwang", "compulsion to move", "any move worsens", "forced to move"
+        "zugzwang", "compulsion to move", "any move worsens", "forced to move",
+        "every move loses",
+        "all moves are bad",
+        "no good moves",
+        "in zugzwang",
+        "mutual zugzwang",
+        "whoever moves loses",
+        "must move",
+        "move is a liability",
+        "right to move",
+        "pass would win",
     ],
     "prophylaxis": [
-        "prophylaxis", "prophylactic", "prevents", "stops the threat",
+        "prophylaxis", "prophylactic",
         "anticipate", "forestall", "in order to prevent",
         "restraining", "restraint", "restrain the",
-        "to prevent", "avoiding", "denying",
+        "defensive move",
+        "nip in the bud",
+        "prevent the advance", "prevent the break",
+        "stop the plan", "hinder the plan",
     ],
     "minority_attack": [
-        "minority attack",
+        "minority attack", "minority structure",
+        "advances the b-pawn", "b4-b5", "b5 against",
+        "creates a weakness on c6", "weakness on c6",
+        "queenside minority",
     ],
     "simplification": [
         "simplif",                 # simplify, simplification, simplified
@@ -255,34 +529,80 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "reduce to a",             # "reduce to a winning endgame"
         "into a won endgame",
         "liquidat",                # liquidate, liquidation
-    ],
-    "positional_sacrifice": [
-        "positional sacrifice", "long-term sacrifice", "positional pawn sacrifice",
+        "trading down", "trades down",
+        "exchange all", "exchanges all",
+        "converts the advantage", "technique is simple",
+        "into a winning", "transition to",
     ],
     "fortification": [
         "fortress", "fortify", "impregnable", "cannot be broken",
+        "defensive fortress", "drawn fortress", "draws by fortress",
+        "cannot be infiltrated", "cannot be breached", "cannot break through",
+        "defensive wall", "draw by defense",
+        "king fortress", "king's fortress",
+        "stalemate", "stalemated", "stalemate trick", "stalemate trap",
+        "draw by repetition", "draws by repetition", "threefold repetition",
+        "three-fold repetition", "threefold repetition",
+        "forces a draw", "forces the draw", "secures a draw",
+        "holds the draw", "saves the draw", "drawing resource",
+        "overprotect", "overprotection", "over-protect",
+        "extra protection", "extra defender",
+        "redundant defense",
+        "prophylactic protection",
+        "secure the key square",
+        "defend in advance",
     ],
     "coordination": [
         "coordination", "cooperate", "harmonious", "pieces work together",
+        "in concert", "working together", "pieces combine", "acting together",
+        "pieces cooperate", "work in tandem", "work together",
+        "discoordinat",          # discoordinate, discoordination
+        "poorly coordinated", "lack of coordination",
+        "pieces act together", "pieces collaborate",
     ],
     "color_complex": [
-        "color complex", "light squares", "dark squares", "color weakness",
-        "wrong color",
+        "color complex", "colour complex",
+        "light squares", "dark squares",
+        "color weakness", "colour weakness",
+        "light-squared", "dark-squared",
+        "light square bishop", "dark square bishop",
+        "wrong color bishop", "wrong colour bishop", "wrong-colored bishop",
+        "bishop of the wrong color", "bishop of wrong color",
+        "control the light", "control the dark",
     ],
     "endgame_technique": [
-        "technique", "technical", "conversion", "realize the advantage", "convert the advantage",
+        "endgame technique", "technical endgame",
+        "conversion", "realize the advantage", "convert the advantage",
+        "rook endgame", "rook ending",
+        "bishop endgame", "bishop ending",
+        "pawn endgame", "pawn ending",
+        "knight endgame", "knight ending",
+        "queen endgame", "queen ending",
+        "lucena",                           # Lucena position (rook + pawn vs rook)
+        "philidor",                         # Philidor position (defensive drawing technique)
+        "build a bridge", "bridge building",# Lucena winning method
+        "tarrasch rule", "rook behind",     # rook behind passed pawn rule
+        "shoulder", "cut off the king",     # king cutting technique
+        "theoretically drawn", "theoretical win", "book draw",
+        "drawn endgame", "drawn ending", "drawn position",
+        "theoretical draw", "objectively drawn",
     ],
     "opposition": [
-        "opposition", "key square", "king opposition",
+        "opposition", "king opposition",
+        "triangulation", "triangulates",
+        "corresponding square", "key square", "critical square",
+        "takes the opposition", "seize the opposition",
     ],
 
     # ── New themes ────────────────────────────────────────────────────────────
     "counterplay": [
         "counterplay", "counter-play", "counter play",
-        "compensation", "compensat",
         "counter chances", "counter-attack", "counter attack",
         "dynamic chances", "sufficient compensation",
-        "in return", "good counterchances",
+        "good counterchances",
+        "perpetual check", "draws by perpetual",
+        "gives perpetual", "force perpetual", "forces perpetual",
+        "draw by perpetual",
     ],
 
     "development_lead": [
@@ -300,15 +620,18 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "attack on the king", "attacking chances", "assault",
         "attacking possibilities", "attacking play", "attacking position",
         "attack steadily", "press the attack", "dangerous attack",
-        "the attack is", "start a", "launch",
+        "direct attack", "launch the attack", "launch the kingside",
+        "open lines for the attack", "attacking ambitions",
     ],
 
     "square_control": [
-        "control of", "controls the", "control the",
-        "dominate", "dominates", "key square",
-        "important square", "occupy", "occupies the",
-        "seize", "seizes", "strong point",
-        "command of", "commands the",
+        "key square control", "central control", "control of the center",
+        "dominates the center", "control the center",
+        "important square", "crucial square", "strategic square",
+        "occupy the key square", "occupy the center",
+        "outpost square", "strong outpost square",
+        "control of key squares", "grip on the center",
+        "dominate the center", "center control",
     ],
 }
 
@@ -358,10 +681,21 @@ def game_header(game: chess.pgn.Game) -> str:
 
 # ── PGN parsing ───────────────────────────────────────────────────────────────
 
-def parse_file(pgn_path: Path, min_comment_len: int = 25, progress_every: int = 500):
+def _inject_folder_concept(themes: list[str], folder_concept: str | None) -> list[str]:
+    if folder_concept and folder_concept not in themes:
+        return sorted(themes + [folder_concept])
+    return themes
+
+
+def parse_file(pgn_path: Path, min_comment_len: int = 25, progress_every: int = 500,
+               folder_concept: str | None = None):
     """
     Generator — yields one training example dict at a time.
     Prints a progress line every `progress_every` games so you can see it's alive.
+
+    folder_concept: if set (e.g. "backward_pawn" for files under lichess_studies/),
+                    that label is guaranteed on every yielded example regardless of
+                    whether the keyword pass finds it.
     """
     import time
     source     = pgn_path.name
@@ -385,8 +719,29 @@ def parse_file(pgn_path: Path, min_comment_len: int = 25, progress_every: int = 
 
             header_str = game_header(game)
             board      = game.board()
-            node       = game
 
+            # ── game-level root comment (no move yet) ─────────────────────────
+            # Captures definition/explanation games like "Example 1" that have a
+            # rich comment before any moves (or instead of moves).
+            root_comment = clean_comment(game.comment)
+            if len(root_comment) >= min_comment_len:
+                themes = _inject_folder_concept(extract_themes(root_comment), folder_concept)
+                examples_yielded += 1
+                yield {
+                    "fen":        board.fen(),
+                    "move_san":   "",
+                    "move_uci":   "",
+                    "annotation": root_comment,
+                    "themes":     themes,
+                    "phase":      get_phase(board),
+                    "fullmove":   board.fullmove_number,
+                    "side":       "white" if board.turn == chess.WHITE else "black",
+                    "source":     source,
+                    "game":       header_str,
+                }
+
+            # ── per-move comments ─────────────────────────────────────────────
+            node = game
             while node.variations:
                 node       = node.variations[0]
                 fen_before = board.fen()
@@ -397,7 +752,7 @@ def parse_file(pgn_path: Path, min_comment_len: int = 25, progress_every: int = 
                 if len(comment) < min_comment_len:
                     continue
 
-                themes = extract_themes(comment)
+                themes = _inject_folder_concept(extract_themes(comment), folder_concept)
                 phase  = get_phase(chess.Board(fen_before))
 
                 try:
@@ -525,9 +880,20 @@ def main() -> None:
 
     try:
         for i, pgn_path in enumerate(pgn_files, 1):
-            print(f"\n  [{i}/{len(pgn_files)}] {pgn_path.name}")
+            # Detect folder concept for files under lichess_studies/<concept>/
+            folder_concept = None
+            parts = pgn_path.parts
+            if "lichess_studies" in parts:
+                idx = parts.index("lichess_studies")
+                if idx + 1 < len(parts):
+                    candidate = parts[idx + 1]
+                    if candidate in CONCEPT_KEYWORDS:
+                        folder_concept = candidate
+
+            print(f"\n  [{i}/{len(pgn_files)}] {pgn_path.name}"
+                  + (f"  [guaranteed: {folder_concept}]" if folder_concept else ""))
             try:
-                for ex in parse_file(pgn_path, args.min_comment):
+                for ex in parse_file(pgn_path, args.min_comment, folder_concept=folder_concept):
                     if out_f:
                         out_f.write(json.dumps(ex) + "\n")
 

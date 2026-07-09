@@ -16,18 +16,18 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from .board_encoder import INPUT_SIZE
+from .board_encoder import COMBINED_SIZE
 from .concept_vocab import NUM_CONCEPTS, CONCEPTS
 
 
 class ChessConceptClassifier(nn.Module):
     def __init__(
         self,
-        input_size:  int   = INPUT_SIZE,
-        hidden1:     int   = 512,
-        hidden2:     int   = 256,
+        input_size:  int   = COMBINED_SIZE,
+        hidden1:     int   = 1024,
+        hidden2:     int   = 512,
         num_concepts: int  = NUM_CONCEPTS,
-        dropout:     float = 0.3,
+        dropout:     float = 0.4,
     ) -> None:
         super().__init__()
         self.net = nn.Sequential(
@@ -50,19 +50,37 @@ class ChessConceptClassifier(nn.Module):
 
     @torch.no_grad()
     def predict_concepts(
-        self, fen: str, threshold: float = 0.4
+        self,
+        fen: str,
+        threshold: float | None = None,
     ) -> list[tuple[str, float]]:
         """
-        Given a FEN string, return (concept_name, probability) pairs
-        for all concepts above the threshold, sorted by probability.
+        Return (concept_name, probability) pairs above threshold, sorted by prob.
+
+        threshold:
+          - None  → load calibrated per-class thresholds from data/thresholds.json
+                    if that file exists, otherwise fall back to 0.4 globally.
+          - float → use that value for every class (overrides the calibrated file).
         """
-        from .board_encoder import fen_to_tensor
+        from .board_encoder import fen_to_tensor, move_to_tensor
+        from .evaluate      import load_thresholds
+
         self.eval()
-        x      = fen_to_tensor(fen).unsqueeze(0)
-        logits = self.forward(x).squeeze(0)
+        device = next(self.parameters()).device
+
+        if threshold is None:
+            t_vec = load_thresholds()                        # [NUM_CONCEPTS]
+        else:
+            t_vec = torch.full((NUM_CONCEPTS,), threshold)
+
+        board_t = fen_to_tensor(fen)
+        move_t  = move_to_tensor("")   # no move context at inference time
+        x       = torch.cat([board_t, move_t]).unsqueeze(0).to(device)
+        logits = self.forward(x).squeeze(0).cpu()
         probs  = torch.sigmoid(logits)
+
         return sorted(
             [(CONCEPTS[i], probs[i].item())
-             for i in range(NUM_CONCEPTS) if probs[i] > threshold],
+             for i in range(NUM_CONCEPTS) if probs[i] >= t_vec[i]],
             key=lambda t: -t[1],
         )

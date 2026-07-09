@@ -35,7 +35,22 @@ from .dataset    import ChessConceptDataset
 from .classifier import ChessConceptClassifier
 from .concept_vocab import CONCEPTS, NUM_CONCEPTS
 
-CHECKPOINT_DIR = Path("data")
+CHECKPOINT_DIR  = Path("data")
+LABEL_SMOOTHING = 0.05   # 0 → 0.05, 1 → 0.95; softens noisy keyword labels
+
+
+def macro_f1(preds: torch.Tensor, targets: torch.Tensor) -> float:
+    """Macro F1 over classes that have at least one positive in this split."""
+    preds   = preds.float()
+    targets = targets.float()
+    tp = (preds * targets).sum(0)
+    fp = (preds * (1 - targets)).sum(0)
+    fn = ((1 - preds) * targets).sum(0)
+    has_support  = targets.sum(0) > 0
+    precision    = tp / (tp + fp).clamp(min=1)
+    recall       = tp / (tp + fn).clamp(min=1)
+    f1_per_class = 2 * precision * recall / (precision + recall + 1e-8)
+    return f1_per_class[has_support].mean().item()
 
 
 def train(args: argparse.Namespace) -> None:
@@ -73,21 +88,21 @@ def train(args: argparse.Namespace) -> None:
     loss_fn    = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     # ── optimiser + scheduler ─────────────────────────────────────────────────
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=5e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=args.lr * 0.05
     )
 
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    best_val_loss  = float("inf")
+    best_macro_f1  = -1.0
     best_epoch     = 0
     patience_count = 0
 
     print(f"\n── Training  ({args.epochs} epochs, batch {args.batch_size}) "
           f"─────────────────────────────────────")
-    print(f"{'Epoch':>5}  {'Train Loss':>10}  {'Val Loss':>8}  "
+    print(f"{'Epoch':>5}  {'Train Loss':>10}  {'Val Loss':>8}  {'Macro F1':>8}  "
           f"{'LR':>9}  {'Time':>6}  {'Note'}")
-    print("─" * 65)
+    print("─" * 75)
 
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
@@ -108,25 +123,35 @@ def train(args: argparse.Namespace) -> None:
 
         # ── validate ──────────────────────────────────────────────────────────
         model.eval()
-        val_loss = 0.0
+        val_loss   = 0.0
+        all_preds  = []
+        all_targets = []
         with torch.no_grad():
             for x, y in val_dl:
                 x, y = x.to(device), y.to(device)
-                val_loss += loss_fn(model(x), y).item()
+                logits = model(x)
+                val_loss += loss_fn(logits, y).item()
+                all_preds.append((torch.sigmoid(logits) > 0.5).cpu())
+                all_targets.append(y.cpu())
         val_loss /= len(val_dl)
+
+        preds   = torch.cat(all_preds)
+        targets = torch.cat(all_targets)
+        val_f1  = macro_f1(preds, targets)
 
         elapsed = time.time() - t0
         lr_now  = scheduler.get_last_lr()[0]
         note    = ""
 
-        if val_loss < best_val_loss:
-            best_val_loss  = val_loss
+        if val_f1 > best_macro_f1:
+            best_macro_f1  = val_f1
             best_epoch     = epoch
             patience_count = 0
             torch.save({
                 "epoch":      epoch,
                 "state_dict": model.state_dict(),
                 "val_loss":   val_loss,
+                "macro_f1":   val_f1,
                 "concepts":   CONCEPTS,
             }, CHECKPOINT_DIR / "classifier_best.pt")
             note = "✓ best"
@@ -136,7 +161,7 @@ def train(args: argparse.Namespace) -> None:
                 print(f"\nEarly stopping — no improvement for {args.patience} epochs.")
                 break
 
-        print(f"{epoch:>5}  {train_loss:>10.4f}  {val_loss:>8.4f}  "
+        print(f"{epoch:>5}  {train_loss:>10.4f}  {val_loss:>8.4f}  {val_f1:>8.4f}  "
               f"{lr_now:>9.2e}  {elapsed:>5.1f}s  {note}")
 
     # Save final checkpoint regardless of whether it's the best
@@ -148,7 +173,7 @@ def train(args: argparse.Namespace) -> None:
     }, CHECKPOINT_DIR / "classifier_last.pt")
 
     print(f"\n── Done ──────────────────────────────────────────────────────────────")
-    print(f"Best checkpoint : epoch {best_epoch}  val_loss={best_val_loss:.4f}")
+    print(f"Best checkpoint : epoch {best_epoch}  macro_f1={best_macro_f1:.4f}")
     print(f"Saved to        : {CHECKPOINT_DIR / 'classifier_best.pt'}")
     print(f"\nNext step: python -m src.chess_coach.ml.evaluate")
 
@@ -156,13 +181,13 @@ def train(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train chess concept classifier")
     parser.add_argument("--data",       default="data/training_raw.jsonl")
-    parser.add_argument("--epochs",     type=int,   default=40)
+    parser.add_argument("--epochs",     type=int,   default=100)
     parser.add_argument("--batch-size", type=int,   default=128)
     parser.add_argument("--lr",         type=float, default=1e-3)
-    parser.add_argument("--patience",   type=int,   default=8,
-                        help="Stop after N epochs with no val improvement.")
+    parser.add_argument("--patience",   type=int,   default=15,
+                        help="Stop after N epochs with no macro F1 improvement.")
     parser.add_argument("--quick",      action="store_true",
-                        help="Use 10% of data for a fast test run.")
+                        help="Use 10%% of data for a fast test run.")
     args = parser.parse_args()
     train(args)
 

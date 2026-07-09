@@ -8,6 +8,7 @@ data/trees/
 data/annotated_pgns/
 data/training_raw.jsonl
 data\training_raw.jsonl
+data
 
 # Engines
 *.exe

@@ -1,6 +1,8 @@
 # ChessPlayer v3.0.0
 
-A desktop chess analysis and coaching application for Windows. Browse large PGN game databases, analyze positions with a UCI engine, and receive Nimzowitsch-style strategic coaching — all running locally with no cloud dependency.
+A desktop chess analysis and coaching application for Windows. Browse large PGN game databases, analyse positions with a UCI engine, and receive structured strategic coaching — all running locally with no cloud dependency.
+
+The coaching layer is actively evolving from a deterministic phrase-based system toward a fully trained neural network that understands 53 chess concepts by name, trained on millions of master positions and puzzle databases.
 
 ---
 
@@ -25,32 +27,43 @@ A desktop chess analysis and coaching application for Windows. Browse large PGN 
     - [Module Map](#module-map)
     - [Dependency Rules](#dependency-rules)
     - [Signal Flow](#signal-flow)
-11. [Chess Coach Pipeline](#chess-coach-pipeline)
-12. [Database Schema](#database-schema)
-13. [Configuration System](#configuration-system)
-14. [Development Scripts](#development-scripts)
-15. [Contributing](#contributing)
+11. [Coach Nimzowitsch — The Neural Network](#coach-nimzowitsch--the-neural-network)
+    - [The 53 Concepts](#the-53-concepts)
+    - [Model Architecture](#model-architecture)
+    - [Training Pipeline](#training-pipeline)
+    - [Data Sources](#data-sources)
+    - [Algorithmic Detectors](#algorithmic-detectors)
+    - [Roadmap](#roadmap)
+12. [Training the Coach](#training-the-coach)
+13. [The Deterministic Coach (Legacy)](#the-deterministic-coach-legacy)
+14. [Database Schema](#database-schema)
+15. [Configuration System](#configuration-system)
+16. [Development Scripts](#development-scripts)
+17. [Contributing](#contributing)
 
 ---
 
 ## Features
 
-- **PGN Game Browser** — load any `.pgn` file or directory, filter by player, event, opening, date, and ECO code; paginated with lazy loading for databases of any size
+- **PGN Game Browser** — load any `.pgn` file or directory; filter by player, event, opening, date, and ECO code; paginated with lazy loading for databases of any size
 - **Interactive Board** — drag-and-drop piece moves, full variation tree support, promote/demote variations, inline move comments
 - **Engine Analysis** — Stockfish UCI integration with multi-PV evaluation, animated eval bar, and best-move arrows; runs on a background thread so the UI stays responsive
 - **Continuation Statistics** — see how often a position arises in your loaded library and what the top continuations are, powered by an O(1) position-tree lookup
-- **Chess Coach** — Nimzowitsch-style strategic coaching: what's wrong with the position, why, what to do, and why now; weak squares highlighted on a secondary board with historical GM precedents
+- **Chess Coach (Deterministic)** — Nimzowitsch-style strategic coaching: classifies each position into one of four strategies (Blitz, Flank, Fortress, Feint) and generates natural-language guidance assembled from a curated phrase database
+- **Coach Nimzowitsch (Neural Network)** — a 53-class multi-label classifier trained to identify chess concepts by name directly from the board position and key move; trained on millions of master games, Lichess puzzles, and algorithmically-labelled positions
 - **Offline-first** — all analysis, coaching, and database queries run locally
 
 ---
 
 ## Screenshots
 
+*Screenshots will be updated when the ML coaching UI is integrated.*
+
 **PGN Editor — game browser, interactive board, and engine analysis**
 
 ![PGN Editor](docs/screenshots/ChessPNGEditorAlpha.png)
 
-**Chess Coach — strategic coaching panel with Stockfish16 Evaluation Terms**
+**Chess Coach — strategic coaching panel with Stockfish evaluation terms**
 
 ![Chess Coach](docs/screenshots/ChessCoachAlpha.png)
 
@@ -68,11 +81,15 @@ A desktop chess analysis and coaching application for Windows. Browse large PGN 
 
 Python packages (installed via `pip`):
 
-| Package | Version |
-|---|---|
-| PySide6 | `>=6.8, <6.9` |
-| python-chess | `>=1.11, <2.0` |
-| PyYAML | `>=6.0.2, <7.0` |
+| Package | Version | Purpose |
+|---|---|---|
+| PySide6 | `>=6.8, <6.9` | GUI framework |
+| python-chess | `>=1.11, <2.0` | Board logic, PGN parsing |
+| PyYAML | `>=6.0.2, <7.0` | Configuration |
+| torch | `>=2.0` | Neural network training and inference |
+| numpy | `>=1.24` | Tensor utilities |
+
+The `torch` and `numpy` packages are only required for the ML coaching pipeline (`src/chess_coach/ml/` and `tools/`). The main application runs without them if the coach ML components are not used.
 
 ---
 
@@ -110,14 +127,12 @@ Any UCI-compatible engine will work — the path in config is the only coupling.
 
 ## Running the App
 
-The app uses flat imports and **must be launched from the `src/chessplayer` directory**:
-
 ```powershell
 cd src\chessplayer
 python main.py
 ```
 
-Or use the provided dev script from the repo root:
+Or from the repo root:
 
 ```powershell
 .\scripts\run_dev.ps1
@@ -128,20 +143,20 @@ Or use the provided dev script from the repo root:
 | Flag | Effect |
 |---|---|
 | *(none)* | Launch the GUI |
-| `--index` | Rebuild the index for all configured sources, then exit (no GUI) |
+| `--index` | Rebuild the index for all configured sources, then exit |
 | `--index-source <path>` | Index a single `.pgn` file or directory, then exit |
 
 ---
 
 ## Configuration
 
-Configuration is a three-layer merge system. You should rarely need to touch anything beyond the engine path.
+Configuration is a three-layer merge system.
 
 | Layer | File | Purpose |
 |---|---|---|
 | 1 — Defaults | `config/default.yaml` | Canonical defaults, never edited at runtime |
 | 2 — Dev overrides | `config/dev.yaml` | Local developer overrides (gitignored) |
-| 3 — User overrides | `%APPDATA%\CHESSPLAYER\config.yaml` | Auto-saved user preferences (last source, UI state) |
+| 3 — User overrides | `%APPDATA%\CHESSPLAYER\config.yaml` | Auto-saved user preferences |
 
 Key settings in `config/default.yaml`:
 
@@ -156,15 +171,12 @@ pgn_sources:
     path: "data/Carlsen.pgn"
 
 coach:
-  pgn_source: "data/Carlsen.pgn"   # game library for GM precedent matching
+  pgn_source: "data/Carlsen.pgn"
   phrase_db: "data/chess_coach.db"
-  movetime_ms: 500                  # Stockfish analysis time per position
-
-browsing:
-  page_size: 200                    # rows per page in the game table
+  movetime_ms: 500
 ```
 
-See [config/README_config.md](config/README_config.md) for the full schema and merge rules.
+See [config/README_config.md](config/README_config.md) for the full schema.
 
 ---
 
@@ -172,14 +184,7 @@ See [config/README_config.md](config/README_config.md) for the full schema and m
 
 ### Game Browser
 
-The left panel is the game archive. Use the filter bar at the top to narrow results by:
-
-- **White / Black** — player name (partial match)
-- **Event / Site** — tournament name or venue
-- **ECO** — opening code (e.g. `E60`)
-- **Date range** — from/to year
-
-Click any row to load that game onto the board. The table is paged and lazy-loads from SQLite, so multi-gigabyte databases open instantly.
+The left panel is the game archive. Filter by White, Black, Event, Site, ECO, or date range. Click any row to load that game onto the board. The table lazy-loads from SQLite so multi-gigabyte databases open instantly.
 
 ### Board & PGN Panel
 
@@ -191,85 +196,29 @@ Click any row to load that game onto the board. The table is paged and lazy-load
 
 ### Engine Panel
 
-Toggle the engine on/off with the toolbar button. When active, Stockfish analyses the current position continuously and shows:
-
-- Centipawn score and the animated eval bar
-- Best move (highlighted on the board)
-- Principal variation line(s)
-
-Click any move in the PV line to replay it on the secondary coach board.
+Toggle Stockfish on/off with the toolbar button. When active, shows centipawn score, animated eval bar, best move (highlighted on board), and principal variation lines.
 
 ### Variations Panel
 
-Shows how often the current position appears in your loaded game library and what moves were played from it, along with win/draw/loss percentages. This uses a pre-built move tree (not live SQL) so lookups are instant.
+Shows how often the current position appears in your loaded library and what moves were played from it, with win/draw/loss percentages. Uses a pre-built move tree for O(1) lookups.
 
 ### Chess Coach
 
-The Coach tab analyses the current position and produces a fully structured strategic recommendation in natural language — no bullet points, no engine gibberish. Every word is assembled from a curated phrase database sourced from Aaron Nimzowitsch's *My System* (1925), the foundational text of prophylactic positional chess. Nimzowitsch was the first theorist to describe chess in terms of strategic principles — pawn chains, blockades, overprotection, outposts, the prophylactic move — and his language maps cleanly onto the four strategies the coach detects. The result is coaching that reads like a chess teacher, not a search engine.
-
-#### What the coach identifies
-
-The coach classifies every position into one of four strategic categories:
-
-| Strategy | What it means |
-|---|---|
-| **Blitz** | Direct assault on an exposed king — concentrate attackers, open lines, strike before the defence consolidates |
-| **Flank** | Positional squeeze — restrict mobility, occupy outposts, cramp the opponent until the position collapses of its own weight |
-| **Fortress** | Blockade defence — when objectively worse, seal open files, fix the pawn structure, and hold the wall |
-| **Feint** | Wing misdirection — hold tension deliberately, bait a commitment to one wing, then switch to the other |
-
-The strategy is shown as a badge alongside a confidence score and the detected game phase (opening / middlegame / endgame). When two strategies score within 8% of each other the coach surfaces both and notes the tension between plans.
-
-#### What the output looks like
-
-Each coaching response has four ordered parts:
-
-1. **Headline** — one sentence naming the strategy, phase, and confidence
-2. **Plan sentences** — up to four sentences assembled in sequence: *what is wrong → why we know → what to do → why right now*
-3. **Tactics** — separate tactical observations (pins, forks, skewers, discoveries) shown in a distinct section
-4. **Weak squares** — every square identified by the extractors, listed and overlaid as corner indicators on the coach board
-
-**Example — Fortress detected in an opening position:**
-
-```
-FORTRESS                                                       29% · opening
-
-Fortress Defence is suggested — opening (29% confidence).
-
-  Our pieces are restricted — this is not a failure. In the fortress
-  strategy, restriction is the design.
-
-  The move count tells the story — our pieces command more squares.
-  This is the first measure of positional advantage.
-
-  Development demands activity. Every piece must have a purpose;
-  every tempo must be spent wisely.
-
-  The isolated pawn will not defend itself. Attack it now while
-  every piece can participate in the assault.
-
-⚡ Tactics
-  The fork on c5 wins material by force — one of the attacked
-  pieces must be surrendered.
-
-Weak squares: a7 · b5 · b6 · b8 · c6 · c7 · e6 · e7
-```
-
-Clicking **Coach ON / OFF** in the toolbar enables or disables analysis. The side badge (White / Black) controls which player is being coached. Analysis runs automatically on each move.
+The Coach tab analyses the current position and produces a strategic recommendation. The current live system is the deterministic coach (see [The Deterministic Coach](#the-deterministic-coach-legacy)). The neural network coach is in training and will be integrated into this panel.
 
 ---
 
 ## Indexing PGN Files
 
-On first run, ChessPlayer indexes whatever PGN source is set in config. Indexing reads game headers and records a byte offset into the source file — it does **not** copy game text into the database. This means a 4 GB `.pgn` file indexes in a few minutes and opens games in milliseconds.
+On first run, ChessPlayer indexes whatever PGN source is set in config. Indexing records a byte offset per game into SQLite — it does **not** copy game text into the database. A 4 GB `.pgn` file indexes in a few minutes and opens games in milliseconds.
 
 To add a new source:
 
 1. Drop your `.pgn` file into `data/`.
-2. Update `pgn_sources.active_source.path` in `config/default.yaml` (or via the UI source switcher).
+2. Update `pgn_sources.active_source.path` in `config/default.yaml`.
 3. Run with `--index` or let auto-indexing run on next launch.
 
-The move tree for continuation statistics is built separately and cached in `data/trees/` as a gzip-pickled file keyed by the source's SHA-1 hash. It is rebuilt automatically when the source changes.
+The move tree for continuation statistics is built separately and cached in `data/trees/` as a gzip-pickled file. It rebuilds automatically when the source changes.
 
 ---
 
@@ -279,198 +228,371 @@ The move tree for continuation statistics is built separately and cached in `dat
 
 ```
 ChessPlayer - v3.0.0/
-├── config/                  # YAML configuration (3-layer merge)
-│   ├── default.yaml
-│   ├── dev.yaml             # gitignored, local overrides
-│   └── README_config.md
-│
-├── data/                    # Runtime data (gitignored)
-│   ├── index.sqlite         # Game metadata + byte offsets
-│   ├── chess_coach.db       # Coaching phrase database
-│   ├── Carlsen.pgn          # Default game library
-│   └── trees/              # MoveTree cache files (.pkl.gz)
-│
-├── assets/
-│   ├── pieces/              # PNG piece images (WP.png, BK.png, …)
-│   ├── engines/             # Place your Stockfish binary here
-│   └── ui.qss               # Qt stylesheet
-│
-├── src/
-│   ├── main.py              # CLI entry point
-│   ├── chessplayer/         # Main application package
-│   │   ├── app.py           # QApplication factory
-│   │   ├── core/            # Chess state machine (no Qt)
-│   │   ├── pgn/             # Database, indexer, move tree (no Qt)
-│   │   ├── engine/          # UCI engine wrapper (no Qt)
-│   │   ├── config/          # Config loader
-│   │   ├── utils/           # Path utilities
-│   │   └── ui/              # All PySide6 widgets + QML
-│   │       ├── qml/BoardView.qml
-│   │       └── main_window/window.py
-│   └── chess_coach/         # Coaching backend (independent package)
-│       ├── core/            # Data types + strategy engine
-│       ├── extractors/      # Six metric extractor modules
-│       ├── strategies/      # Four strategy detectors
-│       ├── database/        # Phrase DB, pattern matcher, PGN indexer
-│       └── tests/
-│
-└── scripts/                 # run_dev.ps1, run_dev.sh, build_windows.ps1
+|
++-- config/                     # YAML configuration (3-layer merge)
+|   +-- default.yaml
+|   +-- dev.yaml                # gitignored, local overrides
+|   +-- README_config.md
+|
++-- data/                       # Runtime data (gitignored)
+|   +-- index.sqlite            # Game metadata + byte offsets
+|   +-- chess_coach.db          # Deterministic coaching phrase database
+|   +-- Carlsen.pgn             # Default game library
+|   +-- Caissabase.pgn          # Master game database for ML training
+|   +-- lichess_elite_2020-10.pgn
+|   +-- lichess_db_puzzle.csv   # Lichess 6M puzzle database
+|   +-- annotated_pgns/         # Annotated PGN training material
+|   |   +-- Raw_pgn/            # Manually curated annotated games
+|   |   +-- lichess_studies/    # Concept-organised Lichess studies
+|   +-- training_raw.jsonl      # Assembled training dataset (generated)
+|   +-- classifier_best.pt      # Best model checkpoint (generated)
+|   +-- thresholds.json         # Per-class calibrated thresholds (generated)
+|   +-- trees/                  # MoveTree cache files (.pkl.gz)
+|
++-- assets/
+|   +-- pieces/                 # PNG piece images
+|   +-- engines/                # Place your Stockfish binary here
+|   +-- scraping/               # Lichess data collection scripts
+|   +-- ui.qss                  # Qt stylesheet
+|
++-- src/
+|   +-- chessplayer/            # Main application package
+|   |   +-- app.py
+|   |   +-- core/               # Chess state machine (no Qt)
+|   |   +-- pgn/                # Database, indexer, move tree
+|   |   +-- engine/             # UCI engine wrapper
+|   |   +-- config/             # Config loader
+|   |   +-- utils/
+|   |   +-- ui/                 # All PySide6 widgets
+|   |       +-- qml/BoardView.qml
+|   |       +-- main_window/window.py
+|   +-- chess_coach/            # Coaching backend
+|       +-- core/               # Data types + strategy engine
+|       +-- extractors/         # Six position-metric extractors
+|       +-- strategies/         # Four strategy detectors
+|       +-- database/           # Phrase DB, pattern matcher, PGN indexer
+|       +-- ml/                 # Neural network coach
+|           +-- concept_vocab.py    # 53 concept labels (stable, order matters)
+|           +-- board_encoder.py    # FEN -> 909-dim tensor
+|           +-- dataset.py          # JSONL loader + train/val/test split
+|           +-- classifier.py       # MLP model definition
+|           +-- train.py            # Training loop
+|           +-- evaluate.py         # Threshold calibration + evaluation
+|
++-- tools/                      # ML data pipeline scripts
+|   +-- parse_annotated_pgn.py  # Extracts examples from annotated PGNs
+|   +-- ingest_lichess_csv.py   # Processes Lichess 6M puzzle CSV
+|   +-- ingest_game_database.py # Scans master game PGNs algorithmically
+|   +-- label_positions.py      # 32 algorithmic concept detectors
+|   +-- inspect_weights.py      # Post-training weight analysis
+|
++-- retrain.ps1                 # Full pipeline: data -> train -> evaluate
++-- scripts/                    # run_dev.ps1, run_dev.sh, build_windows.ps1
 ```
 
 ### Module Map
 
 | Module | Role |
 |---|---|
-| `core/pgn_edit.py` | Central chess controller — `PgnEditor` owns all move/navigation/annotation logic |
+| `core/pgn_edit.py` | Central chess controller — owns all move/navigation/annotation logic |
 | `core/game_session.py` | `GameSession` — undo/redo wrapper around `chess.Board` |
 | `pgn/store.py` | `PgnStore` — SQLite query layer for game metadata |
-| `pgn/indexer.py` | `build_or_rebuild_index_for_source()` — PGN scanner, writes offsets to SQLite |
+| `pgn/indexer.py` | PGN scanner, writes byte offsets to SQLite |
 | `pgn/move_tree.py` | `MoveTree` — position-frequency tree for O(1) continuation lookup |
-| `pgn/continuations.py` | Queries MoveTree (full library) or store (filtered subset) |
-| `pgn/query.py` | `Query` + `Clause` — filter spec compiler to parameterised SQL |
-| `engine/uci_engine.py` | `UciEngine` — Stockfish subprocess controller, runs on QThread |
-| `config/loader.py` | `load_config()` three-layer merge + `save_user_config_patch()` |
+| `engine/uci_engine.py` | Stockfish subprocess controller, runs on QThread |
+| `config/loader.py` | Three-layer config merge |
 | `ui/main_window/window.py` | `MainWindow` — central coordinator, owns all signals |
-| `ui/board_model.py` | `BoardListModel` + `BoardBridge` — Python ↔ QML bridge |
-| `ui/pgn_panel.py` | HTML-rendered PGN tree viewer |
-| `ui/variations_panel.py` | Continuation stats display |
-| `ui/engine_panel.py` | Stockfish eval display, multi-PV lines |
-| `ui/eval_bar.py` | Animated centipawn eval bar widget |
-| `ui/game_table_model.py` | Virtual table model with 200-row lazy paging |
-| `ui/query_builder.py` | Filter bar widget, emits `query_changed(Query)` |
-| `chess_coach/core/strategy_engine.py` | Top-level coaching orchestrator |
-| `chess_coach/core/data_types.py` | `MetricSignal`, `CoachOutput`, `GMPrecedent` dataclasses |
-| `chess_coach/database/phrase_db.py` | `PhraseDB` — phrase lookup with slot-filling |
-| `chess_coach/database/pattern_matcher.py` | `PatternMatcher` — GM precedent matching |
+| `chess_coach/ml/concept_vocab.py` | Canonical ordered list of all 53 concept labels |
+| `chess_coach/ml/board_encoder.py` | `fen_to_tensor()` + `move_to_tensor()` + `COMBINED_SIZE` |
+| `chess_coach/ml/classifier.py` | `ChessConceptClassifier` — 1024/512 MLP |
+| `chess_coach/ml/train.py` | Training loop with macro F1 early stopping |
+| `chess_coach/ml/evaluate.py` | Per-class threshold calibration, spot checks |
+| `tools/label_positions.py` | `label_position(board)` — 32 algorithmic concept detectors |
+| `tools/ingest_lichess_csv.py` | Lichess CSV ingestion with tag mapping + algo detection |
+| `tools/ingest_game_database.py` | Master game database scanner, algo detection only |
+| `tools/parse_annotated_pgn.py` | Keyword-based concept extraction from annotated PGNs |
 
 ### Dependency Rules
 
-These rules are enforced to prevent circular imports. Qt is never imported outside of `ui/`.
+Qt is never imported outside of `ui/`.
 
 ```
-ui/          → core/, pgn/, engine/, config/, utils/
-core/        → (none — pure chess logic)
-pgn/         → utils/
-engine/      → (none — subprocess wrapper)
-config/      → utils/
-chess_coach/ → core/ only
+ui/          -> core/, pgn/, engine/, config/, utils/
+core/        -> (none - pure chess logic)
+pgn/         -> utils/
+engine/      -> (none - subprocess wrapper)
+chess_coach/ -> core/ only
+chess_coach/ml/ -> (none - standalone, numpy/torch only)
+tools/       -> src/chess_coach/ml/ (concept_vocab, board_encoder)
 ```
 
 ### Signal Flow
 
 ```
 User drags piece on QML board
-  └─ BoardBridge.attemptMove(from_sq, to_sq)
-       └─ PgnEditor.try_user_move()
-            └─ PgnEditor updates board + PGN node
-                 └─ bridge.moveMade.emit(san)
-                      └─ MainWindow._on_position_changed()
-                           ├─ pgn_panel.refresh()
-                           ├─ variations_panel.refresh(prefix_uci)
-                           ├─ engine_panel.trigger_analysis()
-                           └─ coachRequested.emit(fen, prefix_uci)
-                                └─ MainWindow._on_coach_help_requested()
-                                     └─ StrategyEngine.analyse(board, side)
-                                          └─ CoachOutput → CoachPanel
+  +-- BoardBridge.attemptMove(from_sq, to_sq)
+       +-- PgnEditor.try_user_move()
+            +-- PgnEditor updates board + PGN node
+                 +-- bridge.moveMade.emit(san)
+                      +-- MainWindow._on_position_changed()
+                           +-- pgn_panel.refresh()
+                           +-- variations_panel.refresh(prefix_uci)
+                           +-- engine_panel.trigger_analysis()
+                           +-- coachRequested.emit(fen, prefix_uci)
+                                +-- MainWindow._on_coach_help_requested()
+                                     +-- StrategyEngine.analyse(board, side)
+                                          +-- CoachOutput -> CoachPanel
 ```
 
 ---
 
-## Chess Coach Pipeline
+## Coach Nimzowitsch — The Neural Network
 
-The coaching backend (`src/chess_coach/`) is a fully deterministic, auditable analysis pipeline. There are no AI calls at runtime. Every coaching sentence is assembled from a curated SQLite phrase database using slot-filling — the same phrase template can produce different text depending on the specific squares, files, and pieces the extractors identify.
+The central long-term project within ChessPlayer is **Coach Nimzowitsch**: a neural network trained to identify 53 chess concepts by name from a board position and the key move being played. This gives the coach a rich, human-readable vocabulary it can use to explain what's happening in a position — not just *what* Stockfish recommends but *why* it's good in terms a student can understand and remember.
 
-### The seven-stage pipeline
+### The 53 Concepts
+
+The full concept vocabulary, in output-neuron order (fixed — adding new concepts must go at the end):
+
+**Tactical**
+`pin` · `fork` · `skewer` · `discovered_attack` · `deflection` · `decoy` · `overloading` · `zwischenzug` · `interference` · `clearance` · `back_rank` · `sacrifice` · `exchange_sacrifice` · `combination` · `mating_attack` · `trapped_piece`
+
+**Piece concepts**
+`outpost` · `blockade` · `bad_bishop` · `good_bishop` · `bishop_pair` · `piece_activity` · `battery` · `rook_seventh`
+
+**Pawn structure**
+`passed_pawn` · `isolated_pawn` · `backward_pawn` · `doubled_pawn` · `pawn_majority` · `pawn_chain` · `pawn_break` · `pawn_storm` · `pawn_weakness` · `pawn_island`
+
+**King & squares**
+`king_safety` · `king_activity` · `weak_square` · `open_file`
+
+**Strategic**
+`space_advantage` · `tempo` · `zugzwang` · `prophylaxis` · `minority_attack` · `simplification` · `fortification` · `coordination` · `color_complex` · `endgame_technique` · `opposition`
+
+**Dynamic**
+`counterplay` · `development_lead` · `attacking_chances` · `square_control`
+
+### Model Architecture
+
+```
+Input: 909-dimensional vector
+  - 781 board encoding  (piece placement, castling, en-passant, move counts, phase)
+  - 128 move one-hot    (64 from-square + 64 to-square, the key move context)
+
+Hidden layer 1:  Linear(909, 1024) -> BatchNorm -> ReLU -> Dropout(0.4)
+Hidden layer 2:  Linear(1024, 512) -> BatchNorm -> ReLU -> Dropout(0.4)
+Output:          Linear(512, 53)   -> per-class sigmoid (BCEWithLogitsLoss)
+
+Parameters: ~1.49M
+```
+
+**Training details:**
+- Loss: `BCEWithLogitsLoss` with per-class `pos_weight` clamped to (1.0, 50.0) to handle label imbalance
+- Optimiser: AdamW, weight decay 5e-4, initial LR 1e-3 with cosine annealing
+- Early stopping: macro F1 on validation set, patience 15 epochs
+- Thresholds: calibrated per class on the validation set after training, saved to `data/thresholds.json`
+
+**Why multi-label:** Most positions have multiple concepts simultaneously present. A position can be a `pin` + `battery` + `pawn_storm` + `king_safety` threat all at once. Single-label classification would lose this richness.
+
+**Why the move feature:** The key move often determines the concept. A rook move to e7 could be `rook_seventh`, `battery`, or `clearance` depending on context. The 128-dim move one-hot gives the model the move being played alongside the static board, dramatically reducing ambiguity for tactical concepts.
+
+### Training Pipeline
+
+The full pipeline is orchestrated by `retrain.ps1`. Three data sources are assembled into `data/training_raw.jsonl` and then trained on:
+
+```
+1. parse_annotated_pgn.py  <-- data/annotated_pgns/
+      |
+      | Keyword matching on { comment } blocks.
+      | Primary source for dynamic/meta concepts that require human prose
+      | to identify: tempo, combination, fortification, coordination, etc.
+      |
+      v
+2. ingest_lichess_csv.py   <-- data/lichess_db_puzzle.csv  (6M puzzles)
+      |
+      | Maps Lichess theme tags to our concept vocab.
+      | ALSO runs all 32 algorithmic detectors on every puzzle position,
+      | filling structural concepts Lichess doesn't explicitly tag.
+      | Applies a per-concept cap (default 50k) to prevent common
+      | structural concepts from drowning out rare tactical ones.
+      |
+      v
+3. ingest_game_database.py <-- data/Caissabase.pgn, Carlsen.pgn, etc.
+      |
+      | Pure algorithmic detection on master game positions.
+      | Samples every 5th move from each game.
+      | Provides rich, unbiased positional examples for structural
+      | concepts that puzzles under-represent.
+      |
+      v
+data/training_raw.jsonl
+      |
+      v
+train.py  -->  classifier_best.pt
+      |
+      v
+evaluate.py  -->  thresholds.json
+```
+
+### Data Sources
+
+| Source | Examples (approx) | Concepts covered |
+|---|---|---|
+| Annotated PGNs (`data/annotated_pgns/`) | ~50k labeled | Dynamic/meta concepts, all 53 via keyword |
+| Lichess puzzle CSV (6M puzzles) | ~830k | 44+ concepts hit 50k cap |
+| Master game databases (Caissabase etc.) | ~500k+ | Structural/strategic concepts |
+
+### Algorithmic Detectors
+
+`tools/label_positions.py` contains 32 position-level detectors that return concept labels directly from a `chess.Board` object. These fire on every position in the Lichess CSV and game database pipelines, providing high-precision labels at scale without requiring human annotation.
+
+**Detectable from a single position:**
+
+| Category | Concepts |
+|---|---|
+| Pawn structure | `passed_pawn` `isolated_pawn` `doubled_pawn` `pawn_island` `pawn_majority` `backward_pawn` `pawn_chain` `pawn_weakness` `pawn_storm` `minority_attack` |
+| Piece quality | `bad_bishop` `good_bishop` `bishop_pair` `battery` `blockade` `outpost` `rook_seventh` `piece_activity` |
+| King | `king_activity` `back_rank` `opposition` |
+| Squares / files | `open_file` `weak_square` `square_control` `color_complex` `space_advantage` |
+| Tactics | `pin` `fork` `skewer` `overloading` |
+| Strategic | `development_lead` `endgame_technique` |
+
+**Exchange sacrifice** is detected from the move rather than the position: if the key move (`move_uci`) is a rook capturing a bishop or knight, the position is labeled `exchange_sacrifice`.
+
+**Not algorithmically detectable** (require move history or prose): `tempo`, `combination`, `zwischenzug`, `clearance`, `sacrifice`, `deflection`, `decoy`, `interference`, `discovered_attack`, `mating_attack`, `trapped_piece`, `counterplay`, `simplification`, `fortification`, `coordination`. These come exclusively from Lichess tags and annotated PGN keyword matching.
+
+### Roadmap
+
+The coach is being developed in three phases:
+
+**Phase 1 — Current (MLP + static board features)**
+- 909-dim input: board encoding + single move one-hot
+- 1024/512 MLP with batch norm
+- Realistic target: macro F1 ~0.55–0.65
+- Structural and tactical concepts will be strong; dynamic/meta concepts will lag
+
+**Phase 2 — Richer inputs (planned)**
+- Attack maps: for each square, how many pieces of each side attack it
+- Pawn structure features: passed pawn bitboards, pawn tension squares
+- These additions will strengthen spatial concept detection without changing the model class
+
+**Phase 3 — CNN + move history (planned)**
+- Switch from MLP to CNN to model spatial piece relationships properly
+- Concatenate the last N moves as additional input channels after the CNN
+- Move history is essential for sequence-dependent concepts: `sacrifice`, `tempo`, `zwischenzug`, `combination`. These concepts are fundamentally about what happened before the current position, not just what the current position looks like
+- Realistic target: macro F1 ~0.70–0.80
+
+**Integration (planned)**
+The ML classifier will sit alongside Stockfish, not compete with it. The intended flow: Stockfish identifies the best move; the concept classifier labels the current position and the move being played; the Nimzowitsch phrase database generates natural-language explanation keyed to those concept labels. The coach's job is to explain *why* Stockfish's recommendation is good in human chess vocabulary.
+
+---
+
+## Training the Coach
+
+Prerequisites: `torch`, `numpy`, `python-chess` installed. The Lichess puzzle CSV and at least one master game database must be in `data/`.
+
+**Full pipeline (from repo root):**
+
+```powershell
+.\retrain.ps1
+```
+
+The script runs all six stages in order, stopping on any failure:
+
+| Step | Script | Input | Output |
+|---|---|---|---|
+| 1 | `parse_annotated_pgn.py` | `data/annotated_pgns/` | `training_raw.jsonl` |
+| 2 | `ingest_lichess_csv.py` | `data/lichess_db_puzzle.csv` | appended to `training_raw.jsonl` |
+| 3 | `ingest_game_database.py` | `data/Caissabase.pgn` etc. | appended to `training_raw.jsonl` |
+| 4 | `train.py` | `training_raw.jsonl` | `classifier_best.pt` |
+| 5 | `evaluate.py` | `classifier_best.pt` | `thresholds.json` + evaluation report |
+| 6 | `inspect_weights.py` | `classifier_best.pt` | Weight norm report per concept |
+
+**Running individual steps:**
+
+```powershell
+# Dry run: see label distribution from Lichess CSV without writing
+python tools/ingest_lichess_csv.py --input data/lichess_db_puzzle.csv --count-only --limit 50000
+
+# Scan specific game databases for under-represented concepts only
+python tools/ingest_game_database.py --input data/Carlsen.pgn --target battery,blockade,minority_attack --append
+
+# Training only (if training_raw.jsonl already exists)
+python -m src.chess_coach.ml.train
+
+# Evaluate + calibrate thresholds on existing checkpoint
+python -m src.chess_coach.ml.evaluate
+```
+
+**JSONL format** — each training example:
+```json
+{
+  "fen":      "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+  "move_uci": "f3g5",
+  "themes":   ["pin", "fork", "battery"],
+  "comment":  "The knight move creates a fork threat while exploiting the pin...",
+  "phase":    "opening"
+}
+```
+
+---
+
+## The Deterministic Coach (Legacy)
+
+The original coaching system remains the live implementation while the neural network is being trained. It is fully functional and is the system currently running in the application.
+
+### How it works
 
 ```
 chess.Board
-    │
-    ▼
-1. Extractors ──────── six modules measure board features
-    │                  → list[MetricSignal]
-    ▼
-2. Phase filter ─────── classify opening / middlegame / endgame
-    │                   re-weight signals for the current phase
-    ▼
-3. Strategy scoring ─── four detectors score 0.0 – 1.0 each
-    │                   blitz · flank · fortress · feint
-    ▼
-4. Conflict resolver ── 5-rule priority cascade picks primary + confidence
-    │                   outputs ResolverResult (primary, secondary, tie_band)
-    ▼
-5. Plan recommender ─── selects weakness_squares and move_flags
-    │                   optionally consults Stockfish for move scoring
-    ▼
-6. GM precedents ─────── PatternMatcher queries coach_positions table
-    │                    returns 0–3 matching GM games
-    ▼
-7. Narrator ─────────── slot-fills phrase templates → CoachOutput
-                         headline + plan_sentences + tactic_hints
+    |
+    v
+1. Extractors (6 modules) -> list[MetricSignal]
+    |
+    v
+2. Phase filter -> re-weight signals for opening/middlegame/endgame
+    |
+    v
+3. Strategy scoring -> four detectors score 0.0-1.0 each
+    |                  blitz / flank / fortress / feint
+    v
+4. Conflict resolver -> 5-rule priority cascade picks primary + confidence
+    |
+    v
+5. Plan recommender -> selects weakness squares and move flags
+    |
+    v
+6. GM precedents -> PatternMatcher queries coach_positions table
+    |
+    v
+7. Narrator -> slot-fills phrase templates -> CoachOutput
 ```
 
-### Stage 1 — Extractors
+### The four strategies
 
-Six independent modules each measure one aspect of the position and emit `MetricSignal` objects. A `MetricSignal` carries a normalised score (0.0–1.0), the side it applies to, a machine-readable cause tag, the key squares and pieces involved, a severity tier, and an `action_hint` — a plain-English fallback written by the extractor for use if no phrase DB entry matches.
+| Strategy | What it means |
+|---|---|
+| **Blitz** | Direct assault on an exposed king — concentrate attackers, open lines, strike before defence consolidates |
+| **Flank** | Positional squeeze — restrict mobility, occupy outposts, cramp the opponent until the position collapses |
+| **Fortress** | Blockade defence — when objectively worse, seal open files, fix the pawn structure, hold the wall |
+| **Feint** | Wing misdirection — hold tension deliberately, bait a commitment to one wing, then switch |
 
-| Extractor | Signals produced |
+A strategy must score above **0.65** to be considered "fired." Two strategies within 0.08 of each other are both surfaced with the tension between them noted. The Feint gate prevents misdirection from being named as primary without GM pattern database confirmation.
+
+### Extractors
+
+| Extractor | Signals |
 |---|---|
 | `king_safety.py` | `king_exposure`, `sacrifice_delta` |
 | `space_control.py` | `space_delta_queenside`, `space_delta_kingside` |
 | `piece_mobility.py` | `piece_mobility_ratio` |
 | `pawn_structure.py` | `pawn_fixedness`, `weak_pawns`, `passed_pawn` |
-| `material_balance.py` | `material_imbalance`, `eval_deficit` (from Stockfish) |
+| `material_balance.py` | `material_imbalance`, `eval_deficit` |
 | `tactic_scanner.py` | `tactic_pin`, `tactic_fork`, `tactic_skewer`, `tactic_discovery` |
 
-No extractor ever produces English text — that is the narrator's job. No narrator ever produces scores — that is the extractor's job. This separation is a hard architectural rule.
+### Phrase database
 
-### Stage 3 — Strategy scoring
-
-Each of the four strategy detectors reads the full `MetricSignal` list and returns a score between 0.0 and 1.0. The detectors also accept optional history (recent board states and prior signal lists) to detect trends like a kingside space expansion building toward a blitz, or a feint that has been prepared over several moves.
-
-### Stage 4 — Conflict resolver
-
-The resolver applies a five-rule priority cascade to the raw strategy scores:
-
-| Rule | Condition | Effect |
-|---|---|---|
-| 1 — Eval check | Stockfish eval deficit > 1.5 pawns | Fortress score gets +0.25 bonus |
-| 2 — King emergency | Opponent king exposure > 0.80 | Blitz overrides Flank regardless of score |
-| 3 — Phase override | Endgame + both Blitz and Flank > 0.65 | Flank promoted over Blitz |
-| 4 — Tie band | Primary and secondary within 0.08 | Both strategies surfaced, `tie_band = True` |
-| 5 — Feint gate | Feint is top scorer but no GM DB confirmation | Feint demoted to secondary |
-
-A strategy must score above **0.65** to be considered "fired". Below that threshold the highest scorer still wins but with lower confidence. The feint gate (Rule 5) is intentional — misdirection is only named as the primary recommendation when the GM pattern database confirms it has been used by strong players from this position.
-
-### Stage 6 — Phrase database
-
-`data/chess_coach.db` contains two tables:
-
-- **`phrases`** — keyed by `strategy / phase / metric / severity / fragment_type / cause_tag`. Each row is one sentence template attributed to a chapter of *My System*.
-- **`tactics`** — keyed by `tactic_type / phase / severity`. One row per tactical pattern type.
-
-The narrator queries the database for each of the four output slots in order — *diagnosis → evidence → plan → urgency* — picking the highest-priority phrase that matches the leading signal. If a specific phrase for `(strategy, metric, severity)` is not found, the query falls back first to `strategy=general`, then relaxes severity to `any`. If the database produces no match at all, the signal's own `action_hint` is used instead.
-
-Phrase templates support five placeholders filled from `MetricSignal` data at query time:
-
-| Placeholder | Filled with |
-|---|---|
-| `{square}` | First key square (e.g. `g7`) |
-| `{file}` | File letter of the first key square (e.g. `g`) |
-| `{piece}` | First key piece descriptor (e.g. `Ng5`) |
-| `{side}` | `White` or `Black` |
-| `{target}` | Second key square, if present |
-
-Example phrase template and result:
-
-```
-Template:  "The pawn cover before the {side} king has been shattered —
-            the {square} square gapes like an open wound."
-
-Filled:    "The pawn cover before the Black king has been shattered —
-            the g7 square gapes like an open wound."
-```
-
-All phrases carry a `source` field citing the chapter of *My System* they were drawn from, a `voice` field (`nimzowitsch` or `neutral`), and a `priority` integer (1–10) used to rank competing matches.
+`data/chess_coach.db` contains phrase templates attributed to chapters of *My System* (Aaron Nimzowitsch, 1925). The narrator fills five placeholders (`{square}`, `{file}`, `{piece}`, `{side}`, `{target}`) from the live `MetricSignal` data at query time. No extractor ever generates English; no narrator ever generates scores. This separation is a hard architectural rule.
 
 ---
 
@@ -488,8 +610,8 @@ CREATE TABLE sources (
 CREATE TABLE games (
     game_id      INTEGER PRIMARY KEY,
     source_id    INTEGER,
-    pgn_path     TEXT,           -- absolute path to the .pgn file
-    offset_bytes INTEGER,        -- byte offset of this game within the file
+    pgn_path     TEXT,
+    offset_bytes INTEGER,        -- byte offset of this game in the file
     white        TEXT,
     black        TEXT,
     result       TEXT,
@@ -501,43 +623,52 @@ CREATE TABLE games (
 );
 ```
 
-Full game text is never duplicated into the database. `PgnStore.open_game_pgn_text(game_id)` seeks to `offset_bytes` and parses one game on demand.
+Full game text is never duplicated. `PgnStore.open_game_pgn_text(game_id)` seeks to `offset_bytes` and parses one game on demand.
 
 ### `data/trees/<sha1>.pkl.gz` — move tree cache
 
-A gzip-pickled `MoveTree` object keyed by the source file's SHA-1. Position keys are the first four FEN fields (piece placement, turn, castling rights, en-passant), so transpositions from different move orders correctly hash to the same node.
+A gzip-pickled `MoveTree` keyed by the source file's SHA-1. Position keys are the first four FEN fields so transpositions hash to the same node.
+
+### `data/training_raw.jsonl` — ML training dataset
+
+Generated by the data pipeline. One JSON object per line in the format described in [Training the Coach](#training-the-coach). Not committed to git.
+
+### `data/thresholds.json` — per-class thresholds
+
+Generated by `evaluate.py` after training. Maps each of the 53 concept labels to a calibrated sigmoid threshold (0.0–1.0) that maximises F1 on the validation set.
 
 ---
 
 ## Configuration System
 
-Full schema reference is in [config/README_config.md](config/README_config.md). The merge runs at startup:
+The merge runs at startup:
 
 ```
-default.yaml  ──┐
-dev.yaml  ──────┤  deep_merge()  →  live config dict
-%APPDATA%\CHESSPLAYER\config.yaml  ──┘
+default.yaml  --------+
+dev.yaml  ------------+-- deep_merge() -> live config dict
+%APPDATA%\CHESSPLAYER\config.yaml  --+
 ```
 
-User overrides are written back automatically when the active source changes (e.g. switching game libraries in the UI). You can also create `config/dev.yaml` to set `app.debug: true` or override any key without touching defaults.
+User overrides write back automatically when the active source changes. See [config/README_config.md](config/README_config.md) for the full schema.
 
 ---
 
 ## Development Scripts
 
-Located in `scripts/`:
-
 | Script | Purpose |
 |---|---|
-| `run_dev.ps1` | Launch the app from the correct working directory (Windows PowerShell) |
-| `run_dev.sh` | Same, for bash |
-| `build_windows.ps1` | Package the app for distribution (Windows) |
+| `retrain.ps1` | Full ML pipeline: annotated PGNs -> Lichess CSV -> game databases -> train -> evaluate -> inspect |
+| `scripts/run_dev.ps1` | Launch the app from the correct working directory (Windows PowerShell) |
+| `scripts/run_dev.sh` | Same, for bash |
+| `scripts/build_windows.ps1` | Package the app for distribution |
 
 ---
 
 ## Contributing
 
 - Module boundaries and the no-Qt-outside-ui rule are load-bearing — keep them.
-- New extractors go in `src/chess_coach/extractors/`; add the module to the strategy engine's extractor list.
+- **Concept vocab (`concept_vocab.py`) is append-only.** Adding a concept in the middle shifts every output neuron index and invalidates all saved checkpoints. New concepts go at the end only.
+- New algorithmic detectors go in `tools/label_positions.py` and must be added to both `DETECTABLE_CONCEPTS` and the `label_position()` call loop.
 - New coaching phrases go in the phrase DB seed scripts keyed by `strategy/metric/severity/fragment_type`.
+- New extractors go in `src/chess_coach/extractors/` and must be added to the strategy engine's extractor list.
 - Run the coach test suite before pushing: `pytest src/chess_coach/tests/`.

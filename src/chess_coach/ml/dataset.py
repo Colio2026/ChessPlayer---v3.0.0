@@ -13,7 +13,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import Dataset
 
-from .board_encoder import fen_to_tensor
+from .board_encoder import fen_to_tensor, move_to_tensor
 from .concept_vocab import CONCEPTS, CONCEPT_TO_IDX, NUM_CONCEPTS
 
 
@@ -78,9 +78,13 @@ class ChessConceptDataset(Dataset):
         print(f"  {split}: {len(subset):,} examples  "
               f"(train {n_train:,} / val {n_val:,} / test {n - n_train - n_val:,})")
 
-        # Pre-encode everything into tensors
+        # Pre-encode everything into tensors (board + move concatenated)
         print(f"  Encoding boards ...", end=" ", flush=True)
-        self._x = torch.stack([fen_to_tensor(ex["fen"]) for ex in subset])
+        self._x = torch.stack([
+            torch.cat([fen_to_tensor(ex["fen"]),
+                       move_to_tensor(ex.get("move_uci", ""))])
+            for ex in subset
+        ])
         print("done.")
 
         self._y = torch.zeros(len(subset), NUM_CONCEPTS, dtype=torch.float32)
@@ -107,5 +111,5 @@ class ChessConceptDataset(Dataset):
         """
         n   = len(self._y)
         pos = self._y.sum(dim=0).clamp(min=1)
-        w   = ((n - pos) / pos).clamp(1.0, 100.0)
+        w   = ((n - pos) / pos).clamp(1.0, 50.0)
         return w
