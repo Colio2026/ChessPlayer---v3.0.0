@@ -19,7 +19,10 @@ and the future CNN+history architecture.
 
 from __future__ import annotations
 
+from typing import Callable
+
 import chess
+import numpy as np
 
 # Concepts this module can detect.  Caller can intersect against this
 # to know which labels came from detectors vs. other sources.
@@ -32,9 +35,7 @@ DETECTABLE_CONCEPTS: frozenset[str] = frozenset({
     "pawn_majority",
     "backward_pawn",
     "pawn_chain",
-    "pawn_weakness",
     "pawn_storm",
-    "minority_attack",
     # Piece quality / placement
     "bad_bishop",
     "good_bishop",
@@ -51,8 +52,6 @@ DETECTABLE_CONCEPTS: frozenset[str] = frozenset({
     # Squares / files
     "open_file",
     "weak_square",
-    "square_control",
-    "color_complex",
     "space_advantage",
     # Tactics (detectable from single position)
     "pin",
@@ -61,7 +60,13 @@ DETECTABLE_CONCEPTS: frozenset[str] = frozenset({
     "overloading",
     # Strategic
     "development_lead",
-    "endgame_technique",
+    # Endgame types (by material composition)
+    "rook_endgame",
+    "pawn_endgame",
+    "bishop_endgame",
+    "knight_endgame",
+    "queen_endgame",
+    "drawn_position",
 })
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -86,10 +91,14 @@ def _is_endgame(board: chess.Board) -> bool:
 
 def _has_passed_pawn(board: chess.Board, color: chess.Color) -> bool:
     opp = not color
-    enemy_pawn_files = set(_pawn_files(board, opp))
     for sq in board.pieces(chess.PAWN, color):
         f = chess.square_file(sq)
         r = chess.square_rank(sq)
+        # Rank threshold: only flag pawns that are meaningfully advanced
+        if color == chess.WHITE and r < 4:
+            continue
+        if color == chess.BLACK and r > 3:
+            continue
         blocked = False
         for ep in board.pieces(chess.PAWN, opp):
             ef = chess.square_file(ep)
@@ -233,11 +242,13 @@ def _has_bishop_pair(board: chess.Board, color: chess.Color) -> bool:
 
 # ── files and ranks ──────────────────────────────────────────────────────────
 
-def _has_open_file(board: chess.Board) -> bool:
-    """At least one file with no pawns of either color."""
-    for f in range(8):
-        if (not any(chess.square_file(sq) == f for sq in board.pieces(chess.PAWN, chess.WHITE))
-                and not any(chess.square_file(sq) == f for sq in board.pieces(chess.PAWN, chess.BLACK))):
+def _has_open_file(board: chess.Board, color: chess.Color) -> bool:
+    """A rook of `color` is on an open file (no pawns of either color on that file)."""
+    for rook_sq in board.pieces(chess.ROOK, color):
+        f = chess.square_file(rook_sq)
+        white_pawns_on_file = any(chess.square_file(sq) == f for sq in board.pieces(chess.PAWN, chess.WHITE))
+        black_pawns_on_file = any(chess.square_file(sq) == f for sq in board.pieces(chess.PAWN, chess.BLACK))
+        if not white_pawns_on_file and not black_pawns_on_file:
             return True
     return False
 
@@ -275,10 +286,15 @@ def _outpost_squares(board: chess.Board, color: chess.Color) -> chess.SquareSet:
 
 
 def _has_outpost(board: chess.Board, color: chess.Color) -> bool:
-    """A knight or bishop occupies an outpost square."""
+    """A knight or bishop occupies a deep outpost (rank 5+ for white, rank 4- for black)."""
     outposts = _outpost_squares(board, color)
+    # Require the piece to be truly deep in enemy territory, not just over the midline
+    deep_ranks = range(4, 8) if color == chess.WHITE else range(0, 4)
+    deep_outposts = chess.SquareSet(
+        sq for sq in outposts if chess.square_rank(sq) in deep_ranks
+    )
     for pt in (chess.KNIGHT, chess.BISHOP):
-        if board.pieces(pt, color) & outposts:
+        if board.pieces(pt, color) & deep_outposts:
             return True
     return False
 
@@ -563,6 +579,53 @@ def _has_color_complex(board: chess.Board, color: chess.Color) -> bool:
     return False
 
 
+# ── endgame type detectors ────────────────────────────────────────────────────
+
+def _is_rook_endgame(board: chess.Board) -> bool:
+    """Only kings, rooks, and pawns on the board."""
+    for color in (chess.WHITE, chess.BLACK):
+        for pt in (chess.QUEEN, chess.BISHOP, chess.KNIGHT):
+            if board.pieces(pt, color):
+                return False
+    return bool(board.pieces(chess.ROOK, chess.WHITE) or board.pieces(chess.ROOK, chess.BLACK))
+
+
+def _is_pawn_endgame(board: chess.Board) -> bool:
+    """Only kings and pawns on the board."""
+    for color in (chess.WHITE, chess.BLACK):
+        for pt in (chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT):
+            if board.pieces(pt, color):
+                return False
+    return True
+
+
+def _is_bishop_endgame(board: chess.Board) -> bool:
+    """Only kings, bishops, and pawns on the board."""
+    for color in (chess.WHITE, chess.BLACK):
+        for pt in (chess.QUEEN, chess.ROOK, chess.KNIGHT):
+            if board.pieces(pt, color):
+                return False
+    return bool(board.pieces(chess.BISHOP, chess.WHITE) or board.pieces(chess.BISHOP, chess.BLACK))
+
+
+def _is_knight_endgame(board: chess.Board) -> bool:
+    """Only kings, knights, and pawns on the board."""
+    for color in (chess.WHITE, chess.BLACK):
+        for pt in (chess.QUEEN, chess.ROOK, chess.BISHOP):
+            if board.pieces(pt, color):
+                return False
+    return bool(board.pieces(chess.KNIGHT, chess.WHITE) or board.pieces(chess.KNIGHT, chess.BLACK))
+
+
+def _is_queen_endgame(board: chess.Board) -> bool:
+    """Only kings, queens, and pawns on the board."""
+    for color in (chess.WHITE, chess.BLACK):
+        for pt in (chess.ROOK, chess.BISHOP, chess.KNIGHT):
+            if board.pieces(pt, color):
+                return False
+    return bool(board.pieces(chess.QUEEN, chess.WHITE) or board.pieces(chess.QUEEN, chess.BLACK))
+
+
 def _has_development_lead(board: chess.Board, color: chess.Color) -> bool:
     """In the opening, color has at least 2 more minor pieces developed than the opponent."""
     if board.fullmove_number > 15:
@@ -617,12 +680,23 @@ def label_position(board: chess.Board) -> frozenset[str]:
     labels: set[str] = set()
 
     # ── position-wide ────────────────────────────────────────────────────────
-    if _is_endgame(board):
-        labels.add("endgame_technique")
     if _has_opposition(board) and _is_endgame(board):
         labels.add("opposition")
-    if _has_open_file(board):
-        labels.add("open_file")
+
+    # Endgame types (mutually exclusive by material composition)
+    if _is_pawn_endgame(board):
+        labels.add("pawn_endgame")
+    elif _is_rook_endgame(board):
+        labels.add("rook_endgame")
+    elif _is_bishop_endgame(board):
+        labels.add("bishop_endgame")
+    elif _is_knight_endgame(board):
+        labels.add("knight_endgame")
+    elif _is_queen_endgame(board):
+        labels.add("queen_endgame")
+
+    if board.is_insufficient_material():
+        labels.add("drawn_position")
 
     for color in (chess.WHITE, chess.BLACK):
         # pawn structure
@@ -640,46 +714,38 @@ def label_position(board: chess.Board) -> frozenset[str]:
             labels.add("backward_pawn")
         if _has_pawn_chain(board, color):
             labels.add("pawn_chain")
-        if (_has_isolated_pawn(board, color)
-                or _has_doubled_pawn(board, color)
-                or _has_backward_pawn(board, color)):
-            labels.add("pawn_weakness")
         if _has_pawn_storm(board, color):
             labels.add("pawn_storm")
-        if _has_minority_attack(board, color):
-            labels.add("minority_attack")
 
-        # bishop
+        # bishop quality
         if _has_bad_bishop(board, color):
             labels.add("bad_bishop")
         if _has_good_bishop(board, color):
             labels.add("good_bishop")
         if _has_bishop_pair(board, color):
             labels.add("bishop_pair")
-        if _has_color_complex(board, color):
-            labels.add("color_complex")
 
         # piece placement / activity
         if _has_battery(board, color):
             labels.add("battery")
         if _has_blockade(board, color):
             labels.add("blockade")
-        if _has_piece_activity(board, color):
+        if _has_piece_activity(board, color) or _has_square_control(board, color):
             labels.add("piece_activity")
         if _has_development_lead(board, color):
             labels.add("development_lead")
 
         # files / ranks
+        if _has_open_file(board, color):
+            labels.add("open_file")
         if _has_rook_on_seventh(board, color):
             labels.add("rook_seventh")
 
-        # square control
+        # square control / king structure
         if _has_outpost(board, color):
             labels.add("outpost")
         if _has_weak_square(board, color):
             labels.add("weak_square")
-        if _has_square_control(board, color):
-            labels.add("square_control")
         if _has_space_advantage(board, color):
             labels.add("space_advantage")
 
@@ -700,3 +766,82 @@ def label_position(board: chess.Board) -> frozenset[str]:
             labels.add("overloading")
 
     return frozenset(labels)
+
+
+# ── concept bottleneck feature vector ────────────────────────────────────────
+# Fixed-order tables used to build the algo input feature vector.
+# Per-color: each concept gets two bits [white, black].
+# Global: single bit for position-wide concepts.
+
+_PER_COLOR_DETECTORS: list[tuple[str, Callable]] = [
+    ("passed_pawn",      _has_passed_pawn),
+    ("isolated_pawn",    _has_isolated_pawn),
+    ("doubled_pawn",     _has_doubled_pawn),
+    ("pawn_island",      lambda b, c: _pawn_island_count(b, c) >= 2),
+    ("pawn_majority",    _has_pawn_majority),
+    ("backward_pawn",    _has_backward_pawn),
+    ("pawn_chain",       _has_pawn_chain),
+    ("pawn_storm",       _has_pawn_storm),
+    ("bad_bishop",       _has_bad_bishop),
+    ("good_bishop",      _has_good_bishop),
+    ("bishop_pair",      _has_bishop_pair),
+    ("battery",          _has_battery),
+    ("blockade",         _has_blockade),
+    ("outpost",          _has_outpost),
+    ("rook_seventh",     _has_rook_on_seventh),
+    ("piece_activity",   lambda b, c: _has_piece_activity(b, c) or _has_square_control(b, c)),
+    ("king_activity",    _has_king_activity),
+    ("back_rank",        _has_back_rank_weakness),
+    ("open_file",        _has_open_file),
+    ("weak_square",      _has_weak_square),
+    ("space_advantage",  _has_space_advantage),
+    ("development_lead", _has_development_lead),
+    ("pin",              _has_pin),
+    ("fork",             _has_fork),
+    ("skewer",           _has_skewer),
+    ("overloading",      _has_overloading),
+]  # 26 × 2 = 52 bits
+
+_GLOBAL_DETECTORS: list[tuple[str, Callable]] = [
+    ("opposition",     lambda b: _has_opposition(b) and _is_endgame(b)),
+    ("rook_endgame",   _is_rook_endgame),
+    ("pawn_endgame",   _is_pawn_endgame),
+    ("bishop_endgame", _is_bishop_endgame),
+    ("knight_endgame", _is_knight_endgame),
+    ("queen_endgame",  _is_queen_endgame),
+    ("drawn_position", lambda b: b.is_insufficient_material()),
+]  # 7 bits
+
+ALGO_FEATURE_SIZE: int = len(_PER_COLOR_DETECTORS) * 2 + len(_GLOBAL_DETECTORS)  # 59
+
+
+def algo_feature_vector(fen: str) -> np.ndarray:
+    """Run all structural detectors and return a 59-element float32 array.
+
+    Layout:
+        [0:52]  26 per-color concepts × [white_bit, black_bit] interleaved
+        [52:59] 7 position-wide concept bits
+
+    Invalid FENs (variant chess, corrupt data) return an all-zeros vector.
+    """
+    try:
+        board = chess.Board(fen)
+    except Exception:
+        return np.zeros(ALGO_FEATURE_SIZE, dtype=np.float32)
+
+    arr = np.zeros(ALGO_FEATURE_SIZE, dtype=np.float32)
+    i = 0
+    for _, fn in _PER_COLOR_DETECTORS:
+        try:
+            arr[i]     = 1.0 if fn(board, chess.WHITE) else 0.0
+            arr[i + 1] = 1.0 if fn(board, chess.BLACK) else 0.0
+        except Exception:
+            pass
+        i += 2
+    for _, fn in _GLOBAL_DETECTORS:
+        try:
+            arr[i] = 1.0 if fn(board) else 0.0
+        except Exception:
+            pass
+        i += 1
+    return arr

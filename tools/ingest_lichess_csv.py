@@ -55,14 +55,14 @@ LICHESS_TAG_MAP: dict[str, str] = {
     "pin":                "pin",
     "fork":               "fork",
     "skewer":             "skewer",
-    "discoveredAttack":   "discovered_attack",
-    "doubleCheck":        "discovered_attack",
-    "xRayAttack":         "skewer",
-    "deflection":         "deflection",
-    "attraction":         "decoy",
-    "decoy":              "decoy",
-    "interference":       "interference",
+    "discoveredAttack":   "discovery",
+    "doubleCheck":        "double_check",
+    "xRayAttack":         "x_ray",
     "clearance":          "clearance",
+    "deflection":         "deflection",
+    "attraction":         "deflection",
+    "decoy":              "deflection",
+    "interference":       "interference",
     "overloading":        "overloading",
     "capturingDefender":  "overloading",
     "sacrifice":          "sacrifice",
@@ -87,21 +87,22 @@ LICHESS_TAG_MAP: dict[str, str] = {
     "vukovicMate":        "mating_attack",
     "epauletteMate":      "mating_attack",
     # Strategic / dynamic
-    "equality":           "counterplay",   # defensive resource achieving balance = counterplay
+    "equality":           "attacking_chances",
     "defensiveMove":      "prophylaxis",
     "exposedKing":        "king_safety",
     "kingsideAttack":     "attacking_chances",
     "queensideAttack":    "attacking_chances",
     # Endgame
-    "rookEndgame":        "endgame_technique",
-    "pawnEndgame":        "endgame_technique",
-    "knightEndgame":      "endgame_technique",
-    "bishopEndgame":      "endgame_technique",
-    "queenEndgame":       "endgame_technique",
-    "queenRookEndgame":   "endgame_technique",
+    "rookEndgame":        "rook_endgame",
+    "pawnEndgame":        "pawn_endgame",
+    "knightEndgame":      "knight_endgame",
+    "bishopEndgame":      "bishop_endgame",
+    "queenEndgame":       "queen_endgame",
     # Pawn
     "advancedPawn":       "passed_pawn",
-    "promotionDefense":   "passed_pawn",
+    "promotionDefense":   "promotion",
+    "promotion":          "promotion",
+    "underPromotion":     "promotion",
 }
 
 # Only keep labels that exist in our concept vocab
@@ -157,10 +158,9 @@ def _process_row(row: dict) -> dict | None:
         algo_labels = label_position(board)
         themes.update(algo_labels & _VALID)
 
-        # Exchange sacrifice: rook captures bishop/knight
-        if (_is_exchange_sacrifice(board, move_uci)
-                and "exchange_sacrifice" in _VALID):
-            themes.add("exchange_sacrifice")
+        # Exchange sacrifice counts as a sacrifice
+        if _is_exchange_sacrifice(board, move_uci):
+            themes.add("sacrifice")
 
         if not themes:
             return None

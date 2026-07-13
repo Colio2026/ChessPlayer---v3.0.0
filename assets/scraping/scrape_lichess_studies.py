@@ -79,7 +79,111 @@ JSON_HEADERS = {
 
 CONCEPT_SEARCHES: dict[str, list[str]] = {
 
-    # pawn structure cluster
+    # ── tactical ──────────────────────────────────────────────────────────────
+    "pin": [
+        "pin tactics", "absolute pin", "relative pin", "pinned piece",
+        "pin to the king", "pin strategy",
+    ],
+    "fork": [
+        "fork tactics", "knight fork", "double attack fork",
+        "pawn fork", "queen fork", "fork motif",
+    ],
+    "skewer": [
+        "skewer tactics", "x-ray attack skewer", "skewer motif",
+        "bishop skewer", "rook skewer",
+    ],
+    "discovery": [
+        "discovered attack", "discovered check", "discovery tactics",
+        "unmasking attack", "uncovering attack",
+    ],
+    "x_ray": [
+        "x-ray attack", "x ray tactics", "x-ray defense",
+        "x ray vision chess", "transparency attack",
+    ],
+    "double_check": [
+        "double check", "discovered double check", "double check tactics",
+        "zwischenschach double", "double check mating",
+    ],
+    "clearance": [
+        "clearance sacrifice", "line clearance", "square clearance",
+        "clearance tactic", "vacating sacrifice",
+    ],
+    "deflection": [
+        "deflection tactics", "luring away", "deflection sacrifice",
+        "decoy deflection", "distraction tactic",
+    ],
+    "overloading": [
+        "overloading", "overloaded piece", "overloaded defender",
+        "piece overloaded", "defending too much",
+    ],
+    "zwischenzug": [
+        "zwischenzug", "in-between move", "intermediate move",
+        "intermezzo chess", "zwischenzug tactic",
+    ],
+    "interference": [
+        "interference tactic", "line interference", "piece interference",
+        "blocking interposition", "interference sacrifice",
+    ],
+    "back_rank": [
+        "back rank mate", "back rank weakness", "first rank weakness",
+        "back rank tactics", "eighth rank mate",
+    ],
+    "sacrifice": [
+        "positional sacrifice", "piece sacrifice", "bishop sacrifice",
+        "knight sacrifice h7", "rook sacrifice", "queen sacrifice strategy",
+    ],
+    "mating_attack": [
+        "mating attack", "checkmating attack", "king hunt",
+        "attack on the king", "mating combination", "decisive attack",
+    ],
+    "trapped_piece": [
+        "trapped piece", "bishop trapped", "knight trapped",
+        "piece trap", "queen trap", "trapping the piece",
+    ],
+
+    # ── piece concepts ────────────────────────────────────────────────────────
+    "outpost": [
+        "outpost", "knight outpost", "ideal square", "knight domination",
+        "strong square knight", "support point",
+    ],
+    "blockade": [
+        "blockade", "nimzowitsch blockade", "pawn blockade",
+        "blockader", "knight blockade",
+    ],
+    "bad_bishop": [
+        "bad bishop", "passive bishop", "bishop blocked by pawns",
+        "bishop same color pawns", "restricted bishop",
+    ],
+    "good_bishop": [
+        "good bishop", "active bishop", "bishop vs knight open",
+        "bishop outshines", "two bishops endgame",
+    ],
+    "bishop_pair": [
+        "bishop pair", "two bishops", "pair of bishops",
+        "bishop pair advantage", "retain bishops",
+    ],
+    "piece_activity": [
+        "piece activity", "active pieces", "piece coordination",
+        "piece harmony", "activating pieces", "improving the piece",
+    ],
+    "battery": [
+        "rook battery", "queen rook battery", "battery attack",
+        "doubling rooks", "battery on open file",
+    ],
+    "rook_seventh": [
+        "rook on seventh", "rook seventh rank", "pig on seventh",
+        "rook on seventh rank", "dominant rook seventh",
+    ],
+
+    # ── pawn structure ────────────────────────────────────────────────────────
+    "passed_pawn": [
+        "passed pawn", "passed pawn endgame", "outside passed pawn",
+        "protected passed pawn", "advancing passed pawn",
+    ],
+    "promotion": [
+        "pawn promotion", "queening the pawn", "promotion tactics",
+        "underpromotion", "promotion race",
+    ],
     "isolated_pawn": [
         "isolated pawn", "IQP", "isolated queen pawn", "isolani",
         "isolated d pawn", "pawn isolation",
@@ -98,77 +202,88 @@ CONCEPT_SEARCHES: dict[str, list[str]] = {
     "pawn_chain": [
         "pawn chain", "nimzowitsch pawn", "pawn wedge", "pawn formation",
     ],
-    "pawn_weakness": [
-        "pawn weakness", "weak pawns", "pawn defect", "pawn structure weakness",
+    "pawn_storm": [
+        "pawn storm", "kingside pawn storm", "pawn advance attack",
+        "g4 pawn storm", "h4 pawn storm", "pawn avalanche",
     ],
     "pawn_island": [
         "pawn islands", "scattered pawns", "disconnected pawns",
     ],
 
-    # piece concepts cluster
-    "outpost": [
-        "outpost", "knight outpost", "ideal square", "knight domination",
-        "strong square knight", "support point",
+    # ── king & endgame ────────────────────────────────────────────────────────
+    "king_safety": [
+        "king safety", "king weakness", "exposed king", "king shelter",
+        "attacking the king", "king vulnerability",
     ],
-    "blockade": [
-        "blockade", "nimzowitsch blockade", "pawn blockade",
-        "blockader", "knight blockade",
+    "king_activity": [
+        "king activity", "active king", "king march", "king centralization",
+        "king as fighter", "king endgame activity",
     ],
-    "good_bishop": [
-        "good bishop", "active bishop", "bishop vs knight open",
-        "bishop outshines", "two bishops endgame",
+    "shouldering": [
+        "shouldering", "king opposition shouldering", "king cutoff",
+        "king opposition endgame", "cutting off the king",
     ],
-    "bishop_pair": [
-        "bishop pair", "two bishops", "pair of bishops",
-        "bishop pair advantage", "retain bishops",
+    "opposition": [
+        "opposition endgame", "direct opposition", "distant opposition",
+        "king opposition", "diagonal opposition", "seizing opposition",
     ],
-    "exchange_sacrifice": [
-        "exchange sacrifice", "rook for bishop", "rook for knight",
-        "petrosian exchange", "positional exchange sacrifice",
+    "zugzwang": [
+        "zugzwang", "mutual zugzwang", "zugzwang endgame",
+        "zugzwang tactic", "triangulation zugzwang",
     ],
-    "overloading": [
-        "overloading", "overloaded piece", "overloaded defender",
-        "piece overloaded", "defending too much",
+    "rook_endgame": [
+        "rook endgame", "lucena position", "philidor position",
+        "rook and pawn endgame", "rook endgame technique",
+    ],
+    "pawn_endgame": [
+        "pawn endgame", "king and pawn endgame", "pawn ending",
+        "pawn endgame technique", "king pawn versus king",
+    ],
+    "bishop_endgame": [
+        "bishop endgame", "bishop and pawn endgame", "opposite colored bishops",
+        "same color bishop endgame", "bishop ending",
+    ],
+    "knight_endgame": [
+        "knight endgame", "knight and pawn endgame", "knight ending",
+        "knight vs pawn endgame", "knight endgame technique",
+    ],
+    "queen_endgame": [
+        "queen endgame", "queen and pawn endgame", "queen ending",
+        "queen versus pawn", "queen endgame technique",
+    ],
+    "drawn_position": [
+        "drawn position", "drawing technique", "fortress endgame",
+        "stalemate trick", "perpetual check draw", "insufficient material draw",
     ],
 
-    # positional / strategic cluster
-    "open_file": [
-        "open file", "rook open file", "file control", "rook file",
-        "half open file", "seize the file",
-    ],
+    # ── positional / strategic ────────────────────────────────────────────────
     "weak_square": [
         "weak square", "color weakness", "hole in position",
         "weak dark squares", "weak light squares",
+    ],
+    "open_file": [
+        "open file", "rook open file", "file control", "rook file",
+        "half open file", "seize the file",
     ],
     "space_advantage": [
         "space advantage", "spatial advantage", "cramped position",
         "lack of space", "squeeze position",
     ],
-    "color_complex": [
-        "color complex", "colour complex", "light square strategy",
-        "dark square strategy", "wrong color bishop",
+    "development_lead": [
+        "development advantage", "lead in development", "ahead in development",
+        "rapid development", "development initiative", "lagging development",
     ],
-    "coordination": [
-        "piece coordination", "piece harmony", "coordinated pieces",
-        "harmonious position", "pieces work together",
+    "initiative": [
+        "initiative chess", "seizing the initiative", "dynamic initiative",
+        "keeping the initiative", "tempo initiative", "fighting for initiative",
     ],
-    "simplification": [
-        "simplification", "liquidation", "trading advantage",
-        "simplify to win", "convert advantage endgame",
-    ],
-    "square_control": [
-        "square control", "key square control", "central control",
-        "dominant square", "occupy key square",
-    ],
-
-    # concepts that lost their puzzle source in the last scraper update
-    "counterplay": [
-        "counterplay", "dynamic compensation", "active counterplay",
-        "compensation for pawn", "fighting back",
+    "prophylaxis": [
+        "prophylaxis", "prophylactic move", "preventive move",
+        "prophylactic thinking", "stopping counterplay", "petrosian prophylaxis",
     ],
     "attacking_chances": [
-        "kingside attack strategy", "attacking chances", "build attack",
-        "attacking play positional",
+        "attacking chances", "kingside attack strategy", "build attack",
+        "attacking play positional", "creating attacking chances",
     ],
 }
 

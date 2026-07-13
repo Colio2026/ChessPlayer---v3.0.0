@@ -88,7 +88,7 @@ def train(args: argparse.Namespace) -> None:
     loss_fn    = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     # ── optimiser + scheduler ─────────────────────────────────────────────────
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=5e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=6e-3)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=args.lr * 0.05
     )

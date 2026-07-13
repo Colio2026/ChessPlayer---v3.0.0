@@ -52,55 +52,260 @@ THRESHOLDS_PATH     = Path("data/thresholds.json")
 
 # Famous positions and their expected concepts
 SPOT_CHECKS: list[dict] = [
+    # ── Tactical ──────────────────────────────────────────────────────────────
     {
-        "name": "Lucena rook ending (rook+pawn vs rook)",
-        "fen":  "1K1k4/1P6/8/8/r7/8/8/R7 w - - 0 1",
-        "expect": ["endgame_technique", "passed_pawn"],
-    },
-    {
-        "name": "Philidor drawing position",
-        "fen":  "4k3/8/4K3/4P3/8/8/8/4r3 b - - 0 1",
-        "expect": ["endgame_technique", "opposition"],
-    },
-    {
-        "name": "Classic pin — Ruy Lopez middlegame",
+        "name": "Pin — Bb5 pins Nc6 to king",
         "fen":  "r1bq1rk1/ppp2ppp/2np1n2/1B2p3/2BPP3/2N1QN2/PPP2PPP/R4RK1 b - - 0 8",
-        "expect": ["pin", "piece_activity"],
+        "expect": ["pin"],
     },
     {
-        "name": "Knight outpost on d5",
+        "name": "Fork — Nc7 forks Ra8 and Ke8",
+        "fen":  "r3k3/2N5/8/8/8/8/8/4K3 w - - 0 1",
+        "expect": ["fork"],
+    },
+    {
+        "name": "Skewer — Ba1 skewers Kd4 to Qg7",
+        "fen":  "8/6q1/8/8/3k4/8/8/B3K3 w - - 0 1",
+        "expect": ["skewer"],
+    },
+    {
+        "name": "Discovery — moving Be3 reveals Re1 check",
+        "fen":  "4k3/8/8/8/8/4B3/8/4R3 w - - 0 1",
+        "expect": ["discovery"],
+    },
+    {
+        "name": "X-ray — Ra1 defends through Ra4 to Ra8",
+        "fen":  "r3k3/8/8/r7/R7/8/8/R3K3 w - - 0 1",
+        "expect": ["x_ray"],
+    },
+    {
+        "name": "Double check — Ne6-c7 reveals rook check",
+        "fen":  "4k3/8/4N3/8/8/8/8/4R1K1 w - - 0 1",
+        "expect": ["double_check"],
+    },
+    {
+        "name": "Clearance — rook vacates rank for queen",
+        "fen":  "r3k2r/ppp1Rppp/8/3p4/3P4/8/PPP2PPP/4R1K1 w kq - 0 1",
+        "expect": ["clearance"],
+    },
+    {
+        "name": "Deflection — luring queen away from defense",
+        "fen":  "r1b1k2r/ppppqppp/2n2n2/4p3/2B1P3/2NP4/PPP2PPP/R1BQK2R w KQkq - 0 6",
+        "expect": ["deflection"],
+    },
+    {
+        "name": "Overloading — Re6 defends two targets",
+        "fen":  "6k1/5ppp/3pr3/3p4/3P4/8/5PPP/3R2K1 w - - 0 1",
+        "expect": ["overloading"],
+    },
+    {
+        "name": "Zwischenzug — in-between check before recapture",
+        "fen":  "r1bqk2r/pppp1ppp/2n2n2/4p3/2BbP3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 6",
+        "expect": ["zwischenzug"],
+    },
+    {
+        "name": "Interference — piece cuts rook's defense of key square",
+        "fen":  "r2q1rk1/pp2ppbp/2np1np1/8/3NP3/2N1BP2/PPP1Q1PP/R4RK1 w - - 0 1",
+        "expect": ["interference"],
+    },
+    {
+        "name": "Back rank — king has no luft, rook threatens",
+        "fen":  "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
+        "expect": ["back_rank"],
+    },
+    {
+        "name": "Sacrifice — exchange sac for positional compensation",
+        "fen":  "r3r1k1/pp1bppbp/2np1np1/q7/3NP3/2N1BP2/PPP1B1PP/R2Q1RK1 w - - 0 1",
+        "expect": ["sacrifice"],
+    },
+    {
+        "name": "Mating attack — smothered mate in one",
+        "fen":  "r5k1/ppp3pp/5N2/8/8/8/PPP3PP/6K1 w - - 0 1",
+        "expect": ["mating_attack"],
+    },
+    {
+        "name": "Trapped piece — bishop on h6 with no escape",
+        "fen":  "r1bqk2r/pppp1ppp/2n2n1b/4p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 0 6",
+        "expect": ["trapped_piece"],
+    },
+    # ── Piece concepts ────────────────────────────────────────────────────────
+    {
+        "name": "Outpost — knight on d5 cannot be dislodged",
         "fen":  "r1bqr1k1/pp1nbppp/2p1pn2/3p4/3P1B2/2NBPN2/PPQ2PPP/R4RK1 w - - 0 1",
         "expect": ["outpost"],
     },
     {
-        "name": "Passed pawn race",
-        "fen":  "8/P7/8/8/8/8/7p/8 w - - 0 1",
-        "expect": ["passed_pawn", "king_activity"],
+        "name": "Blockade — knight sits in front of passed pawn",
+        "fen":  "4k3/3n4/3P4/8/8/8/8/4K3 w - - 0 1",
+        "expect": ["blockade"],
     },
     {
-        "name": "Bad bishop — blocked pawns on dark squares",
+        "name": "Bad bishop — bishop imprisoned by own pawns",
         "fen":  "5k2/pp1bpppp/2pp4/8/8/2PP4/PP1BPPPP/5K2 w - - 0 1",
         "expect": ["bad_bishop"],
     },
     {
-        "name": "Back-rank mate threat",
-        "fen":  "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
-        "expect": ["back_rank"],
+        "name": "Good bishop — pawns on opposite color, diagonal open",
+        "fen":  "5k2/pp3ppp/4p3/2pp4/8/2PP4/PP2BPPP/5K2 w - - 0 1",
+        "expect": ["good_bishop"],
+    },
+    {
+        "name": "Bishop pair — both bishops vs knight and bishop",
+        "fen":  "r1bqk2r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4",
+        "expect": ["bishop_pair"],
+    },
+    {
+        "name": "Piece activity — superior centralized mobility",
+        "fen":  "r2q1rk1/pp2ppbp/2np1np1/8/3NP3/2N1BP2/PPP3PP/R2Q1RK1 w - - 0 1",
+        "expect": ["piece_activity"],
+    },
+    {
+        "name": "Battery — doubled rooks on open file",
+        "fen":  "6k1/ppp2ppp/8/8/3RR3/8/PPP2PPP/6K1 w - - 0 1",
+        "expect": ["battery"],
     },
     {
         "name": "Rook on seventh rank",
         "fen":  "6k1/3R1ppp/6r1/8/8/8/5PPP/6K1 w - - 0 1",
         "expect": ["rook_seventh"],
     },
+    # ── Pawn structure ────────────────────────────────────────────────────────
     {
-        "name": "Isolated queen pawn (IQP) position",
+        "name": "Passed pawn — white passer on d6",
+        "fen":  "4k3/8/3P4/8/8/8/8/4K3 w - - 0 1",
+        "expect": ["passed_pawn"],
+    },
+    {
+        "name": "Promotion — pawn on 7th rank",
+        "fen":  "4k3/P7/8/8/8/8/7p/4K3 w - - 0 1",
+        "expect": ["promotion"],
+    },
+    {
+        "name": "Isolated pawn — IQP on d4",
         "fen":  "r1bqr1k1/pp3ppp/2n1bn2/3p4/3P4/2NBPN2/PP3PPP/R1BQR1K1 w - - 0 1",
         "expect": ["isolated_pawn", "open_file"],
     },
     {
-        "name": "Zugzwang — king and pawn ending",
+        "name": "Backward pawn — weak d6 pawn",
+        "fen":  "r1bqr1k1/pp1nbppp/2pp1n2/4p3/3PP3/2N1BN2/PPP1QPPP/R3R1K1 w - - 0 1",
+        "expect": ["backward_pawn"],
+    },
+    {
+        "name": "Doubled pawns — c-pawns doubled",
+        "fen":  "r1bqkb1r/pp3ppp/2pp1n2/4p3/4P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 1",
+        "expect": ["doubled_pawn"],
+    },
+    {
+        "name": "Pawn majority — queenside majority vs minority",
+        "fen":  "4k3/ppp5/8/8/8/8/PPPP4/4K3 w - - 0 1",
+        "expect": ["pawn_majority"],
+    },
+    {
+        "name": "Pawn chain — locked chain, attack the base",
+        "fen":  "r1bqkb1r/pp3ppp/2n1pn2/2ppP3/3P1B2/2N2N2/PPP2PPP/R2QKB1R w KQkq - 0 1",
+        "expect": ["pawn_chain"],
+    },
+    {
+        "name": "Pawn storm — kingside pawns advancing on castled king",
+        "fen":  "r1bq1rk1/pppp1ppp/2n5/4p3/2PP3P/2N3P1/PP3P2/R1BQKBNR w KQ - 0 1",
+        "expect": ["pawn_storm"],
+    },
+    {
+        "name": "Pawn island — three isolated pawn groups",
+        "fen":  "4k3/p3p3/3p4/8/8/3P4/P3P3/4K3 w - - 0 1",
+        "expect": ["pawn_island"],
+    },
+    # ── King & endgame ────────────────────────────────────────────────────────
+    {
+        "name": "King safety — castled king stripped of pawn cover",
+        "fen":  "r4rk1/ppp2p1p/3p1np1/4p3/4P3/3P1N2/PPP2PPP/R4RK1 w - - 0 1",
+        "expect": ["king_safety"],
+    },
+    {
+        "name": "King activity — centralized king in endgame",
+        "fen":  "8/8/4k3/4p3/4P3/4K3/8/8 w - - 0 1",
+        "expect": ["king_activity"],
+    },
+    {
+        "name": "Shouldering — king blocks opposing king from key file",
+        "fen":  "8/8/8/3K4/8/3k4/4P3/8 w - - 0 1",
+        "expect": ["shouldering"],
+    },
+    {
+        "name": "Opposition — kings in direct opposition",
+        "fen":  "8/8/4k3/4P3/4K3/8/8/8 w - - 0 1",
+        "expect": ["opposition"],
+    },
+    {
+        "name": "Zugzwang — whoever moves loses",
         "fen":  "8/8/4k3/4p3/4K3/8/8/8 w - - 0 1",
-        "expect": ["zugzwang", "endgame_technique", "opposition"],
+        "expect": ["zugzwang", "opposition"],
+    },
+    {
+        "name": "Rook endgame — Lucena position",
+        "fen":  "1K1k4/1P6/8/8/r7/8/8/R7 w - - 0 1",
+        "expect": ["rook_endgame", "passed_pawn"],
+    },
+    {
+        "name": "Pawn endgame — king and pawn",
+        "fen":  "4k3/4p3/4K3/4P3/8/8/8/8 w - - 0 1",
+        "expect": ["pawn_endgame"],
+    },
+    {
+        "name": "Bishop endgame — opposite colored bishops",
+        "fen":  "4k3/4p3/8/4b3/8/4B3/4P3/4K3 w - - 0 1",
+        "expect": ["bishop_endgame"],
+    },
+    {
+        "name": "Knight endgame — knights and pawns",
+        "fen":  "4k3/4p3/8/4n3/8/4N3/4P3/4K3 w - - 0 1",
+        "expect": ["knight_endgame"],
+    },
+    {
+        "name": "Queen endgame — queens and pawns",
+        "fen":  "4k3/4p3/8/4q3/8/4Q3/4P3/4K3 w - - 0 1",
+        "expect": ["queen_endgame"],
+    },
+    {
+        "name": "Drawn position — insufficient material (K+B vs K)",
+        "fen":  "4k3/8/8/8/8/8/8/4KB2 w - - 0 1",
+        "expect": ["drawn_position"],
+    },
+    # ── Positional / Strategic ────────────────────────────────────────────────
+    {
+        "name": "Weak square — dark square holes around king",
+        "fen":  "r1bq1rk1/ppp1nppp/4p3/3p4/3P1B2/2N1PN2/PPP2PPP/R2QKB1R w KQ - 0 1",
+        "expect": ["weak_square"],
+    },
+    {
+        "name": "Open file — rooks dominate open d-file",
+        "fen":  "r1bqr1k1/pp3ppp/2n1bn2/3p4/3P4/2NBPN2/PP3PPP/R1BQR1K1 w - - 0 1",
+        "expect": ["open_file"],
+    },
+    {
+        "name": "Space advantage — advanced pawn wedge controls territory",
+        "fen":  "r1bqkb1r/pp3ppp/2n1pn2/2ppP3/2PP1B2/2N2N2/PP3PPP/R2QKB1R w KQkq - 0 1",
+        "expect": ["space_advantage"],
+    },
+    {
+        "name": "Development lead — all pieces active vs undeveloped side",
+        "fen":  "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 6",
+        "expect": ["development_lead"],
+    },
+    {
+        "name": "Initiative — dictating pace with active play",
+        "fen":  "r1bqr1k1/ppp2ppp/2np1n2/4p3/2BPP3/2N2N2/PPP2PPP/R1BQR1K1 w - - 0 8",
+        "expect": ["initiative"],
+    },
+    {
+        "name": "Prophylaxis — restraining opponent's plan",
+        "fen":  "r1bqr1k1/ppp1bppp/2np1n2/4p3/2PPP3/2N1BN2/PP3PPP/R2QKB1R w KQ - 0 8",
+        "expect": ["prophylaxis"],
+    },
+    {
+        "name": "Attacking chances — open lines toward castled king",
+        "fen":  "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/4PP2/2NP1NB1/PPP3PP/R1BQK2R w KQ - 0 8",
+        "expect": ["attacking_chances"],
     },
 ]
 
@@ -269,13 +474,15 @@ def spot_check(model: ChessConceptClassifier,
                thresholds: torch.Tensor) -> None:
     print(f"\n── Spot Checks ────────────────────────────────────────────────────────")
     from .board_encoder import fen_to_tensor, move_to_tensor
+    from tools.label_positions import algo_feature_vector
     device = next(model.parameters()).device
 
     all_pass = True
     for sc in SPOT_CHECKS:
         board_t = fen_to_tensor(sc["fen"])
         move_t  = move_to_tensor(sc.get("move_uci", ""))
-        x       = torch.cat([board_t, move_t]).unsqueeze(0).to(device)
+        algo_t  = torch.from_numpy(algo_feature_vector(sc["fen"]))
+        x       = torch.cat([board_t, move_t, algo_t]).unsqueeze(0).to(device)
         probs   = torch.sigmoid(model(x)).squeeze(0).cpu()
         t_vec   = thresholds
         pred_set = {CONCEPTS[i] for i in range(NUM_CONCEPTS) if probs[i] >= t_vec[i]}

@@ -2,67 +2,72 @@
 # Stable ordered list of all chess concept labels the classifier predicts.
 # ORDER MATTERS — index position defines the output neuron for each concept.
 # Add new concepts at the END only, or saved checkpoints become invalid.
+#
+# v3 vocab (50 concepts) — changes from v2 (44):
+#   Removed : exchange_sacrifice (→ sacrifice), bishop_quality (→ bad_bishop + good_bishop),
+#             pawn_weakness, endgame_technique, color_complex, square_control (→ piece_activity),
+#             minority_attack (→ pawn_storm), tempo (→ initiative)
+#   Added   : x_ray, double_check, clearance, promotion, shouldering,
+#             bad_bishop, good_bishop,
+#             rook_endgame, pawn_endgame, bishop_endgame, knight_endgame, queen_endgame,
+#             drawn_position, initiative
 
 CONCEPTS: list[str] = [
-    # Tactical
+    # ── Tactical ──────────────────────────────────────────────────────────────
     "pin",
     "fork",
     "skewer",
-    "discovered_attack",
+    "discovery",
+    "x_ray",
+    "double_check",
+    "clearance",
     "deflection",
-    "decoy",
     "overloading",
     "zwischenzug",
     "interference",
-    "clearance",
     "back_rank",
-    "sacrifice",
-    "exchange_sacrifice",
-    "combination",
+    "sacrifice",            # includes exchange sacrifice
     "mating_attack",
     "trapped_piece",
-    # Piece concepts
+    # ── Piece concepts ────────────────────────────────────────────────────────
     "outpost",
     "blockade",
     "bad_bishop",
     "good_bishop",
     "bishop_pair",
-    "piece_activity",
+    "piece_activity",       # includes square/center control
     "battery",
     "rook_seventh",
-    # Pawn structure
+    # ── Pawn structure ────────────────────────────────────────────────────────
     "passed_pawn",
+    "promotion",
     "isolated_pawn",
     "backward_pawn",
     "doubled_pawn",
     "pawn_majority",
     "pawn_chain",
-    "pawn_break",
-    "pawn_storm",
-    "pawn_weakness",
+    "pawn_storm",           # includes minority attack
     "pawn_island",
-    # King & squares
+    # ── King & endgame ────────────────────────────────────────────────────────
     "king_safety",
     "king_activity",
+    "shouldering",
+    "opposition",
+    "zugzwang",
+    "rook_endgame",
+    "pawn_endgame",
+    "bishop_endgame",
+    "knight_endgame",
+    "queen_endgame",
+    "drawn_position",
+    # ── Positional / Strategic ────────────────────────────────────────────────
     "weak_square",
     "open_file",
-    # Strategic
     "space_advantage",
-    "tempo",
-    "zugzwang",
-    "prophylaxis",
-    "minority_attack",
-    "simplification",
-    "fortification",
-    "coordination",
-    "color_complex",
-    "endgame_technique",
-    "opposition",
-    # Added in keyword pass 2
-    "counterplay",
     "development_lead",
-    "attacking_chances",
-    "square_control",
+    "initiative",           # renamed from tempo; includes tempo/time-advantage language
+    "prophylaxis",
+    "attacking_chances",    # includes counterplay
 ]
 
 NUM_CONCEPTS = len(CONCEPTS)
