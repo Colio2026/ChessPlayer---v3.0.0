@@ -47,7 +47,10 @@ except ImportError:
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.chess_coach.ml.concept_vocab import CONCEPT_TO_IDX
-from tools.label_positions import label_position, DETECTABLE_CONCEPTS
+from tools.label_positions import (
+    label_position, DETECTABLE_CONCEPTS,
+    algo_feature_vector_v4 as algo_feature_vector,
+)
 
 # ── Lichess theme tag → our concept label ─────────────────────────────────────
 LICHESS_TAG_MAP: dict[str, str] = {
@@ -87,11 +90,11 @@ LICHESS_TAG_MAP: dict[str, str] = {
     "vukovicMate":        "mating_attack",
     "epauletteMate":      "mating_attack",
     # Strategic / dynamic
-    "equality":           "attacking_chances",
+    "equality":           "initiative",
     "defensiveMove":      "prophylaxis",
     "exposedKing":        "king_safety",
-    "kingsideAttack":     "attacking_chances",
-    "queensideAttack":    "attacking_chances",
+    "kingsideAttack":     "mating_attack",
+    "queensideAttack":    "mating_attack",
     # Endgame
     "rookEndgame":        "rook_endgame",
     "pawnEndgame":        "pawn_endgame",
@@ -165,13 +168,24 @@ def _process_row(row: dict) -> dict | None:
         if not themes:
             return None
 
-        return {
-            "fen":      puzzle_fen,
-            "move_uci": move_uci,
-            "themes":   sorted(themes),
-            "comment":  "",
-            "phase":    "puzzle",
+        try:
+            algo_feats = algo_feature_vector(puzzle_fen).tolist()
+        except Exception:
+            algo_feats = None
+
+        record = {
+            "fen":         puzzle_fen,
+            "move_uci":    move_uci,
+            "themes":      sorted(themes),
+            "comment":     "",
+            "phase":       "puzzle",
+            "history_rich": [],
+            "eco":         None,
+            "opening":     None,
         }
+        if algo_feats is not None:
+            record["algo_features"] = algo_feats
+        return record
     except Exception:
         return None
 

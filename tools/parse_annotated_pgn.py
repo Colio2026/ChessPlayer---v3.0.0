@@ -11,16 +11,20 @@ WHAT COUNTS AS ONE EXAMPLE
 
 DATA FORMAT  (one JSON object per line in the output file)
     {
-      "fen":        "r1bq1rk1/...",        # board position FEN
-      "move_san":   "Nd5",                 # the move played from this position
-      "move_uci":   "f3d5",               # UCI form
-      "annotation": "The knight reaches its ideal outpost...",
-      "themes":     ["outpost", "blockade"],  # extracted chess concepts (may be [])
-      "phase":      "middlegame",          # opening / middlegame / endgame
-      "fullmove":   14,                    # move number
-      "side":       "white",              # whose move it is
-      "source":     "my_system.pgn",      # source filename (not full path)
-      "game":       "Nimzowitsch vs Systemsson, 1927"  # Event + players
+      "fen":          "r1bq1rk1/...",       # board position FEN
+      "move_san":     "Nd5",                # the move played from this position
+      "move_uci":     "f3d5",              # UCI form
+      "annotation":   "The knight reaches its ideal outpost...",
+      "themes":       ["outpost", "blockade"],  # extracted chess concepts (may be [])
+      "phase":        "middlegame",         # opening / middlegame / endgame
+      "fullmove":     14,                   # move number
+      "side":         "white",             # whose move it is
+      "source":       "my_system.pgn",     # source filename (not full path)
+      "game":         "Nimzowitsch vs Systemsson, 1927",  # Event + players
+      "history_uci":  ["e2e4", "c7c5", ...],  # last MAX_HISTORY half-moves before FEN
+      "eco":          "B54",               # ECO code from PGN header (null if absent)
+      "opening":      "Sicilian Defense",  # opening name (null if absent)
+      "algo_features": [0.0, 1.0, ...]    # 59 pre-computed structural bits (if available)
     }
 
 LABELED vs UNLABELED EXAMPLES
@@ -58,6 +62,26 @@ try:
     import chess.pgn
 except ImportError:
     sys.exit("Run:  python -m pip install chess")
+
+MAX_HISTORY = 60   # half-moves of game context stored per labeled example (last N)
+
+try:
+    from tools.label_positions import algo_feature_vector_v4 as _algo_fn
+    _ALGO_AVAILABLE = True
+except ImportError:
+    _ALGO_AVAILABLE = False
+
+# Silver-label concepts: deterministic structural detectors only.
+# Fired on positions whose keyword pass returns an empty themes list.
+_SILVER_CONCEPTS: frozenset[str] = frozenset({
+    "pawn_island", "isolated_pawn", "passed_pawn",
+    "bishop_pair", "rook_seventh", "pawn_majority",
+})
+try:
+    from tools.label_positions import label_position as _label_fn
+    _SILVER_AVAILABLE = True
+except ImportError:
+    _SILVER_AVAILABLE = False
 
 
 # ── concept keyword map ───────────────────────────────────────────────────────
@@ -176,6 +200,12 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "smothered mate", "smothered",
         "arabian mate", "anastasia", "hook mate", "boden", "epaulette mate",
         "opera mate", "morphy's mate", "morphy mate",
+        # folded from attacking_chances — direct king-attack keywords
+        "kingside attack", "king-side attack", "king side attack",
+        "queenside attack", "queen-side attack", "queen side attack",
+        "attack on the king", "assault", "dangerous attack",
+        "direct attack", "launch the attack", "launch the kingside",
+        "open lines for the attack",
     ],
     "trapped_piece": [
         "trapped", "has no escape", "no retreat",
@@ -302,10 +332,12 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
     ],
     "isolated_pawn": [
         "isolated", "isolating", "IQP", "isolated queen pawn", "isolated pawn",
+        "isolani", "isolani pawn", "isolated queen's pawn",
     ],
     "backward_pawn": [
-        "backward pawn", "backward d-pawn",
-        "backward pawn as a weakness", "is backwards", "now backwards", "becomes backwards", "the backwards"
+        "backward pawn", "backward d-pawn", "backward c-pawn", "backward e-pawn",
+        "backward pawn as a weakness", "is backwards", "now backwards", "becomes backwards", "the backwards",
+        "weak pawn on", "backward pawn on", "backward queen pawn",
     ],
     "doubled_pawn": [
         "doubled pawn", "doubled pawns",
@@ -319,12 +351,16 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "pawn wedge", "the chain",
         "break the chain", "undermine the chain",
         "undermine the base", "destroy the chain",
+        "locked pawns", "locked pawn structure", "locked structure",
+        "chain base", "base of the pawn chain",
     ],
     "pawn_majority": [
         "pawn majority", "queenside majority", "kingside majority",
         "mobile majority",
         "passed pawn from the majority",
         "majority on the queenside", "majority on the kingside",
+        "numerical advantage on the queenside", "numerical advantage on the kingside",
+        "extra pawn on the queenside", "extra pawn on the kingside",
     ],
     "pawn_storm": [
         "pawn storm", "pawn advance", "storming", "pawn avalanche",
@@ -385,6 +421,9 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "weak on the", "light square weakness", "dark square weakness",
         "light-squared weakness", "dark-squared weakness",
         "control the light squares", "control the dark squares",
+        "weak color complex", "weak colour complex", "color complex weakness",
+        "d5 hole", "e4 hole", "d4 hole", "c5 hole", "f5 hole",
+        "square complex", "weak square complex",
     ],
     "open_file": [
         "open file", "half-open", "semi-open file", "open d-file",
@@ -427,6 +466,13 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "tempo", "tempi", "gains a tempo", "wasted tempo",
         "gain of tempo", "loss of tempo", "loses a tempo",
         "tempo advantage", "with tempo",
+        # folded from attacking_chances — dynamic/counterplay keywords
+        "attacking chances", "attacking possibilities", "attacking play",
+        "attacking position", "attack steadily", "press the attack",
+        "attacking ambitions",
+        "counterplay", "counter-play", "counter play",
+        "counter chances", "counter-attack", "counter attack",
+        "dynamic chances", "sufficient compensation", "good counterchances",
     ],
     "zugzwang": [
         "zugzwang", "compulsion to move", "any move worsens",
@@ -505,21 +551,6 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "gain in development",
     ],
 
-    "attacking_chances": [
-        "kingside attack", "king-side attack", "king side attack",
-        "queenside attack", "queen-side attack", "queen side attack",
-        "attack on the king", "attacking chances", "assault",
-        "attacking possibilities", "attacking play", "attacking position",
-        "attack steadily", "press the attack", "dangerous attack",
-        "direct attack", "launch the attack", "launch the kingside",
-        "open lines for the attack", "attacking ambitions",
-        # counterplay keywords (attacking as defense)
-        "counterplay", "counter-play", "counter play",
-        "counter chances", "counter-attack", "counter attack",
-        "dynamic chances", "sufficient compensation",
-        "good counterchances",
-    ],
-
 }
 
 
@@ -585,10 +616,11 @@ def parse_file(pgn_path: Path, min_comment_len: int = 25, progress_every: int = 
                     whether the keyword pass finds it.
     """
     import time
-    source     = pgn_path.name
-    games_read = 0
+    source        = pgn_path.name
+    games_read    = 0
+    games_corrupt = 0
     examples_yielded = 0
-    t_start    = time.time()
+    t_start       = time.time()
 
     with open(pgn_path, encoding="utf-8", errors="replace") as f:
         while True:
@@ -597,6 +629,12 @@ def parse_file(pgn_path: Path, min_comment_len: int = 25, progress_every: int = 
                 break
 
             games_read += 1
+
+            # Any illegal SAN means board.move_stack is unreliable — discard entire game
+            if game.errors:
+                games_corrupt += 1
+                continue
+
             if games_read % progress_every == 0:
                 elapsed = time.time() - t_start
                 rate    = games_read / elapsed if elapsed > 0 else 0
@@ -605,6 +643,8 @@ def parse_file(pgn_path: Path, min_comment_len: int = 25, progress_every: int = 
                       end="", flush=True)
 
             header_str = game_header(game)
+            eco        = game.headers.get("ECO") or None
+            opening    = game.headers.get("Opening") or None
             board      = game.board()
 
             # ── game-level root comment (no move yet) ─────────────────────────
@@ -612,34 +652,69 @@ def parse_file(pgn_path: Path, min_comment_len: int = 25, progress_every: int = 
             # rich comment before any moves (or instead of moves).
             root_comment = clean_comment(game.comment)
             if len(root_comment) >= min_comment_len:
-                themes = _inject_folder_concept(extract_themes(root_comment), folder_concept)
+                root_fen = board.fen()
+                themes   = _inject_folder_concept(extract_themes(root_comment), folder_concept)
+                if not themes and _SILVER_AVAILABLE:
+                    silver = _label_fn(board) & _SILVER_CONCEPTS
+                    themes = sorted(silver)
+                extra    = {}
+                if _ALGO_AVAILABLE:
+                    try:
+                        extra["algo_features"] = _algo_fn(root_fen).tolist()
+                    except Exception:
+                        pass
                 examples_yielded += 1
                 yield {
-                    "fen":        board.fen(),
-                    "move_san":   "",
-                    "move_uci":   "",
-                    "annotation": root_comment,
-                    "themes":     themes,
-                    "phase":      get_phase(board),
-                    "fullmove":   board.fullmove_number,
-                    "side":       "white" if board.turn == chess.WHITE else "black",
-                    "source":     source,
-                    "game":       header_str,
+                    "fen":          root_fen,
+                    "move_san":     "",
+                    "move_uci":     "",
+                    "annotation":   root_comment,
+                    "themes":       themes,
+                    "phase":        get_phase(board),
+                    "fullmove":     board.fullmove_number,
+                    "side":         "white" if board.turn == chess.WHITE else "black",
+                    "source":       source,
+                    "game":         header_str,
+                    "history_rich": [],
+                    "eco":          eco,
+                    "opening":      opening,
+                    **extra,
                 }
 
             # ── per-move comments ─────────────────────────────────────────────
-            node = game
+            node         = game
+            history_rich: list[dict] = []   # built incrementally as moves are pushed
+
             while node.variations:
-                node       = node.variations[0]
+                node = node.variations[0]
+
                 fen_before = board.fen()
                 move       = node.move
+
+                # Capture piece / capture info BEFORE push, check flag AFTER
+                piece_obj    = board.piece_at(move.from_square)
+                captured_obj = board.piece_at(move.to_square)
+                color_before = board.turn
                 board.push(move)
+                is_check = board.is_check()
+
+                history_rich.append({
+                    "uci":      move.uci(),
+                    "piece":    piece_obj.piece_type if piece_obj else None,
+                    "captured": captured_obj.piece_type if captured_obj else None,
+                    "is_check": is_check,
+                    "color":    1 if color_before == chess.WHITE else 0,
+                })
 
                 comment = clean_comment(node.comment)
                 if len(comment) < min_comment_len:
                     continue
 
                 themes = _inject_folder_concept(extract_themes(comment), folder_concept)
+                if not themes and _SILVER_AVAILABLE:
+                    silver = _label_fn(chess.Board(fen_before)) & _SILVER_CONCEPTS
+                    themes = sorted(silver)
+
                 phase  = get_phase(chess.Board(fen_before))
 
                 try:
@@ -647,23 +722,35 @@ def parse_file(pgn_path: Path, min_comment_len: int = 25, progress_every: int = 
                 except Exception:
                     san = move.uci()
 
+                extra = {}
+                if _ALGO_AVAILABLE:
+                    try:
+                        extra["algo_features"] = _algo_fn(fen_before).tolist()
+                    except Exception:
+                        pass
+
                 examples_yielded += 1
                 yield {
-                    "fen":        fen_before,
-                    "move_san":   san,
-                    "move_uci":   move.uci(),
-                    "annotation": comment,
-                    "themes":     themes,
-                    "phase":      phase,
-                    "fullmove":   board.fullmove_number,
-                    "side":       "white" if not board.turn else "black",
-                    "source":     source,
-                    "game":       header_str,
+                    "fen":          fen_before,
+                    "move_san":     san,
+                    "move_uci":     move.uci(),
+                    "annotation":   comment,
+                    "themes":       themes,
+                    "phase":        phase,
+                    "fullmove":     board.fullmove_number,
+                    "side":         "white" if not board.turn else "black",
+                    "source":       source,
+                    "game":         header_str,
+                    "history_rich": list(history_rich[-MAX_HISTORY:]),
+                    "eco":          eco,
+                    "opening":      opening,
+                    **extra,
                 }
 
     elapsed = time.time() - t_start
-    print(f"\r    {games_read:,} games read  |  {examples_yielded:,} examples  |  "
-          f"done in {elapsed/60:.1f} min                    ")
+    corrupt_note = f"  |  {games_corrupt:,} corrupt skipped" if games_corrupt else ""
+    print(f"\r    {games_read:,} games read  |  {examples_yielded:,} examples"
+          f"{corrupt_note}  |  done in {elapsed/60:.1f} min                    ")
 
 
 # ── statistics ────────────────────────────────────────────────────────────────

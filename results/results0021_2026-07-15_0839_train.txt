@@ -1,0 +1,22 @@
+
+Device: cuda
+  GPU: NVIDIA GeForce RTX 2060
+
+Loading data from data\training_raw.jsonl
+  Loading algo cache ... done  torch.Size([1930213, 1663])
+Loading dataset from data\training_raw.jsonl ... 1,679,221 labeled examples found.
+  train: 1,343,376 examples  (train 1,343,376 / val 167,922 / test 167,923)
+  Lazy loading enabled — examples encoded per batch during training.
+  Algo cache shared from caller  torch.Size([1930213, 1663])
+  Building label index ... done.
+Loading dataset from data\training_raw.jsonl ... 1,679,221 labeled examples found.
+  val: 167,922 examples  (train 1,343,376 / val 167,922 / test 167,923)
+  Lazy loading enabled — examples encoded per batch during training.
+  Algo cache shared from caller  torch.Size([1930213, 1663])
+  Building label index ... done.
+
+Model: 3,029,553 parameters
+
+── Training  (100 epochs, batch 128) ─────────────────────────────────────
+Epoch  Train Loss  Val Loss  Macro F1         LR    Time  Note
+───────────────────────────────────────────────────────────────────────────

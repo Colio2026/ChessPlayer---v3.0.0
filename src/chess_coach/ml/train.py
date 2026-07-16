@@ -24,12 +24,38 @@ Output
 from __future__ import annotations
 
 import argparse
+import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+
+
+class _Tee:
+    """Mirror all stdout writes to a log file simultaneously."""
+    def __init__(self, log_path: Path) -> None:
+        self._file = open(log_path, "w", encoding="utf-8")
+        self._stdout = sys.stdout   # capture current stdout (not __stdout__ — avoids bypassing shell pipe)
+    def write(self, s: str) -> None:
+        self._stdout.write(s)
+        self._file.write(s)
+    def flush(self) -> None:
+        self._stdout.flush()
+        self._file.flush()
+    def close(self) -> None:
+        self._file.close()
+
+
+def _next_results_path(tag: str) -> Path:
+    results_dir = Path("results")
+    results_dir.mkdir(exist_ok=True)
+    existing = sorted(results_dir.glob("results????_*.txt"))
+    n = int(existing[-1].stem[7:11]) + 1 if existing else 1
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+    return results_dir / f"results{n:04d}_{stamp}_{tag}.txt"
 
 from .dataset    import ChessConceptDataset
 from .classifier import ChessConceptClassifier
@@ -37,6 +63,18 @@ from .concept_vocab import CONCEPTS, NUM_CONCEPTS
 
 CHECKPOINT_DIR  = Path("data")
 LABEL_SMOOTHING = 0.05   # 0 → 0.05, 1 → 0.95; softens noisy keyword labels
+
+
+def _collate(batch):
+    """Skip PyTorch's shared-memory collate path (breaks on Windows spawn workers
+    with view tensors and numpy-backed storage). Stack directly instead."""
+    xs, hists, seq_lens, ys = zip(*batch)
+    return (
+        torch.stack(xs),
+        torch.stack(hists),
+        torch.tensor(seq_lens, dtype=torch.long),
+        torch.stack(ys),
+    )
 
 
 def macro_f1(preds: torch.Tensor, targets: torch.Tensor) -> float:
@@ -63,23 +101,39 @@ def train(args: argparse.Namespace) -> None:
     data_path = Path(args.data)
     print(f"\nLoading data from {data_path}")
 
-    train_ds = ChessConceptDataset(data_path, split="train")
-    val_ds   = ChessConceptDataset(data_path, split="val")
+    # Memory-map the algo cache so the OS pages it in on demand (~13 GB, won't fit in RAM).
+    # num_workers=0 keeps everything in-process; mmap rows are copied per __getitem__ call.
+    algo_tensor = None
+    cache_path  = Path("data/algo_cache.npy")
+    if cache_path.exists():
+        import numpy as np
+        print(f"  Memory-mapping algo cache ...", end=" ", flush=True)
+        algo_tensor = np.load(str(cache_path), mmap_mode="r")
+        print(f"done  {algo_tensor.shape}")
+
+    train_ds = ChessConceptDataset(data_path, split="train", algo_tensor=algo_tensor, phase4=args.phase4)
+    val_ds   = ChessConceptDataset(data_path, split="val",   algo_tensor=algo_tensor, phase4=args.phase4)
 
     if args.quick:
-        # Use 10% of training data for a fast sanity-check run
         n = max(500, len(train_ds) // 10)
-        train_ds._x = train_ds._x[:n]
-        train_ds._y = train_ds._y[:n]
+        train_ds._raw = train_ds._raw[:n]
+        train_ds._y   = train_ds._y[:n]
         print(f"  --quick mode: using {n} training examples")
 
-    train_dl = DataLoader(train_ds, batch_size=args.batch_size,
-                          shuffle=True,  num_workers=0, pin_memory=(device.type == "cuda"))
-    val_dl   = DataLoader(val_ds,   batch_size=args.batch_size * 2,
-                          shuffle=False, num_workers=0)
+    train_dl = DataLoader(
+        train_ds, batch_size=args.batch_size,
+        shuffle=True, num_workers=0,
+        pin_memory=(device.type == "cuda"),
+        collate_fn=_collate,
+    )
+    val_dl = DataLoader(
+        val_ds, batch_size=args.batch_size * 2,
+        shuffle=False, num_workers=0,
+        collate_fn=_collate,
+    )
 
     # ── model ─────────────────────────────────────────────────────────────────
-    model = ChessConceptClassifier().to(device)
+    model = ChessConceptClassifier(phase4=args.phase4).to(device)
     total_params = sum(p.numel() for p in model.parameters())
     print(f"\nModel: {total_params:,} parameters")
 
@@ -110,10 +164,11 @@ def train(args: argparse.Namespace) -> None:
         # ── train ─────────────────────────────────────────────────────────────
         model.train()
         train_loss = 0.0
-        for x, y in train_dl:
-            x, y = x.to(device), y.to(device)
+        for x, hist, seq_len, y in train_dl:
+            x, hist, seq_len, y = (x.to(device), hist.to(device),
+                                    seq_len.to(device), y.to(device))
             optimizer.zero_grad()
-            loss = loss_fn(model(x), y)
+            loss = loss_fn(model(x, hist, seq_len), y)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -123,13 +178,14 @@ def train(args: argparse.Namespace) -> None:
 
         # ── validate ──────────────────────────────────────────────────────────
         model.eval()
-        val_loss   = 0.0
-        all_preds  = []
+        val_loss    = 0.0
+        all_preds   = []
         all_targets = []
         with torch.no_grad():
-            for x, y in val_dl:
-                x, y = x.to(device), y.to(device)
-                logits = model(x)
+            for x, hist, seq_len, y in val_dl:
+                x, hist, seq_len, y = (x.to(device), hist.to(device),
+                                        seq_len.to(device), y.to(device))
+                logits = model(x, hist, seq_len)
                 val_loss += loss_fn(logits, y).item()
                 all_preds.append((torch.sigmoid(logits) > 0.5).cpu())
                 all_targets.append(y.cpu())
@@ -184,12 +240,22 @@ def main() -> None:
     parser.add_argument("--epochs",     type=int,   default=100)
     parser.add_argument("--batch-size", type=int,   default=128)
     parser.add_argument("--lr",         type=float, default=1e-3)
-    parser.add_argument("--patience",   type=int,   default=15,
+    parser.add_argument("--patience",   type=int,   default=10,
                         help="Stop after N epochs with no macro F1 improvement.")
     parser.add_argument("--quick",      action="store_true",
                         help="Use 10%% of data for a fast test run.")
+    parser.add_argument("--phase4",     action="store_true",
+                        help="Use Phase 4 architecture (COMBINED_SIZE_V4, MOVE_SIZE_V4=144).")
     args = parser.parse_args()
-    train(args)
+    log_path = _next_results_path("train")
+    tee = _Tee(log_path)
+    sys.stdout = tee
+    try:
+        train(args)
+    finally:
+        sys.stdout = sys.__stdout__
+        tee.close()
+    print(f"Training log saved → {log_path}")
 
 
 if __name__ == "__main__":

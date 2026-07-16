@@ -1,0 +1,127 @@
+Device: cuda
+Loaded checkpoint: epoch=9  val_loss=0.5649
+
+Calibrating per-class thresholds on val split …
+Loading dataset from data\training_raw.jsonl ... 1,024,422 labeled examples found.
+  val: 102,442 examples  (train 819,537 / val 102,442 / test 102,443)
+  Lazy loading enabled — examples encoded per batch during training.
+  Loading algo cache into shared memory ... done  torch.Size([1274699, 1663])
+  Building label index ... done.
+
+Concept                 Threshold  Val positives
+────────────────────────────────────────────────
+pin                          0.75           5893
+fork                         0.75           5212
+skewer                       0.85           4982
+discovery                    0.80           5097
+x_ray                        0.80           1836
+double_check                 0.90           2863
+clearance                    0.80           4958
+deflection                   0.70           5401
+overloading                  0.65           5209
+zwischenzug                  0.80           5101
+interference                 0.70           1816
+back_rank                    0.85           5084
+sacrifice                    0.75           5842
+mating_attack                0.75           5503
+trapped_piece                0.85           5167
+outpost                      0.75           5383
+blockade                     0.75           5472
+bad_bishop                   0.70           5124
+good_bishop                  0.70           5300
+bishop_pair                  0.80           5460
+piece_activity               0.80           5344
+battery                      0.70           5207
+rook_seventh                 0.90           5068
+passed_pawn                  0.80           5426
+promotion                    0.90           5134
+isolated_pawn                0.60           5526
+backward_pawn                0.75           5209
+doubled_pawn                 0.80           5534
+pawn_majority                0.60           5270
+pawn_chain                   0.60           5233
+pawn_storm                   0.95           5111
+pawn_island                  0.55           5110
+king_safety                  0.85           5174
+king_activity                0.85           5022
+shouldering                  0.90            137
+opposition                   0.90           5110
+zugzwang                     0.95           4895
+rook_endgame                 0.95           4929
+pawn_endgame                 0.90           5203
+bishop_endgame               0.85           4923
+knight_endgame               0.95           3898
+queen_endgame                0.95           5136
+drawn_position               0.75            141
+weak_square                  0.55           5458
+open_file                    0.65           5489
+space_advantage              0.85           5365
+development_lead             0.90           5180
+initiative                   0.80           1085
+prophylaxis                  0.75           5262
+attacking_chances            0.85           6006
+Thresholds saved → data\thresholds.json
+Loading dataset from data\training_raw.jsonl ... 1,024,422 labeled examples found.
+  test: 102,443 examples  (train 819,537 / val 102,442 / test 102,443)
+  Lazy loading enabled — examples encoded per batch during training.
+  Loading algo cache into shared memory ... done  torch.Size([1274699, 1663])
+  Building label index ... done.
+
+── Dataset Metrics  (50/50 calibrated) ──────────────────────────────
+  Micro F1 : 0.4114
+  Macro F1 : 0.4749  (over 50 classes with support)
+
+Concept                  Prec    Rec     F1  Support  Thresh
+──────────────────────────────────────────────────────────────
+knight_endgame          0.997  0.998  0.998     3883    0.95  ███████████████████
+queen_endgame           0.997  0.997  0.997     5086    0.95  ███████████████████
+bishop_endgame          0.982  0.997  0.990     5003    0.85  ███████████████████
+development_lead        0.996  0.978  0.987     5176    0.90  ███████████████████
+space_advantage         0.942  0.950  0.946     5289    0.85  ██████████████████
+rook_endgame            0.754  0.948  0.840     5142    0.95  ████████████████
+opposition              0.684  0.909  0.781     5069    0.90  ███████████████
+pawn_endgame            0.635  0.985  0.772     4906    0.90  ███████████████
+pawn_storm              0.733  0.725  0.729     4988    0.95  ██████████████
+zugzwang                0.659  0.713  0.685     4860    0.95  █████████████
+shouldering             0.596  0.771  0.672      153    0.90  █████████████
+trapped_piece           0.623  0.664  0.643     5076    0.85  ████████████
+rook_seventh            0.518  0.801  0.629     5010    0.90  ████████████
+promotion               0.557  0.624  0.589     5059    0.90  ███████████
+x_ray                   0.622  0.499  0.553     1911    0.80  ███████████
+double_check            0.577  0.526  0.550     2841    0.90  ███████████
+skewer                  0.425  0.767  0.547     4979    0.85  ██████████
+back_rank               0.375  0.830  0.517     5097    0.85  ██████████
+king_safety             0.370  0.770  0.500     5062    0.85  █████████
+attacking_chances       0.425  0.596  0.496     5969    0.85  █████████
+bishop_pair             0.334  0.840  0.478     5473    0.80  █████████
+doubled_pawn            0.340  0.739  0.466     5438    0.80  █████████
+piece_activity          0.324  0.718  0.447     5119    0.80  ████████
+king_activity           0.346  0.572  0.431     5036    0.85  ████████
+pin                     0.270  0.703  0.390     5762    0.75  ███████
+zwischenzug             0.377  0.401  0.389     5165    0.80  ███████
+outpost                 0.248  0.719  0.369     5330    0.75  ███████
+sacrifice               0.320  0.396  0.354     5789    0.75  ███████
+fork                    0.259  0.542  0.351     5064    0.75  ███████
+passed_pawn             0.265  0.515  0.350     5274    0.80  ███████
+discovery               0.278  0.470  0.349     5025    0.80  ██████
+mating_attack           0.253  0.554  0.347     5420    0.75  ██████
+initiative              0.218  0.767  0.339     1129    0.80  ██████
+blockade                0.230  0.583  0.330     5226    0.75  ██████
+clearance               0.304  0.354  0.328     5256    0.80  ██████
+backward_pawn           0.210  0.584  0.309     5085    0.75  ██████
+good_bishop             0.194  0.746  0.307     5248    0.70  ██████
+bad_bishop              0.190  0.670  0.297     5054    0.70  █████  ← low
+deflection              0.234  0.389  0.292     5374    0.70  █████  ← low
+battery                 0.171  0.614  0.268     5102    0.70  █████  ← low
+overloading             0.161  0.690  0.261     5142    0.65  █████  ← low
+open_file               0.166  0.614  0.261     5414    0.65  █████  ← low
+prophylaxis             0.223  0.302  0.257     5169    0.75  █████  ← low
+interference            0.191  0.258  0.219     1721    0.70  ████  ← low
+isolated_pawn           0.133  0.566  0.216     5425    0.60  ████  ← low
+pawn_majority           0.124  0.568  0.204     5193    0.60  ████  ← low
+pawn_chain              0.117  0.496  0.189     5165    0.60  ███  ← low
+drawn_position          0.128  0.340  0.186      144    0.75  ███  ← low
+pawn_island             0.102  0.579  0.173     5035    0.55  ███  ← low
+weak_square             0.100  0.504  0.167     5331    0.55  ███  ← low
+
+── Spot Checks ────────────────────────────────────────────────────────

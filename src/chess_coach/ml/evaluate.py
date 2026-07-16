@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+from datetime import datetime
 from pathlib import Path
 
 import torch
@@ -44,6 +46,29 @@ from torch.utils.data import DataLoader
 from .classifier    import ChessConceptClassifier
 from .dataset       import ChessConceptDataset
 from .concept_vocab import CONCEPTS, NUM_CONCEPTS
+
+class _Tee:
+    def __init__(self, log_path: Path) -> None:
+        self._file = open(log_path, "w", encoding="utf-8")
+        self._stdout = sys.stdout
+    def write(self, s: str) -> None:
+        self._stdout.write(s)
+        self._file.write(s)
+    def flush(self) -> None:
+        self._stdout.flush()
+        self._file.flush()
+    def close(self) -> None:
+        self._file.close()
+
+
+def _next_results_path(tag: str) -> Path:
+    results_dir = Path("results")
+    results_dir.mkdir(exist_ok=True)
+    existing = sorted(results_dir.glob("results????_*.txt"))
+    n = int(existing[-1].stem[7:11]) + 1 if existing else 1
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+    return results_dir / f"results{n:04d}_{stamp}_{tag}.txt"
+
 
 DEFAULT_CHECKPOINT  = Path("data/classifier_best.pt")
 DEFAULT_DATA        = Path("data/training_raw.jsonl")
@@ -302,11 +327,6 @@ SPOT_CHECKS: list[dict] = [
         "fen":  "r1bqr1k1/ppp1bppp/2np1n2/4p3/2PPP3/2N1BN2/PP3PPP/R2QKB1R w KQ - 0 8",
         "expect": ["prophylaxis"],
     },
-    {
-        "name": "Attacking chances — open lines toward castled king",
-        "fen":  "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/4PP2/2NP1NB1/PPP3PP/R1BQK2R w KQ - 0 8",
-        "expect": ["attacking_chances"],
-    },
 ]
 
 
@@ -339,22 +359,25 @@ def save_thresholds(thresholds: dict[str, float],
 
 def calibrate_thresholds(model: ChessConceptClassifier,
                           data_path: Path,
-                          device: torch.device) -> dict[str, float]:
+                          device: torch.device,
+                          algo_tensor: "torch.Tensor | None" = None) -> dict[str, float]:
     """
     Sweep thresholds 0.05–0.95 per class on the *val* split and pick the
     value that maximises F1 for each class.  Classes with no positives in
     val default to 0.5.
     """
     print("\nCalibrating per-class thresholds on val split …")
-    val_ds = ChessConceptDataset(data_path, split="val")
+    val_ds = ChessConceptDataset(data_path, split="val", algo_tensor=algo_tensor, phase4=is_phase4)
     val_dl = DataLoader(val_ds, batch_size=256, shuffle=False, num_workers=0)
 
     all_probs  = []
     all_labels = []
     model.eval()
     with torch.no_grad():
-        for x, y in val_dl:
-            probs = torch.sigmoid(model(x.to(device))).cpu()
+        for x, hist, seq_len, y in val_dl:
+            probs = torch.sigmoid(
+                model(x.to(device), hist.to(device), seq_len.to(device))
+            ).cpu()
             all_probs.append(probs)
             all_labels.append(y)
 
@@ -413,8 +436,9 @@ def _f1(tp: torch.Tensor, fp: torch.Tensor,
 def evaluate_dataset(model: ChessConceptClassifier,
                      data_path: Path,
                      device: torch.device,
-                     thresholds: torch.Tensor) -> None:
-    test_ds = ChessConceptDataset(data_path, split="test")
+                     thresholds: torch.Tensor,
+                     algo_tensor: "torch.Tensor | None" = None) -> None:
+    test_ds = ChessConceptDataset(data_path, split="test", algo_tensor=algo_tensor, phase4=is_phase4)
     if len(test_ds) == 0:
         print("No test examples — skipping dataset evaluation.")
         return
@@ -428,9 +452,11 @@ def evaluate_dataset(model: ChessConceptClassifier,
 
     model.eval()
     with torch.no_grad():
-        for x, y_true in test_dl:
+        for x, hist, seq_len, y_true in test_dl:
             x      = x.to(device)
-            probs  = torch.sigmoid(model(x))          # [B, C]
+            probs  = torch.sigmoid(
+                model(x, hist.to(device), seq_len.to(device))
+            )
             y_pred = (probs >= t_dev).float().cpu()
             y_true = y_true.float()
             tp += (y_pred * y_true).sum(dim=0)
@@ -473,17 +499,30 @@ def evaluate_dataset(model: ChessConceptClassifier,
 def spot_check(model: ChessConceptClassifier,
                thresholds: torch.Tensor) -> None:
     print(f"\n── Spot Checks ────────────────────────────────────────────────────────")
-    from .board_encoder import fen_to_tensor, move_to_tensor
-    from tools.label_positions import algo_feature_vector
-    device = next(model.parameters()).device
+    from .board_encoder import (
+        fen_to_tensor, move_to_tensor, history_to_tensor, history_rich_to_tensor,
+    )
+    from tools.label_positions import algo_feature_vector, algo_feature_vector_v4
+    device    = next(model.parameters()).device
+    is_phase4 = model.spatial_proj is not None
 
     all_pass = True
     for sc in SPOT_CHECKS:
         board_t = fen_to_tensor(sc["fen"])
         move_t  = move_to_tensor(sc.get("move_uci", ""))
-        algo_t  = torch.from_numpy(algo_feature_vector(sc["fen"]))
-        x       = torch.cat([board_t, move_t, algo_t]).unsqueeze(0).to(device)
-        probs   = torch.sigmoid(model(x)).squeeze(0).cpu()
+        if is_phase4:
+            spatial_t = torch.from_numpy(algo_feature_vector_v4(sc["fen"]))
+            v3_t      = torch.from_numpy(algo_feature_vector(sc["fen"]))
+            x         = torch.cat([board_t, move_t, spatial_t, v3_t]).unsqueeze(0).to(device)
+            hist_t, seq_len = history_rich_to_tensor([])
+        else:
+            algo_t = torch.from_numpy(algo_feature_vector(sc["fen"]))
+            x      = torch.cat([board_t, move_t, algo_t]).unsqueeze(0).to(device)
+            hist_t, seq_len = history_to_tensor([])
+        hist_t    = hist_t.unsqueeze(0).to(device)
+        seq_len_t = torch.tensor([seq_len])
+
+        probs = torch.sigmoid(model(x, hist_t, seq_len_t)).squeeze(0).cpu()
         t_vec   = thresholds
         pred_set = {CONCEPTS[i] for i in range(NUM_CONCEPTS) if probs[i] >= t_vec[i]}
 
@@ -506,7 +545,7 @@ def spot_check(model: ChessConceptClassifier,
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
-def main() -> None:
+def _main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint",      default=str(DEFAULT_CHECKPOINT))
     parser.add_argument("--data",            default=str(DEFAULT_DATA))
@@ -525,9 +564,10 @@ def main() -> None:
         print("Run training first: python -m src.chess_coach.ml.train")
         return
 
-    # Load model
-    model = ChessConceptClassifier().to(device)
-    ckpt  = torch.load(ckpt_path, map_location=device, weights_only=False)
+    # Load model — detect Phase 4 checkpoint by presence of spatial_proj weights
+    ckpt     = torch.load(ckpt_path, map_location=device, weights_only=False)
+    is_phase4 = any(k.startswith("spatial_proj") for k in ckpt["state_dict"])
+    model    = ChessConceptClassifier(phase4=is_phase4).to(device)
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
     epoch    = ckpt.get("epoch", "?")
@@ -536,18 +576,39 @@ def main() -> None:
 
     data_path = Path(args.data)
 
+    # Memory-map the algo cache so the OS pages it in on demand (~13 GB, won't fit in RAM).
+    algo_tensor = None
+    cache_path  = Path("data/algo_cache.npy")
+    if cache_path.exists():
+        import numpy as np
+        print(f"  Memory-mapping algo cache ...", end=" ", flush=True)
+        algo_tensor = np.load(str(cache_path), mmap_mode="r")
+        print(f"done  {algo_tensor.shape}")
+
     # Calibrate thresholds if requested, then save
     if args.calibrate:
-        cal = calibrate_thresholds(model, data_path, device)
+        cal = calibrate_thresholds(model, data_path, device, algo_tensor=algo_tensor)
         save_thresholds(cal)
 
     # Load thresholds (calibrated file if it exists, global fallback otherwise)
     thresholds = load_thresholds(default=args.threshold)
 
     if not args.spot_check_only:
-        evaluate_dataset(model, data_path, device, thresholds)
+        evaluate_dataset(model, data_path, device, thresholds, algo_tensor=algo_tensor)
 
     spot_check(model, thresholds)
+
+
+def main() -> None:
+    log_path = _next_results_path("eval")
+    tee = _Tee(log_path)
+    sys.stdout = tee
+    try:
+        _main()
+    finally:
+        sys.stdout = sys.__stdout__
+        tee.close()
+    print(f"Eval log saved → {log_path}")
 
 
 if __name__ == "__main__":

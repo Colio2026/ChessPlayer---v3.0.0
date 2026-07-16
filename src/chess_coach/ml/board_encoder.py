@@ -40,8 +40,39 @@ _MOB_OFFSET    = 989   # mobility per piece type per side
 
 INPUT_SIZE    = 1001
 MOVE_SIZE     = 128
-ALGO_SIZE     = 59    # concept bottleneck bits from algo detectors (label_positions.py)
-COMBINED_SIZE = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE  # 1188
+ALGO_SIZE     = 59          # concept bottleneck bits from algo detectors
+MAX_SEQ_LEN   = 60          # half-moves of game history stored per example
+GRU_HIDDEN    = 256         # GRU hidden size, appended to board features at head
+STATIC_SIZE   = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE   # 1188 — board+move+algo
+COMBINED_SIZE = STATIC_SIZE + GRU_HIDDEN             # 1444 — board features + GRU output
+
+# ── Phase 4 constants (kept separate until full pipeline cutover) ─────────────
+# Switch active constants to these when parse → ingest → train pipeline re-runs.
+#
+# MOVE_SIZE_V4 = 144    per-step encoding for history_rich_to_tensor()
+#   [0:64]   from_square one-hot
+#   [64:128] to_square   one-hot
+#   [128:134] piece_type one-hot  (PAWN=0 … KING=5)
+#   [134:141] captured   one-hot  (none=0, PAWN=1 … KING=6)
+#   [141]    is_check   binary
+#   [142]    is_capture binary
+#   [143]    color      binary (white=1)
+#
+# ALGO_SIZE_V4    = 1663   (from tools/label_positions.ALGO_FEATURE_SIZE_V4)
+# STATIC_SIZE_V4  = INPUT_SIZE + MOVE_SIZE_V4 + ALGO_SIZE_V4  = 2808
+# COMBINED_SIZE_V4 = STATIC_SIZE_V4 + GRU_HIDDEN              = 3064
+MOVE_SIZE_V4     = 144   # GRU per-step encoding only (history_rich_to_tensor)
+ALGO_SIZE_V4     = 1663
+STATIC_SIZE_V4   = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE_V4   # 2792 (MOVE_SIZE=128 unchanged — that's current-move, not GRU)
+COMBINED_SIZE_V4 = STATIC_SIZE_V4 + GRU_HIDDEN             # 3048
+
+# Phase 4-B: spatial bottleneck + Phase 3 summary restored
+# spatial(1663) → proj(256) | v3_summary(59) bypasses bottleneck
+# Phase 3 summary bits encode ACTUALIZED concepts (piece IS on outpost)
+# Spatial maps encode STRUCTURAL POTENTIAL (which squares could be outposts)
+# Both together: model can read direct labels AND use fine-grained location info
+PROJ_SIZE_V4       = 256
+COMBINED_SIZE_V4B  = INPUT_SIZE + MOVE_SIZE + PROJ_SIZE_V4 + ALGO_SIZE + GRU_HIDDEN  # 1001+128+256+59+256=1700
 
 # Max attack squares per piece type (for normalising mobility to [0, 1])
 _MOB_MAX = [2, 8, 13, 14, 27, 8]  # P  N  B  R  Q  K
@@ -203,6 +234,63 @@ def fen_to_tensor(fen: str) -> torch.Tensor:
     _add_mobility(board, arr)
 
     return torch.from_numpy(arr)
+
+
+def history_to_tensor(
+    moves: list[str],
+    max_len: int = MAX_SEQ_LEN,
+) -> tuple[torch.Tensor, int]:
+    """Encode a list of UCI move strings as a padded (max_len, MOVE_SIZE) float32 tensor.
+
+    Takes the last max_len moves (most recent context).
+    Returns (padded_tensor, actual_sequence_length).
+    Zero rows represent padding; GRU will mask these via pack_padded_sequence.
+    """
+    moves   = list(moves)[-max_len:]   # most recent N half-moves, don't mutate
+    seq_len = len(moves)
+    out     = torch.zeros(max_len, MOVE_SIZE, dtype=torch.float32)
+    for i, uci in enumerate(moves):
+        try:
+            move                    = chess.Move.from_uci(uci)
+            out[i, move.from_square]     = 1.0
+            out[i, 64 + move.to_square] = 1.0
+        except Exception:
+            pass   # malformed UCI → leave row as zeros
+    return out, seq_len
+
+
+def history_rich_to_tensor(
+    moves: list[dict],
+    max_len: int = MAX_SEQ_LEN,
+) -> tuple[torch.Tensor, int]:
+    """Encode a Phase 4 history_rich move list as a padded (max_len, 144) tensor.
+
+    Each dict has keys: uci, piece (int 1-6), captured (int 1-6 or None),
+    is_check (bool), color (int 1=white 0=black).
+    Returns (padded_tensor, actual_sequence_length).
+    """
+    moves   = list(moves)[-max_len:]
+    seq_len = len(moves)
+    out     = torch.zeros(max_len, MOVE_SIZE_V4, dtype=torch.float32)
+    for i, m in enumerate(moves):
+        try:
+            move = chess.Move.from_uci(m["uci"])
+            out[i, move.from_square]      = 1.0   # [0:64]
+            out[i, 64 + move.to_square]   = 1.0   # [64:128]
+            pt = m.get("piece")
+            if pt and 1 <= pt <= 6:
+                out[i, 128 + pt - 1]      = 1.0   # [128:134] piece_type one-hot
+            cap = m.get("captured")
+            if cap and 1 <= cap <= 6:
+                out[i, 134 + cap]         = 1.0   # [135:141] captured one-hot (0=none)
+            else:
+                out[i, 134]               = 1.0   # [134] = no capture
+            out[i, 141] = 1.0 if m.get("is_check") else 0.0
+            out[i, 142] = 1.0 if (cap is not None) else 0.0
+            out[i, 143] = float(m.get("color", 1))
+        except Exception:
+            pass
+    return out, seq_len
 
 
 def move_to_tensor(move_uci: str) -> torch.Tensor:

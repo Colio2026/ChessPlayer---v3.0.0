@@ -1,0 +1,21 @@
+
+Device: cuda
+  GPU: NVIDIA GeForce RTX 2060
+
+Loading data from data\training_raw.jsonl
+Loading dataset from data\training_raw.jsonl ... 1,024,422 labeled examples found.
+  train: 819,537 examples  (train 819,537 / val 102,442 / test 102,443)
+  Lazy loading enabled — examples encoded per batch during training.
+  Mapping algo cache data\algo_cache.npy ... (1274699, 1663)  (8.48 GB)
+  Building label index ... done.
+Loading dataset from data\training_raw.jsonl ... 1,024,422 labeled examples found.
+  val: 102,442 examples  (train 819,537 / val 102,442 / test 102,443)
+  Lazy loading enabled — examples encoded per batch during training.
+  Mapping algo cache data\algo_cache.npy ... (1274699, 1663)  (8.48 GB)
+  Building label index ... done.
+
+Model: 8,708,658 parameters
+
+── Training  (100 epochs, batch 128) ─────────────────────────────────────
+Epoch  Train Loss  Val Loss  Macro F1         LR    Time  Note
+───────────────────────────────────────────────────────────────────────────

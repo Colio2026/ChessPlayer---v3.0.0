@@ -1,0 +1,6 @@
+
+Device: cuda
+  GPU: NVIDIA GeForce RTX 2060
+
+Loading data from data\training_raw.jsonl
+  Loading algo cache into shared memory ... 

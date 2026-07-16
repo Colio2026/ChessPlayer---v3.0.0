@@ -65,9 +65,8 @@ CONCEPTS: list[str] = [
     "open_file",
     "space_advantage",
     "development_lead",
-    "initiative",           # renamed from tempo; includes tempo/time-advantage language
+    "initiative",           # includes tempo/time-advantage language and dynamic/counterplay
     "prophylaxis",
-    "attacking_chances",    # includes counterplay
 ]
 
 NUM_CONCEPTS = len(CONCEPTS)

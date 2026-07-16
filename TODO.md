@@ -1,6 +1,222 @@
 # ChessPlayer v3 — Coach Intelligence System Design
 ## Vision, Architecture & Build Manual
 
+---
+
+# ⚡ PHASE 4 — ACTIVE ENGINEERING PLAN
+
+**Goal:** calibrated macro F1 > 0.50  
+**Baseline:** Phase 3 = 0.4733  |  Phase 4-A1 = failed (overfit epoch 7)
+
+## Why A1 Failed
+
+Phase 4-A1 used hidden1=2048, hidden2=1024 (8.7M params).
+Val loss bottomed at **0.6356 epoch 7**, then rose.
+Phase 3 bottomed at **0.5608 epoch 9** — Phase 4-A1 is *worse at its own minimum*.
+
+Root cause: 2048/1024 head is wide enough to memorize 1663-dim noise before it learns signal.
+Fix: cut head width until the model is forced to generalize.
+
+---
+
+## A Sample's Path Through the Data
+
+```
+INPUT
+  fen          "r1bqk2r/pp2bppp/2n1pn2/3p4/..."
+  move_uci     "d2d4"
+  history_rich [{"from":"e2","to":"e4","piece":"P",...}, ...]   <- up to 60 moves
+  _ac          417382                                            <- index into algo_cache.npy
+
+ENCODERS
+  fen_to_tensor(fen)
+    piece placement  768-dim  (12 planes x 64 squares)
+    side to move       1-dim
+    castling rights    4-dim
+    en passant sq      8-dim
+    attack maps      128-dim
+    pawn structure    80-dim
+    mobility          12-dim
+    ─────────────────────────
+    board_t         1001-dim  float32
+
+  move_to_tensor(move_uci)
+    from-square one-hot   64-dim
+    to-square one-hot     64-dim
+    ──────────────────────────
+    move_t              128-dim  float32
+
+  algo_cache.npy[_ac]                         <- binary memmap, not JSON
+    weak square maps     128-dim
+    outpost maps         128-dim
+    backward pawn maps   128-dim
+    passed pawn maps     128-dim
+    (reserved B5)        128-dim
+    bishop pair/dev/xray/battery/misc  1023-dim
+    ────────────────────────────────────────
+    algo_t             1663-dim  float32
+
+  torch.cat([board_t, move_t, algo_t])
+    static_x           2792-dim  float32     <- STATIC_SIZE_V4
+
+  history_rich_to_tensor(history_rich)
+    per step: from(64)+to(64)+piece(6)+captured(7)+check(1)+cap(1)+color(1) = 144-dim
+    padded to 60 x 144
+    seq_len = actual history length (0 if missing)
+    ──────────────────────────────────────────────────────
+    hist_t   [60, 144]  float32
+    seq_len  int
+
+MODEL
+  GRU(input=144, hidden=256, batch_first=True)
+    reads hist_t, returns last hidden state
+    gru_h   256-dim  float32
+    (zeroed if seq_len == 0)
+
+  torch.cat([static_x, gru_h])
+    combined  3048-dim                       <- COMBINED_SIZE_V4
+
+  MLP HEAD
+    Linear(3048 -> hidden1) -> BatchNorm -> ReLU -> Dropout
+    Linear(hidden1 -> hidden2) -> BatchNorm -> ReLU -> Dropout
+    Linear(hidden2 -> 53)        <- one logit per concept
+
+OUTPUT
+  Training:   BCEWithLogitsLoss(logits, y, pos_weight=...)
+  Inference:  sigmoid(logits) > per-class threshold  ->  concept set
+```
+
+---
+
+## Layer Width Spider Map
+
+Each block represents ~100 dims. Wider = more parameters in that layer.
+
+```
+                 static_x    combined    hidden1    hidden2    out
+                ──────────  ──────────  ─────────  ────────  ──
+
+Phase 3         [■■■■■■■■■■■         ][■■■■■■■■■■■■■■  ][■■■■■■■■][■■■■   ][■]
+3.7M params ✓    1188                  1444              1536       768      53
+
+Phase 4-A1      [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■][■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■][■■■■■■■■■■■■■■■■■■■■][■■■■■■■■■■][■]
+8.7M params ✗    2792                              3048             2048           1024                   53
+overfit ep7     ^--- more input is good ---^     ^--- these two are WAY too wide for the signal quality ---^
+
+Phase 4-A2      [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■][■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■][■■■■■■■■■■][■■■■■  ][■]
+~5.1M   TRY 1    2792                              3048             1024            512         53
+
+Phase 4-A3      [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■][■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■][■■■■■■■■■■■■■■■][■■■■■■ ][■]
+~6.6M   TRY 2    2792                              3048             1536             768          53
+(Phase 3 proportions, Phase 4 input)
+
+Phase 4-B       algo(1663)->proj(256)+board+move -> combined -> head
+~3.8M   TRY 3    1663->256   1001+128  -> 1641 + GRU(256) = 1897   1024       512    53
+(spatial bottleneck before concat — forces compression of noisy 1663-dim)
+```
+
+---
+
+## Experiment Queue
+
+### 4-A2 — TRY THIS FIRST (~5.1M params)
+
+One change in classifier.py. Cut head so the model can't memorize noise.
+
+```python
+# classifier.py — inside `if phase4:` block
+hidden1  = 1024    # was 2048
+hidden2  = 512     # was 1024
+dropout  = 0.50    # was 0.40
+dropout2 = 0.35    # was 0.20
+```
+
+Run: `python -m src.chess_coach.ml.train --phase4`
+
+Stop condition: if val loss min > 0.60 AND F1 stalls < 0.38 by epoch 12 → move to A3.
+
+---
+
+### 4-A3 — Phase 3 proportions, Phase 4 input (~6.6M params)
+
+Same hidden widths as Phase 3 (proven). Just benefits from 2792-dim input.
+
+```python
+# classifier.py — inside `if phase4:` block
+hidden1  = 1536    # same as Phase 3
+hidden2  = 768     # same as Phase 3
+dropout  = 0.40    # same as Phase 3
+dropout2 = 0.20    # same as Phase 3
+```
+
+---
+
+### 4-B — Spatial Bottleneck (~3.8M params)
+
+Bigger change: add Linear(1663->256) before the main concat.
+Forces the model to compress noisy spatial features into a structured representation first.
+
+```python
+# classifier.py __init__  (new attribute)
+self.spatial_proj = nn.Sequential(
+    nn.Linear(1663, 256),
+    nn.ReLU(),
+    nn.Dropout(0.30),
+)
+
+# forward():
+board_move_t = x[:, :INPUT_SIZE + MOVE_SIZE]    # 1129
+algo_t       = x[:, INPUT_SIZE + MOVE_SIZE:]    # 1663
+algo_proj    = self.spatial_proj(algo_t)         # 256
+x_in = torch.cat([board_move_t, algo_proj, gru_h], dim=1)  # 1129+256+256=1641
+# then hidden1=1024, hidden2=512
+```
+
+---
+
+### 4-C — Lower LR (pair with any above, no arch change)
+
+```python
+python -m src.chess_coach.ml.train --phase4 --lr 5e-4   # was 1e-3
+```
+
+### 4-D — Stronger weight decay (pair with any above)
+
+```python
+# train.py optimizer line:
+optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1.5e-2)
+# was 6e-3
+```
+
+### 4-E — More patience (only if runs look promising but plateau)
+
+```python
+# train.py --patience default: 25  (was 15)
+```
+
+---
+
+## Results Tracking
+
+| Run      | Params | Val loss min | F1 uncal | F1 cal | weak_sq | outpost | back_pawn | note            |
+|----------|--------|-------------|----------|--------|---------|---------|-----------|-----------------|
+| Phase 3  | 3.7M   | 0.5608      | ~0.42    | 0.4733 | <0.30   | <0.30   | <0.30     | baseline ✓      |
+| 4-A1     | 8.7M   | 0.6356      | 0.36     | —      | —       | —       | —         | overfit ep7 ✗   |
+| 4-A2     | 5.1M   | …           | …        | …      | …       | …       | …         | next run        |
+| 4-A3     | 6.6M   | …           | …        | …      | …       | …       | …         | if A2 bad       |
+| 4-B      | 3.8M   | …           | …        | …      | …       | …       | …         | bottleneck      |
+| target   | —      | < 0.55      | > 0.44   | > 0.50 | > 0.35  | > 0.35  | > 0.35    |                 |
+
+## Recommended Run Order
+
+1. 4-A2 alone (1024/512, dropout 0.50/0.35)
+2. If A2 val loss min beats Phase 3 → try 4-A2 + 4-C (lower LR)
+3. If A2 still below Phase 3 → try 4-A3 (1536/768)
+4. If both plateau near Phase 3 → 4-B (spatial bottleneck projection)
+5. Add 4-D (weight decay) to whichever config looks most promising
+
+---
+
 > **Goal**: A fully local chess coach that explains positions the way a chess master author
 > would — in Nimzowitsch's voice, referencing real chess ideas, trained on the literature
 > and games of the world's greatest players.  No cloud dependency, no API calls, runs on

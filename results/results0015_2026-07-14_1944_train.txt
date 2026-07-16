@@ -1,0 +1,53 @@
+
+Device: cuda
+  GPU: NVIDIA GeForce RTX 2060
+
+Loading data from data\training_raw.jsonl
+  Loading algo cache into shared memory ... done  torch.Size([1274699, 1663])
+Loading dataset from data\training_raw.jsonl ... 1,024,422 labeled examples found.
+  train: 819,537 examples  (train 819,537 / val 102,442 / test 102,443)
+  Lazy loading enabled — examples encoded per batch during training.
+  Algo cache shared from caller  torch.Size([1274699, 1663])
+  Building label index ... done.
+Loading dataset from data\training_raw.jsonl ... 1,024,422 labeled examples found.
+  val: 102,442 examples  (train 819,537 / val 102,442 / test 102,443)
+  Lazy loading enabled — examples encoded per batch during training.
+  Algo cache shared from caller  torch.Size([1274699, 1663])
+  Building label index ... done.
+
+Model: 3,030,066 parameters
+
+── Training  (100 epochs, batch 128) ─────────────────────────────────────
+Epoch  Train Loss  Val Loss  Macro F1         LR    Time  Note
+───────────────────────────────────────────────────────────────────────────
+    1      0.6666    0.6058    0.3850   1.00e-03  696.2s  ✓ best
+    2      0.6104    0.5841    0.3875   9.99e-04  653.3s  ✓ best
+    3      0.5906    0.5746    0.3913   9.98e-04  649.8s  ✓ best
+    4      0.5778    0.5666    0.3931   9.96e-04  647.7s  ✓ best
+    5      0.5679    0.5629    0.3983   9.94e-04  648.2s  ✓ best
+    6      0.5598    0.5614    0.3981   9.92e-04  642.1s  
+    7      0.5525    0.5590    0.3978   9.89e-04  642.9s  
+    8      0.5461    0.5594    0.4003   9.85e-04  643.0s  ✓ best
+    9      0.5391    0.5649    0.4037   9.81e-04  641.8s  ✓ best
+   10      0.5338    0.5600    0.3975   9.77e-04  641.5s  
+   11      0.5282    0.5636    0.3990   9.72e-04  643.8s  
+   12      0.5234    0.5637    0.3986   9.67e-04  644.9s  
+   13      0.5183    0.5675    0.4012   9.61e-04  647.3s  
+   14      0.5137    0.5711    0.3998   9.55e-04  642.7s  
+   15      0.5097    0.5759    0.4009   9.48e-04  643.4s  
+   16      0.5055    0.5778    0.3997   9.41e-04  643.3s  
+   17      0.5023    0.5749    0.3992   9.34e-04  643.3s  
+   18      0.4984    0.5807    0.3998   9.26e-04  642.8s  
+   19      0.4956    0.5877    0.4002   9.18e-04  652.8s  
+   20      0.4924    0.5909    0.4018   9.09e-04  644.7s  
+   21      0.4897    0.5890    0.3994   9.00e-04  643.0s  
+   22      0.4872    0.5952    0.4025   8.91e-04  644.3s  
+   23      0.4845    0.5964    0.4009   8.81e-04  644.8s  
+
+Early stopping — no improvement for 15 epochs.
+
+── Done ──────────────────────────────────────────────────────────────
+Best checkpoint : epoch 9  macro_f1=0.4037
+Saved to        : data\classifier_best.pt
+
+Next step: python -m src.chess_coach.ml.evaluate

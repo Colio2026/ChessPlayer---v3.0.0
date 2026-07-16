@@ -1,0 +1,44 @@
+
+Device: cuda
+  GPU: NVIDIA GeForce RTX 2060
+
+Loading data from data\training_raw.jsonl
+Loading dataset from data\training_raw.jsonl ... 1,024,422 labeled examples found.
+  train: 819,537 examples  (train 819,537 / val 102,442 / test 102,443)
+  Lazy loading enabled — examples encoded per batch during training.
+  Loading algo cache into shared memory ... done  torch.Size([1274699, 1663])
+  Building label index ... done.
+Loading dataset from data\training_raw.jsonl ... 1,024,422 labeled examples found.
+  val: 102,442 examples  (train 819,537 / val 102,442 / test 102,443)
+  Lazy loading enabled — examples encoded per batch during training.
+  Loading algo cache into shared memory ... done  torch.Size([1274699, 1663])
+  Building label index ... done.
+
+Model: 2,969,650 parameters
+
+── Training  (100 epochs, batch 128) ─────────────────────────────────────
+Epoch  Train Loss  Val Loss  Macro F1         LR    Time  Note
+───────────────────────────────────────────────────────────────────────────
+    1      0.7782    0.7097    0.3220   1.00e-03  278.4s  ✓ best
+    2      0.7128    0.6798    0.3354   9.99e-04  218.3s  ✓ best
+    3      0.6883    0.6653    0.3411   9.98e-04  213.3s  ✓ best
+    4      0.6718    0.6551    0.3461   9.96e-04  212.3s  ✓ best
+    5      0.6591    0.6479    0.3509   9.94e-04  233.3s  ✓ best
+    6      0.6494    0.6433    0.3534   9.92e-04  213.4s  ✓ best
+    7      0.6403    0.6412    0.3539   9.89e-04  211.5s  ✓ best
+    8      0.6321    0.6401    0.3588   9.85e-04  211.5s  ✓ best
+    9      0.6252    0.6406    0.3601   9.81e-04  211.5s  ✓ best
+   10      0.6182    0.6425    0.3569   9.77e-04  211.3s  
+   11      0.6125    0.6435    0.3576   9.72e-04  211.6s  
+   12      0.6061    0.6440    0.3565   9.67e-04  212.5s  
+   13      0.6013    0.6450    0.3584   9.61e-04  213.1s  
+   14      0.5972    0.6482    0.3601   9.55e-04  213.3s  ✓ best
+   15      0.5923    0.6511    0.3614   9.48e-04  214.5s  ✓ best
+   16      0.5884    0.6591    0.3603   9.41e-04  212.3s  
+   17      0.5841    0.6545    0.3603   9.34e-04  211.5s  
+   18      0.5808    0.6662    0.3633   9.26e-04  211.4s  ✓ best
+   19      0.5768    0.6636    0.3606   9.18e-04  211.1s  
+   20      0.5752    0.6685    0.3598   9.09e-04  212.0s  
+   21      0.5709    0.6724    0.3608   9.00e-04  211.7s  
+   22      0.5682    0.6793    0.3650   8.91e-04  211.4s  ✓ best
+   23      0.5658    0.6791    0.3631   8.81e-04  211.0s  
