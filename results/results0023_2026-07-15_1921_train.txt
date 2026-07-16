@@ -1,0 +1,16 @@
+
+Device: cuda
+  GPU: NVIDIA GeForce RTX 2060
+
+Loading data from data\training_raw.jsonl
+  Memory-mapping algo cache ... done  (1930213, 1663)
+Loading dataset from data\training_raw.jsonl ... 1,679,221 labeled examples found.
+  train: 1,343,376 examples  (train 1,343,376 / val 167,922 / test 167,923)
+  Lazy loading enabled — examples encoded per batch during training.
+  Algo cache shared from caller  (1930213, 1663)
+  Building label index ... done.
+Loading dataset from data\training_raw.jsonl ... 1,679,221 labeled examples found.
+  val: 167,922 examples  (train 1,343,376 / val 167,922 / test 167,923)
+  Lazy loading enabled — examples encoded per batch during training.
+  Algo cache shared from caller  (1930213, 1663)
+  Building label index ... 
