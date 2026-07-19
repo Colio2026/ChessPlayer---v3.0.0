@@ -19,10 +19,55 @@ and the future CNN+history architecture.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Callable
 
 import chess
 import numpy as np
+
+# ── Optional Syzygy endgame tablebases ────────────────────────────────────────
+# Set the SYZYGY_PATH environment variable or place .rtbw/.rtbz files under
+# data/syzygy/ to enable tablebase-assisted draw detection.  Probed only for
+# positions with ≤7 pieces; silently disabled if the path does not exist.
+#
+# Download (3-6 piece, ~1 GB):  https://tablebase.lichess.ovh/tables/standard/
+# 7-piece Syzygy (~18 GB) can be added later; 5-piece covers most endgames.
+_SYZYGY_PATH   = os.environ.get("SYZYGY_PATH", str(Path("data/syzygy").resolve()))
+_syzygy_tb     = None   # chess.syzygy.Tablebase or None
+_syzygy_loaded = False  # True once we have attempted to open
+
+
+def _get_syzygy():
+    """Return an open Syzygy Tablebase, or None if unavailable."""
+    global _syzygy_tb, _syzygy_loaded
+    if _syzygy_loaded:
+        return _syzygy_tb
+    _syzygy_loaded = True
+    try:
+        if Path(_SYZYGY_PATH).exists():
+            import chess.syzygy  # type: ignore
+            _syzygy_tb = chess.syzygy.open_tablebase(_SYZYGY_PATH)
+    except Exception:
+        _syzygy_tb = None
+    return _syzygy_tb
+
+
+def _is_syzygy_draw(board: chess.Board) -> bool:
+    """True if Syzygy tablebases prove the position is a draw (WDL == 0).
+
+    Only probed for positions with ≤7 pieces; returns False if tablebases are
+    unavailable or the position has too many pieces for the available tables.
+    """
+    if bin(int(board.occupied)).count("1") > 7:
+        return False
+    tb = _get_syzygy()
+    if tb is None:
+        return False
+    try:
+        return tb.probe_wdl(board) == 0
+    except Exception:
+        return False
 
 # Concepts this module can detect.  Caller can intersect against this
 # to know which labels came from detectors vs. other sources.
@@ -36,6 +81,7 @@ DETECTABLE_CONCEPTS: frozenset[str] = frozenset({
     "backward_pawn",
     "pawn_chain",
     "pawn_storm",
+    "promotion",
     # Piece quality / placement
     "bad_bishop",
     "good_bishop",
@@ -45,8 +91,10 @@ DETECTABLE_CONCEPTS: frozenset[str] = frozenset({
     "outpost",
     "rook_seventh",
     "piece_activity",
+    "trapped_piece",
     # King
     "king_activity",
+    "king_safety",
     "back_rank",
     "opposition",
     # Squares / files
@@ -69,11 +117,46 @@ DETECTABLE_CONCEPTS: frozenset[str] = frozenset({
     "drawn_position",
 })
 
+# ── Bitboard shift helpers ────────────────────────────────────────────────────
+# Raw 64-bit integer operations. Much faster than python-chess SquareSet loops
+# for bulk pawn structure computation.
+
+_BB_ALL = chess.BB_ALL  # 0xFFFF_FFFF_FFFF_FFFF
+
+def _bb_north(bb: int) -> int:
+    return (bb << 8) & _BB_ALL
+
+def _bb_south(bb: int) -> int:
+    return bb >> 8
+
+def _bb_east(bb: int) -> int:
+    return (bb & ~chess.BB_FILE_H) << 1
+
+def _bb_west(bb: int) -> int:
+    return (bb & ~chess.BB_FILE_A) >> 1
+
+def _north_fill(bb: int) -> int:
+    bb |= (bb <<  8); bb |= (bb << 16); bb |= (bb << 32)
+    return bb & _BB_ALL
+
+def _south_fill(bb: int) -> int:
+    bb |= (bb >>  8); bb |= (bb >> 16); bb |= (bb >> 32)
+    return bb
+
+def _file_fill(bb: int) -> int:
+    return _north_fill(bb) | _south_fill(bb)
+
+def _wp_attacks(bb: int) -> int:
+    """Squares attacked by white pawns at positions bb."""
+    n = _bb_north(bb)
+    return _bb_east(n) | _bb_west(n)
+
+def _bp_attacks(bb: int) -> int:
+    """Squares attacked by black pawns at positions bb."""
+    s = _bb_south(bb)
+    return _bb_east(s) | _bb_west(s)
+
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-def _pawn_files(board: chess.Board, color: chess.Color) -> list[int]:
-    return [chess.square_file(sq) for sq in board.pieces(chess.PAWN, color)]
-
 
 def _is_endgame(board: chess.Board) -> bool:
     """Rough endgame detector: no queens, or very few major/minor pieces."""
@@ -87,118 +170,97 @@ def _is_endgame(board: chess.Board) -> bool:
     return queens == 0 or minors_and_rooks <= 6
 
 
-# ── pawn structure ────────────────────────────────────────────────────────────
+# ── pawn structure (bitboard) ─────────────────────────────────────────────────
 
 def _has_passed_pawn(board: chess.Board, color: chess.Color) -> bool:
-    opp = not color
-    for sq in board.pieces(chess.PAWN, color):
-        f = chess.square_file(sq)
-        r = chess.square_rank(sq)
-        # Rank threshold: only flag pawns that are meaningfully advanced
-        if color == chess.WHITE and r < 4:
-            continue
-        if color == chess.BLACK and r > 3:
-            continue
-        blocked = False
-        for ep in board.pieces(chess.PAWN, opp):
-            ef = chess.square_file(ep)
-            er = chess.square_rank(ep)
-            if abs(ef - f) <= 1:
-                if color == chess.WHITE and er > r:
-                    blocked = True
-                    break
-                if color == chess.BLACK and er < r:
-                    blocked = True
-                    break
-        if not blocked:
-            return True
-    return False
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    ep = int(board.pieces_mask(chess.PAWN, not color))
+    if not wp:
+        return False
+    # A pawn is passed if no enemy pawn on same or adjacent files ahead of it.
+    # not_passed = south-fill (for white) of enemy pawns + their adjacent files.
+    if color == chess.WHITE:
+        not_passed = _south_fill(ep | _bb_east(ep) | _bb_west(ep))
+    else:
+        not_passed = _north_fill(ep | _bb_east(ep) | _bb_west(ep))
+    return bool(wp & ~not_passed)
 
 
 def _has_isolated_pawn(board: chess.Board, color: chess.Color) -> bool:
-    files = set(_pawn_files(board, color))
-    return any(f - 1 not in files and f + 1 not in files for f in files)
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    if not wp:
+        return False
+    neighbor_files = _file_fill(_bb_east(wp) | _bb_west(wp))
+    return bool(wp & ~neighbor_files)
 
 
 def _has_doubled_pawn(board: chess.Board, color: chess.Color) -> bool:
-    from collections import Counter
-    counts = Counter(_pawn_files(board, color))
-    return any(v >= 2 for v in counts.values())
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    if not wp:
+        return False
+    return any(chess.popcount(wp & chess.BB_FILES[f]) >= 2 for f in range(8))
 
 
 def _pawn_island_count(board: chess.Board, color: chess.Color) -> int:
-    files = sorted(set(_pawn_files(board, color)))
-    if not files:
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    if not wp:
         return 0
-    islands = 1
-    for i in range(1, len(files)):
-        if files[i] > files[i - 1] + 1:
+    filled = _file_fill(wp)
+    islands, in_island = 0, False
+    for f in range(8):
+        has = bool(filled & chess.BB_FILES[f])
+        if has and not in_island:
             islands += 1
+            in_island = True
+        elif not has:
+            in_island = False
     return islands
 
 
+_QS_MASK = chess.BB_FILE_A | chess.BB_FILE_B | chess.BB_FILE_C | chess.BB_FILE_D
+_KS_MASK = chess.BB_FILE_E | chess.BB_FILE_F | chess.BB_FILE_G | chess.BB_FILE_H
+
 def _has_pawn_majority(board: chess.Board, color: chess.Color) -> bool:
-    """More pawns on the queenside (files a-d) or kingside (files e-h) than the opponent."""
-    opp = not color
-    my_files   = _pawn_files(board, color)
-    opp_files  = _pawn_files(board, opp)
-    my_qs  = sum(1 for f in my_files  if f < 4)
-    opp_qs = sum(1 for f in opp_files if f < 4)
-    my_ks  = sum(1 for f in my_files  if f >= 4)
-    opp_ks = sum(1 for f in opp_files if f >= 4)
-    return my_qs > opp_qs or my_ks > opp_ks
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    ep = int(board.pieces_mask(chess.PAWN, not color))
+    return (chess.popcount(wp & _QS_MASK) > chess.popcount(ep & _QS_MASK) or
+            chess.popcount(wp & _KS_MASK) > chess.popcount(ep & _KS_MASK))
 
 
 def _has_backward_pawn(board: chess.Board, color: chess.Color) -> bool:
-    """A pawn that can't be supported by another pawn and whose advance square
-    is controlled by an enemy pawn."""
-    pawns = board.pieces(chess.PAWN, color)
-    for sq in pawns:
-        f = chess.square_file(sq)
-        r = chess.square_rank(sq)
-        advance_rank = r + 1 if color == chess.WHITE else r - 1
-        if not (0 <= advance_rank <= 7):
-            continue
-        advance_sq = chess.square(f, advance_rank)
-
-        # Can any friendly pawn on an adjacent file support this pawn?
-        can_support = False
-        for adj_f in (f - 1, f + 1):
-            if not (0 <= adj_f <= 7):
-                continue
-            for friendly_sq in pawns:
-                if chess.square_file(friendly_sq) == adj_f:
-                    fr = chess.square_rank(friendly_sq)
-                    if color == chess.WHITE and fr <= r:
-                        can_support = True
-                    elif color == chess.BLACK and fr >= r:
-                        can_support = True
-
-        if not can_support:
-            # Advance square attacked by enemy pawn?
-            enemy_pawn_attackers = (board.attackers(not color, advance_sq)
-                                    & board.pieces(chess.PAWN, not color))
-            if enemy_pawn_attackers:
+    """Pawn whose stop square is attacked by an enemy pawn and has no adjacent-file support."""
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    ep = int(board.pieces_mask(chess.PAWN, not color))
+    if not wp:
+        return False
+    if color == chess.WHITE:
+        stop = _bb_north(wp)
+        at_risk = _bb_south(stop & _bp_attacks(ep)) & wp
+        for sq in chess.scan_forward(at_risk):
+            f, r = chess.square_file(sq), chess.square_rank(sq)
+            adj = (chess.BB_FILES[f - 1] if f > 0 else 0) | (chess.BB_FILES[f + 1] if f < 7 else 0)
+            if not (wp & adj & _south_fill(chess.BB_RANKS[r])):
+                return True
+    else:
+        stop = _bb_south(wp)
+        at_risk = _bb_north(stop & _wp_attacks(ep)) & wp
+        for sq in chess.scan_forward(at_risk):
+            f, r = chess.square_file(sq), chess.square_rank(sq)
+            adj = (chess.BB_FILES[f - 1] if f > 0 else 0) | (chess.BB_FILES[f + 1] if f < 7 else 0)
+            if not (wp & adj & _north_fill(chess.BB_RANKS[r])):
                 return True
     return False
 
 
 def _has_pawn_chain(board: chess.Board, color: chess.Color) -> bool:
     """At least two friendly pawns that mutually defend each other diagonally."""
-    pawns = board.pieces(chess.PAWN, color)
-    for sq in pawns:
-        f = chess.square_file(sq)
-        r = chess.square_rank(sq)
-        # A pawn on (f,r) defends (f-1,r+1) and (f+1,r+1) for white
-        defend_rank = r + 1 if color == chess.WHITE else r - 1
-        if not (0 <= defend_rank <= 7):
-            continue
-        for df in (-1, 1):
-            if 0 <= f + df <= 7:
-                defended = chess.square(f + df, defend_rank)
-                if board.piece_at(defended) == chess.Piece(chess.PAWN, color):
-                    return True
-    return False
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    if not wp:
+        return False
+    if color == chess.WHITE:
+        return bool(wp & _wp_attacks(wp))
+    else:
+        return bool(wp & _bp_attacks(wp))
 
 
 # ── bishop quality ────────────────────────────────────────────────────────────
@@ -217,7 +279,7 @@ def _has_bad_bishop(board: chess.Board, color: chess.Color) -> bool:
     for bsq in bishops:
         bc = _bishop_parity(bsq)
         same = sum(1 for p in pawns if _bishop_parity(p) == bc)
-        if same > len(pawns) - same:       # majority on bishop's color
+        if same > len(pawns) - same:
             return True
     return False
 
@@ -244,64 +306,48 @@ def _has_bishop_pair(board: chess.Board, color: chess.Color) -> bool:
 
 def _has_open_file(board: chess.Board, color: chess.Color) -> bool:
     """A rook of `color` is on an open file (no pawns of either color on that file)."""
-    for rook_sq in board.pieces(chess.ROOK, color):
-        f = chess.square_file(rook_sq)
-        white_pawns_on_file = any(chess.square_file(sq) == f for sq in board.pieces(chess.PAWN, chess.WHITE))
-        black_pawns_on_file = any(chess.square_file(sq) == f for sq in board.pieces(chess.PAWN, chess.BLACK))
-        if not white_pawns_on_file and not black_pawns_on_file:
-            return True
-    return False
+    rooks = int(board.pieces_mask(chess.ROOK, color))
+    if not rooks:
+        return False
+    pawn_files = _file_fill(int(board.pawns))
+    return bool(rooks & ~pawn_files)
 
 
 def _has_rook_on_seventh(board: chess.Board, color: chess.Color) -> bool:
-    seventh = 6 if color == chess.WHITE else 1   # rank index (0-based)
+    seventh = 6 if color == chess.WHITE else 1
     return any(chess.square_rank(sq) == seventh
                for sq in board.pieces(chess.ROOK, color))
 
 
-# ── square control ────────────────────────────────────────────────────────────
+# ── square control (bitboard) ────────────────────────────────────────────────
 
-def _outpost_squares(board: chess.Board, color: chess.Color) -> chess.SquareSet:
-    """Squares in the opponent's half that the opponent's pawns can never attack."""
-    opp = not color
-    enemy_pawns = board.pieces(chess.PAWN, opp)
-    # Squares enemy pawns can EVER attack (on any rank)
-    ever_attacked: chess.SquareSet = chess.SquareSet()
-    for ep in enemy_pawns:
-        ef = chess.square_file(ep)
-        for adj_f in (ef - 1, ef + 1):
-            if 0 <= adj_f <= 7:
-                # All ranks in the direction of advance
-                rank_range = range(chess.square_rank(ep) - 1, -1, -1) if opp == chess.BLACK else range(chess.square_rank(ep) + 1, 8)
-                for r in rank_range:
-                    ever_attacked.add(chess.square(adj_f, r))
-
-    # Opponent's half
-    start_rank = 4 if color == chess.WHITE else 0
-    end_rank   = 8 if color == chess.WHITE else 4
-    candidate  = chess.SquareSet(
-        chess.square(f, r) for f in range(8) for r in range(start_rank, end_rank)
-    )
-    return candidate - ever_attacked
+def _outpost_squares_bb(board: chess.Board, color: chess.Color) -> int:
+    """Bitboard of squares in enemy territory that enemy pawns can never attack."""
+    ep = int(board.pieces_mask(chess.PAWN, not color))
+    if color == chess.WHITE:
+        # Black pawns advance south; ever_attacked = all squares black pawns can
+        # reach and attack as they advance southward.
+        ever_attacked = _bp_attacks(_south_fill(ep))
+        territory = (chess.BB_RANK_4 | chess.BB_RANK_5 |
+                     chess.BB_RANK_6 | chess.BB_RANK_7)
+    else:
+        ever_attacked = _wp_attacks(_north_fill(ep))
+        territory = (chess.BB_RANK_1 | chess.BB_RANK_2 |
+                     chess.BB_RANK_3 | chess.BB_RANK_4)
+    return int(territory) & ~ever_attacked
 
 
 def _has_outpost(board: chess.Board, color: chess.Color) -> bool:
-    """A knight or bishop occupies a deep outpost (rank 5+ for white, rank 4- for black)."""
-    outposts = _outpost_squares(board, color)
-    # Require the piece to be truly deep in enemy territory, not just over the midline
-    deep_ranks = range(4, 8) if color == chess.WHITE else range(0, 4)
-    deep_outposts = chess.SquareSet(
-        sq for sq in outposts if chess.square_rank(sq) in deep_ranks
-    )
-    for pt in (chess.KNIGHT, chess.BISHOP):
-        if board.pieces(pt, color) & deep_outposts:
-            return True
-    return False
+    """A knight or bishop occupies an outpost square."""
+    outposts = _outpost_squares_bb(board, color)
+    pieces = (int(board.pieces_mask(chess.KNIGHT, color)) |
+              int(board.pieces_mask(chess.BISHOP, color)))
+    return bool(outposts & pieces)
 
 
 def _has_weak_square(board: chess.Board, color: chess.Color) -> bool:
     """The opponent has outpost squares (holes) in their position."""
-    return bool(_outpost_squares(board, not color))
+    return bool(_outpost_squares_bb(board, not color))
 
 
 # ── king position ─────────────────────────────────────────────────────────────
@@ -325,7 +371,6 @@ def _has_back_rank_weakness(board: chess.Board, color: chess.Color) -> bool:
     back_rank = 0 if color == chess.WHITE else 7
     if chess.square_rank(king_sq) != back_rank:
         return False
-    # No luft pawns
     kf = chess.square_file(king_sq)
     luft = any(
         board.piece_at(chess.square(f, back_rank + (1 if color == chess.WHITE else -1)))
@@ -336,7 +381,6 @@ def _has_back_rank_weakness(board: chess.Board, color: chess.Color) -> bool:
     )
     if luft:
         return False
-    # Opponent has a rook or queen
     opp = not color
     return bool(board.pieces(chess.ROOK, opp) or board.pieces(chess.QUEEN, opp))
 
@@ -383,7 +427,6 @@ def _has_skewer(board: chess.Board, color: chess.Color) -> bool:
                     continue
                 if victim.piece_type not in high_value:
                     continue
-                # Trace the ray beyond the victim
                 df = chess.square_file(attacked_sq) - chess.square_file(sq)
                 dr = chess.square_rank(attacked_sq) - chess.square_rank(sq)
                 norm = max(abs(df), abs(dr))
@@ -407,7 +450,6 @@ def _has_skewer(board: chess.Board, color: chess.Color) -> bool:
 def _has_overloading(board: chess.Board, color: chess.Color) -> bool:
     """An opponent piece defends two different targets; attacking one removes the other's defence."""
     opp = not color
-    # Find opponent pieces that are the sole defender of two different squares/pieces
     targets = list(board.pieces(chess.QUEEN,  color) |
                    board.pieces(chess.ROOK,   color) |
                    board.pieces(chess.BISHOP, color) |
@@ -415,7 +457,6 @@ def _has_overloading(board: chess.Board, color: chess.Color) -> bool:
                    board.pieces(chess.PAWN,   color))
     if len(targets) < 2:
         return False
-    # For each opponent piece, count how many of our pieces it is the ONLY defender of
     for def_sq in chess.SQUARES:
         defender = board.piece_at(def_sq)
         if not defender or defender.color != opp:
@@ -431,11 +472,10 @@ def _has_overloading(board: chess.Board, color: chess.Color) -> bool:
     return False
 
 
-# ── new structural / strategic detectors ─────────────────────────────────────
+# ── structural / strategic detectors ─────────────────────────────────────────
 
 def _has_battery(board: chess.Board, color: chess.Color) -> bool:
-    """Two same-color major pieces aligned on the same file/rank (rook battery)
-    or same diagonal (bishop/queen battery), with a clear line between them."""
+    """Two same-color major pieces aligned on the same file/rank or diagonal."""
     rooks   = board.pieces(chess.ROOK,   color)
     queens  = board.pieces(chess.QUEEN,  color)
     bishops = board.pieces(chess.BISHOP, color)
@@ -462,28 +502,17 @@ def _has_battery(board: chess.Board, color: chess.Color) -> bool:
 
 
 def _has_blockade(board: chess.Board, color: chess.Color) -> bool:
-    """A piece of `color` sits directly in front of an advanced enemy pawn,
-    preventing it from advancing (classical blockade)."""
+    """A piece of `color` sits directly in front of an advanced enemy pawn."""
     opp = not color
-    for pawn_sq in board.pieces(chess.PAWN, opp):
-        rank = chess.square_rank(pawn_sq)
-        file = chess.square_file(pawn_sq)
-
-        if opp == chess.WHITE:
-            if rank < 4:   # not advanced enough to blockade
-                continue
-            block_rank = rank + 1
-        else:
-            if rank > 3:
-                continue
-            block_rank = rank - 1
-
-        if not (0 <= block_rank <= 7):
-            continue
-        piece = board.piece_at(chess.square(file, block_rank))
-        if piece and piece.color == color:
-            return True
-    return False
+    ep = int(board.pieces_mask(chess.PAWN, opp))
+    friendly = int(board.occupied_co[color])
+    if opp == chess.WHITE:
+        advanced = ep & (chess.BB_RANK_4 | chess.BB_RANK_5 | chess.BB_RANK_6 | chess.BB_RANK_7)
+        block_sqs = _bb_north(advanced)
+    else:
+        advanced = ep & (chess.BB_RANK_1 | chess.BB_RANK_2 | chess.BB_RANK_3 | chess.BB_RANK_4)
+        block_sqs = _bb_south(advanced)
+    return bool(block_sqs & friendly)
 
 
 def _has_pawn_storm(board: chess.Board, color: chess.Color) -> bool:
@@ -493,96 +522,99 @@ def _has_pawn_storm(board: chess.Board, color: chess.Color) -> bool:
     if king_sq is None:
         return False
     king_f = chess.square_file(king_sq)
-    flank  = set(range(max(0, king_f - 2), min(8, king_f + 3)))
+    flank  = 0
+    for f in range(max(0, king_f - 2), min(8, king_f + 3)):
+        flank |= chess.BB_FILES[f]
 
-    advanced = 0
-    for pawn_sq in board.pieces(chess.PAWN, color):
-        f = chess.square_file(pawn_sq)
-        r = chess.square_rank(pawn_sq)
-        if f not in flank:
-            continue
-        if color == chess.WHITE and r >= 4:
-            advanced += 1
-        elif color == chess.BLACK and r <= 3:
-            advanced += 1
-
-    return advanced >= 2
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    if color == chess.WHITE:
+        advanced = wp & (chess.BB_RANK_4 | chess.BB_RANK_5 | chess.BB_RANK_6 | chess.BB_RANK_7)
+    else:
+        advanced = wp & (chess.BB_RANK_1 | chess.BB_RANK_2 | chess.BB_RANK_3 | chess.BB_RANK_4)
+    return chess.popcount(advanced & flank) >= 2
 
 
-def _has_king_activity(board: chess.Board, color: chess.Color) -> bool:
-    """King is centralized in an endgame (files c–f, ranks 3–6)."""
-    if not _is_endgame(board):
+# ── new silver label detectors ────────────────────────────────────────────────
+
+def _has_promotion(board: chess.Board, color: chess.Color) -> bool:
+    """Pawn on 7th rank (one step from queening)."""
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    return bool(wp & (chess.BB_RANK_7 if color == chess.WHITE else chess.BB_RANK_2))
+
+
+def _has_king_safety(board: chess.Board, color: chess.Color) -> bool:
+    """King concretely exposed: weak pawn shelter AND enemy pressure on king zone."""
+    if _is_endgame(board):
         return False
     king_sq = board.king(color)
     if king_sq is None:
         return False
-    f = chess.square_file(king_sq)
-    r = chess.square_rank(king_sq)
-    return 2 <= f <= 5 and 2 <= r <= 5
-
-
-def _has_space_advantage(board: chess.Board, color: chess.Color) -> bool:
-    """Significantly more territory: pawns advanced past the center line."""
     opp = not color
-    my_space  = sum(
-        max(0, chess.square_rank(sq) - 3)
-        if color == chess.WHITE
-        else max(0, 4 - chess.square_rank(sq))
-        for sq in board.pieces(chess.PAWN, color)
-    )
-    opp_space = sum(
-        max(0, chess.square_rank(sq) - 3)
-        if opp == chess.WHITE
-        else max(0, 4 - chess.square_rank(sq))
-        for sq in board.pieces(chess.PAWN, opp)
-    )
-    return my_space >= opp_space + 4
+    king_f = chess.square_file(king_sq)
+    king_r = chess.square_rank(king_sq)
 
+    # King zone: 8 neighbors + 3 squares one rank further ahead
+    zone_bb = int(chess.BB_KING_ATTACKS[king_sq])
+    if color == chess.WHITE and king_r <= 6:
+        zone_bb |= int(chess.BB_RANKS[king_r + 1]) & (
+            chess.BB_FILES[max(0, king_f - 1)] | chess.BB_FILES[king_f] |
+            chess.BB_FILES[min(7, king_f + 1)]
+        )
+    elif color == chess.BLACK and king_r >= 1:
+        zone_bb |= int(chess.BB_RANKS[king_r - 1]) & (
+            chess.BB_FILES[max(0, king_f - 1)] | chess.BB_FILES[king_f] |
+            chess.BB_FILES[min(7, king_f + 1)]
+        )
 
-def _has_minority_attack(board: chess.Board, color: chess.Color) -> bool:
-    """color has 2 queenside pawns vs opponent's 3 and at least one is advanced —
-    the classic minority attack formation."""
-    opp    = not color
-    my_qs  = sum(1 for sq in board.pieces(chess.PAWN, color) if chess.square_file(sq) < 4)
-    opp_qs = sum(1 for sq in board.pieces(chess.PAWN, opp)   if chess.square_file(sq) < 4)
+    # Pawn shield: count shield pawns (1 per file, up to 2 ranks ahead of king)
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    shield = 0
+    for f in range(max(0, king_f - 1), min(8, king_f + 2)):
+        for rank_offset in (1, 2):
+            r = (king_r + rank_offset) if color == chess.WHITE else (king_r - rank_offset)
+            if 0 <= r <= 7 and (wp & chess.BB_SQUARES[chess.square(f, r)]):
+                shield += 1
+                break  # at most 1 pawn counted per file
+    if shield >= 2:
+        return False  # adequate shelter
 
-    if my_qs != 2 or opp_qs != 3:
-        return False
+    # Count enemy non-pawn attackers in zone
+    ep_nopawns = int(board.occupied_co[opp]) & ~int(board.pieces_mask(chess.PAWN, opp))
+    attackers = sum(1 for sq in chess.scan_forward(ep_nopawns)
+                    if board.attacks_mask(sq) & zone_bb)
+    if attackers >= 2:
+        return True
 
-    for sq in board.pieces(chess.PAWN, color):
-        if chess.square_file(sq) >= 4:
-            continue
-        r = chess.square_rank(sq)
-        if color == chess.WHITE and r >= 3:
-            return True
-        if color == chess.BLACK and r <= 4:
-            return True
+    # Open or semi-open file adjacent to king
+    all_pawns = int(board.pawns)
+    for f in range(max(0, king_f - 1), min(8, king_f + 2)):
+        if not (chess.BB_FILES[f] & all_pawns):
+            return True  # fully open file through king flank
+
     return False
 
 
-def _has_color_complex(board: chess.Board, color: chess.Color) -> bool:
-    """A bishop controls squares of one color while the opponent has many pawns
-    fixed on that same color — classic color complex weakness."""
-    opp       = not color
-    bishops   = board.pieces(chess.BISHOP, color)
-    opp_pawns = board.pieces(chess.PAWN,   opp)
-
-    if not bishops or len(opp_pawns) < 3:
-        return False
-
-    for bsq in bishops:
-        bc = _bishop_parity(bsq)
-        same  = sum(1 for p in opp_pawns if _bishop_parity(p) == bc)
-        other = len(opp_pawns) - same
-        if same > other and same >= 3:
-            return True
+def _has_trapped_piece(board: chess.Board, color: chess.Color) -> bool:
+    """Non-king piece attacked by enemy with no undefended escape square."""
+    opp = not color
+    friendly_bb = int(board.occupied_co[color])
+    for pt in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN):
+        for sq in board.pieces(pt, color):
+            if not board.is_attacked_by(opp, sq):
+                continue
+            targets = board.attacks_mask(sq) & ~friendly_bb
+            if not targets:
+                return True  # completely hemmed in and attacked
+            # No undefended escape square exists → trapped
+            if all(board.is_attacked_by(opp, to_sq)
+                   for to_sq in chess.scan_forward(targets)):
+                return True
     return False
 
 
 # ── endgame type detectors ────────────────────────────────────────────────────
 
 def _is_rook_endgame(board: chess.Board) -> bool:
-    """Only kings, rooks, and pawns on the board."""
     for color in (chess.WHITE, chess.BLACK):
         for pt in (chess.QUEEN, chess.BISHOP, chess.KNIGHT):
             if board.pieces(pt, color):
@@ -591,7 +623,6 @@ def _is_rook_endgame(board: chess.Board) -> bool:
 
 
 def _is_pawn_endgame(board: chess.Board) -> bool:
-    """Only kings and pawns on the board."""
     for color in (chess.WHITE, chess.BLACK):
         for pt in (chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT):
             if board.pieces(pt, color):
@@ -600,7 +631,6 @@ def _is_pawn_endgame(board: chess.Board) -> bool:
 
 
 def _is_bishop_endgame(board: chess.Board) -> bool:
-    """Only kings, bishops, and pawns on the board."""
     for color in (chess.WHITE, chess.BLACK):
         for pt in (chess.QUEEN, chess.ROOK, chess.KNIGHT):
             if board.pieces(pt, color):
@@ -609,7 +639,6 @@ def _is_bishop_endgame(board: chess.Board) -> bool:
 
 
 def _is_knight_endgame(board: chess.Board) -> bool:
-    """Only kings, knights, and pawns on the board."""
     for color in (chess.WHITE, chess.BLACK):
         for pt in (chess.QUEEN, chess.ROOK, chess.BISHOP):
             if board.pieces(pt, color):
@@ -618,12 +647,30 @@ def _is_knight_endgame(board: chess.Board) -> bool:
 
 
 def _is_queen_endgame(board: chess.Board) -> bool:
-    """Only kings, queens, and pawns on the board."""
     for color in (chess.WHITE, chess.BLACK):
         for pt in (chess.ROOK, chess.BISHOP, chess.KNIGHT):
             if board.pieces(pt, color):
                 return False
     return bool(board.pieces(chess.QUEEN, chess.WHITE) or board.pieces(chess.QUEEN, chess.BLACK))
+
+
+def _is_ocb_endgame(board: chess.Board) -> bool:
+    """Opposite-colored bishop endgame — strongest static draw indicator.
+
+    True when each side has exactly one bishop and they stand on squares of
+    opposite colors, with no rooks, queens, or knights remaining.  OCB endings
+    are drawn in the vast majority of cases regardless of pawn count.
+    """
+    wb = board.pieces(chess.BISHOP, chess.WHITE)
+    bb = board.pieces(chess.BISHOP, chess.BLACK)
+    if len(wb) != 1 or len(bb) != 1:
+        return False
+    for pt in (chess.ROOK, chess.QUEEN, chess.KNIGHT):
+        if board.pieces(pt, chess.WHITE) or board.pieces(pt, chess.BLACK):
+            return False
+    w_sq = next(iter(wb))
+    b_sq = next(iter(bb))
+    return _bishop_parity(w_sq) != _bishop_parity(b_sq)
 
 
 def _has_development_lead(board: chess.Board, color: chess.Color) -> bool:
@@ -669,6 +716,68 @@ def _has_square_control(board: chess.Board, color: chess.Color) -> bool:
     return count >= 3
 
 
+def _has_king_activity(board: chess.Board, color: chess.Color) -> bool:
+    """King is centralized in an endgame (files c–f, ranks 3–6)."""
+    if not _is_endgame(board):
+        return False
+    king_sq = board.king(color)
+    if king_sq is None:
+        return False
+    f = chess.square_file(king_sq)
+    r = chess.square_rank(king_sq)
+    return 2 <= f <= 5 and 2 <= r <= 5
+
+
+def _has_space_advantage(board: chess.Board, color: chess.Color) -> bool:
+    """Significantly more territory: pawns advanced past the center line."""
+    opp = not color
+    my_space  = sum(
+        max(0, chess.square_rank(sq) - 3)
+        if color == chess.WHITE
+        else max(0, 4 - chess.square_rank(sq))
+        for sq in board.pieces(chess.PAWN, color)
+    )
+    opp_space = sum(
+        max(0, chess.square_rank(sq) - 3)
+        if opp == chess.WHITE
+        else max(0, 4 - chess.square_rank(sq))
+        for sq in board.pieces(chess.PAWN, opp)
+    )
+    return my_space >= opp_space + 4
+
+
+def _has_minority_attack(board: chess.Board, color: chess.Color) -> bool:
+    opp    = not color
+    my_qs  = sum(1 for sq in board.pieces(chess.PAWN, color) if chess.square_file(sq) < 4)
+    opp_qs = sum(1 for sq in board.pieces(chess.PAWN, opp)   if chess.square_file(sq) < 4)
+    if my_qs != 2 or opp_qs != 3:
+        return False
+    for sq in board.pieces(chess.PAWN, color):
+        if chess.square_file(sq) >= 4:
+            continue
+        r = chess.square_rank(sq)
+        if color == chess.WHITE and r >= 3:
+            return True
+        if color == chess.BLACK and r <= 4:
+            return True
+    return False
+
+
+def _has_color_complex(board: chess.Board, color: chess.Color) -> bool:
+    opp       = not color
+    bishops   = board.pieces(chess.BISHOP, color)
+    opp_pawns = board.pieces(chess.PAWN,   opp)
+    if not bishops or len(opp_pawns) < 3:
+        return False
+    for bsq in bishops:
+        bc = _bishop_parity(bsq)
+        same  = sum(1 for p in opp_pawns if _bishop_parity(p) == bc)
+        other = len(opp_pawns) - same
+        if same > other and same >= 3:
+            return True
+    return False
+
+
 # ── main entry point ──────────────────────────────────────────────────────────
 
 def label_position(board: chess.Board) -> frozenset[str]:
@@ -683,7 +792,6 @@ def label_position(board: chess.Board) -> frozenset[str]:
     if _has_opposition(board) and _is_endgame(board):
         labels.add("opposition")
 
-    # Endgame types (mutually exclusive by material composition)
     if _is_pawn_endgame(board):
         labels.add("pawn_endgame")
     elif _is_rook_endgame(board):
@@ -695,7 +803,7 @@ def label_position(board: chess.Board) -> frozenset[str]:
     elif _is_queen_endgame(board):
         labels.add("queen_endgame")
 
-    if board.is_insufficient_material():
+    if board.is_insufficient_material() or _is_ocb_endgame(board) or _is_syzygy_draw(board):
         labels.add("drawn_position")
 
     for color in (chess.WHITE, chess.BLACK):
@@ -716,6 +824,8 @@ def label_position(board: chess.Board) -> frozenset[str]:
             labels.add("pawn_chain")
         if _has_pawn_storm(board, color):
             labels.add("pawn_storm")
+        if _has_promotion(board, color):
+            labels.add("promotion")
 
         # bishop quality
         if _has_bad_bishop(board, color):
@@ -734,6 +844,8 @@ def label_position(board: chess.Board) -> frozenset[str]:
             labels.add("piece_activity")
         if _has_development_lead(board, color):
             labels.add("development_lead")
+        if _has_trapped_piece(board, color):
+            labels.add("trapped_piece")
 
         # files / ranks
         if _has_open_file(board, color):
@@ -754,6 +866,8 @@ def label_position(board: chess.Board) -> frozenset[str]:
             labels.add("back_rank")
         if _has_king_activity(board, color):
             labels.add("king_activity")
+        if _has_king_safety(board, color):
+            labels.add("king_safety")
 
         # tactical
         if _has_pin(board, color):
@@ -769,9 +883,6 @@ def label_position(board: chess.Board) -> frozenset[str]:
 
 
 # ── concept bottleneck feature vector ────────────────────────────────────────
-# Fixed-order tables used to build the algo input feature vector.
-# Per-color: each concept gets two bits [white, black].
-# Global: single bit for position-wide concepts.
 
 _PER_COLOR_DETECTORS: list[tuple[str, Callable]] = [
     ("passed_pawn",      _has_passed_pawn),
@@ -809,7 +920,7 @@ _GLOBAL_DETECTORS: list[tuple[str, Callable]] = [
     ("bishop_endgame", _is_bishop_endgame),
     ("knight_endgame", _is_knight_endgame),
     ("queen_endgame",  _is_queen_endgame),
-    ("drawn_position", lambda b: b.is_insufficient_material()),
+    ("drawn_position", lambda b: b.is_insufficient_material() or _is_ocb_endgame(b) or _is_syzygy_draw(b)),
 ]  # 7 bits
 
 ALGO_FEATURE_SIZE: int = len(_PER_COLOR_DETECTORS) * 2 + len(_GLOBAL_DETECTORS)  # 59
@@ -822,7 +933,7 @@ ALGO_FEATURE_SIZE: int = len(_PER_COLOR_DETECTORS) * 2 + len(_GLOBAL_DETECTORS) 
 # algo_feature_vector() (59-dim, Phase 3) is kept intact for backward compat
 # until the full pipeline re-run switches to v4.
 #
-# ALGO_FEATURE_SIZE_V4 layout  (1663 dims total):
+# ALGO_FEATURE_SIZE_V4 layout  (1811 dims total):
 #   [0:512]    B1-B5 spatial maps — 4 concepts × 2 colors × 64 squares
 #   [512:642]  B6 bishop_pair        (130)
 #   [642:778]  B6 development        (136)
@@ -836,111 +947,95 @@ ALGO_FEATURE_SIZE: int = len(_PER_COLOR_DETECTORS) * 2 + len(_GLOBAL_DETECTORS) 
 #   [1382:1512] B6 double_check      (130)
 #   [1512:1530] B6 promotion         ( 18)
 #   [1530:1663] B6 bishop_endgame    (133)
+#   [1663:1811] B7 king_safety       (148)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# ── B2: Weak square map ───────────────────────────────────────────────────────
+# ── B2: Weak square map (bitboard) ────────────────────────────────────────────
 
 def _weak_square_map(board: chess.Board, color: chess.Color) -> np.ndarray:
-    """64-element map of squares strategically weak for `color` (B2 definition).
+    """64-element map of squares strategically weak for `color`.
     A square is weak if no friendly pawn on an adjacent file can advance to defend it.
-    Only marks strategically relevant territory (ranks 4-8 for white, 1-5 for black).
+    Marks strategically relevant territory only (ranks 4-8 for white, 1-5 for black).
     """
-    by_file: list[list[int]] = [[] for _ in range(8)]
-    for sq in board.pieces(chess.PAWN, color):
-        by_file[chess.square_file(sq)].append(chess.square_rank(sq))
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    # Defended = north fill (for white) strictly above east/west adjacent pawn positions.
+    # A pawn at (f, r) can defend squares on file f±1 at ranks r+1 and above.
+    if color == chess.WHITE:
+        defended = (_north_fill(_bb_north(_bb_east(wp))) |
+                    _north_fill(_bb_north(_bb_west(wp))))
+        territory = (chess.BB_RANK_3 | chess.BB_RANK_4 | chess.BB_RANK_5 |
+                     chess.BB_RANK_6 | chess.BB_RANK_7)
+    else:
+        defended = (_south_fill(_bb_south(_bb_east(wp))) |
+                    _south_fill(_bb_south(_bb_west(wp))))
+        territory = (chess.BB_RANK_1 | chess.BB_RANK_2 | chess.BB_RANK_3 |
+                     chess.BB_RANK_4 | chess.BB_RANK_5)
+    weak_bb = int(territory) & ~defended
     out = np.zeros(64, dtype=np.float32)
-    for sq in range(64):
-        f = chess.square_file(sq)
-        r = chess.square_rank(sq)
-        if color == chess.WHITE and r < 3:
-            continue
-        if color == chess.BLACK and r > 4:
-            continue
-        defended = False
-        for af in (f - 1, f + 1):
-            if 0 <= af <= 7:
-                for pr in by_file[af]:
-                    if (color == chess.WHITE and pr < r) or (color == chess.BLACK and pr > r):
-                        defended = True
-                        break
-            if defended:
-                break
-        if not defended:
-            out[sq] = 1.0
+    for sq in chess.scan_forward(weak_bb):
+        out[sq] = 1.0
     return out
 
 
-# ── B3: Outpost map ───────────────────────────────────────────────────────────
+# ── B3: Outpost map (bitboard) ────────────────────────────────────────────────
 
 def _outpost_map(board: chess.Board, color: chess.Color) -> np.ndarray:
     """64-element map of squares in advanced territory that are weak for the opponent."""
-    opp_weak = _weak_square_map(board, not color)
+    opp_weak_bb = _outpost_squares_bb(board, not color)
     out = np.zeros(64, dtype=np.float32)
-    for sq in range(64):
-        if not opp_weak[sq]:
-            continue
-        r = chess.square_rank(sq)
-        if (color == chess.WHITE and r >= 4) or (color == chess.BLACK and r <= 3):
-            out[sq] = 1.0
+    if color == chess.WHITE:
+        deep = opp_weak_bb & (chess.BB_RANK_4 | chess.BB_RANK_5 |
+                               chess.BB_RANK_6 | chess.BB_RANK_7)
+    else:
+        deep = opp_weak_bb & (chess.BB_RANK_1 | chess.BB_RANK_2 |
+                               chess.BB_RANK_3 | chess.BB_RANK_4)
+    for sq in chess.scan_forward(deep):
+        out[sq] = 1.0
     return out
 
 
-# ── B4: Backward pawn map ─────────────────────────────────────────────────────
+# ── B4: Backward pawn map (bitboard) ─────────────────────────────────────────
 
 def _backward_pawn_map(board: chess.Board, color: chess.Color) -> np.ndarray:
     """64-element map of backward pawn squares for `color`."""
-    pawns = board.pieces(chess.PAWN, color)
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    ep = int(board.pieces_mask(chess.PAWN, not color))
     out = np.zeros(64, dtype=np.float32)
-    for sq in pawns:
-        f = chess.square_file(sq)
-        r = chess.square_rank(sq)
-        adv_r = r + 1 if color == chess.WHITE else r - 1
-        if not (0 <= adv_r <= 7):
-            continue
-        adv_sq = chess.square(f, adv_r)
-        supported = False
-        for adj_f in (f - 1, f + 1):
-            if not (0 <= adj_f <= 7):
-                continue
-            for fsq in pawns:
-                if chess.square_file(fsq) == adj_f:
-                    fr = chess.square_rank(fsq)
-                    if (color == chess.WHITE and fr <= r) or (color == chess.BLACK and fr >= r):
-                        supported = True
-                        break
-            if supported:
-                break
-        if not supported:
-            enemy_pawns = board.attackers(not color, adv_sq) & board.pieces(chess.PAWN, not color)
-            if enemy_pawns:
+    if not wp:
+        return out
+    if color == chess.WHITE:
+        stop = _bb_north(wp)
+        at_risk = _bb_south(stop & _bp_attacks(ep)) & wp
+        for sq in chess.scan_forward(at_risk):
+            f, r = chess.square_file(sq), chess.square_rank(sq)
+            adj = (chess.BB_FILES[f - 1] if f > 0 else 0) | (chess.BB_FILES[f + 1] if f < 7 else 0)
+            if not (wp & adj & _south_fill(chess.BB_RANKS[r])):
+                out[sq] = 1.0
+    else:
+        stop = _bb_south(wp)
+        at_risk = _bb_north(stop & _wp_attacks(ep)) & wp
+        for sq in chess.scan_forward(at_risk):
+            f, r = chess.square_file(sq), chess.square_rank(sq)
+            adj = (chess.BB_FILES[f - 1] if f > 0 else 0) | (chess.BB_FILES[f + 1] if f < 7 else 0)
+            if not (wp & adj & _north_fill(chess.BB_RANKS[r])):
                 out[sq] = 1.0
     return out
 
 
-# ── B5: Passed pawn map (per-square, replaces per-file encoding) ──────────────
+# ── B5: Passed pawn map (bitboard) ───────────────────────────────────────────
 
 def _passed_pawn_map(board: chess.Board, color: chess.Color) -> np.ndarray:
     """64-element map of passed pawn squares for `color` (all ranks, no threshold)."""
-    opp = not color
-    opp_by_file: list[list[int]] = [[] for _ in range(8)]
-    for sq in board.pieces(chess.PAWN, opp):
-        opp_by_file[chess.square_file(sq)].append(chess.square_rank(sq))
+    wp = int(board.pieces_mask(chess.PAWN, color))
+    ep = int(board.pieces_mask(chess.PAWN, not color))
+    if color == chess.WHITE:
+        not_passed = _south_fill(ep | _bb_east(ep) | _bb_west(ep))
+    else:
+        not_passed = _north_fill(ep | _bb_east(ep) | _bb_west(ep))
+    passed_bb = wp & ~not_passed
     out = np.zeros(64, dtype=np.float32)
-    for sq in board.pieces(chess.PAWN, color):
-        f = chess.square_file(sq)
-        r = chess.square_rank(sq)
-        blocked = False
-        for af in (f - 1, f, f + 1):
-            if not (0 <= af <= 7):
-                continue
-            for er in opp_by_file[af]:
-                if (color == chess.WHITE and er > r) or (color == chess.BLACK and er < r):
-                    blocked = True
-                    break
-            if blocked:
-                break
-        if not blocked:
-            out[sq] = 1.0
+    for sq in chess.scan_forward(passed_bb):
+        out[sq] = 1.0
     return out
 
 
@@ -1020,12 +1115,7 @@ def _development_vec(board: chess.Board) -> np.ndarray:
 # ── B6: X-ray attack / defend / clearance (384 dims) ─────────────────────────
 
 def _xray_vec(board: chess.Board) -> np.ndarray:
-    """[w_attack(64), w_defend(64), w_clear(64), b_attack(64), b_defend(64), b_clear(64)]
-    For each sliding piece, cast rays through the first blocker:
-      attack:   blocker is enemy → next enemy piece is x-ray attacked
-      defend:   blocker is friendly → next friendly piece is x-ray defended
-      clear:    blocker is friendly → that blocker square is a clearance opportunity
-    """
+    """[w_attack(64), w_defend(64), w_clear(64), b_attack(64), b_defend(64), b_clear(64)]"""
     out = np.zeros(384, dtype=np.float32)
     for color, base in ((chess.WHITE, 0), (chess.BLACK, 192)):
         for pt in (chess.BISHOP, chess.ROOK, chess.QUEEN):
@@ -1048,12 +1138,12 @@ def _xray_vec(board: chess.Board) -> np.ndarray:
                                 blocker_sq = csq
                                 blocker_col = p.color
                                 if blocker_col == color:
-                                    out[base + 128 + csq] = 1.0   # clearance
+                                    out[base + 128 + csq] = 1.0
                             else:
                                 if blocker_col == (not color) and p.color == (not color):
-                                    out[base + csq] = 1.0          # x-ray attack
+                                    out[base + csq] = 1.0
                                 elif blocker_col == color and p.color == color:
-                                    out[base + 64 + csq] = 1.0    # x-ray defend
+                                    out[base + 64 + csq] = 1.0
                                 break
                         cf += df
                         cr += dr
@@ -1111,11 +1201,9 @@ def _opposition_vec(board: chess.Board) -> np.ndarray:
     gap = max(df, dr)
     if 0 <= gap <= 7:
         out[4 + gap] = 1.0
-    # opposition: same axis, odd gap, other side to move
     facing = (df == 0 or dr == 0 or df == dr) and gap % 2 == 1
-    out[12] = 1.0 if (facing and board.turn == chess.BLACK) else 0.0  # white has opp
-    out[13] = 1.0 if (facing and board.turn == chess.WHITE) else 0.0  # black has opp
-    # rook-pawn draw risk: corner pawn + defending king near corner
+    out[12] = 1.0 if (facing and board.turn == chess.BLACK) else 0.0
+    out[13] = 1.0 if (facing and board.turn == chess.WHITE) else 0.0
     rp_files = {0, 7}
     has_rp = any(chess.square_file(sq) in rp_files
                  for sq in board.pieces(chess.PAWN, chess.WHITE) |
@@ -1128,14 +1216,18 @@ def _opposition_vec(board: chess.Board) -> np.ndarray:
 # ── B6: Zugzwang tier-1 (4 dims) ─────────────────────────────────────────────
 
 def _zugzwang_vec(board: chess.Board) -> np.ndarray:
-    """[is_endgame, white_few_moves, black_few_moves, pawn_breaks_blocked]"""
+    """[is_endgame, white_few_moves, black_few_moves, pawn_breaks_blocked]
+
+    Threshold raised from ≤3 to ≤5 legal moves — 3 almost never fired in real
+    positions.  5 still signals severe restriction while covering common K+P
+    vs K zugzwang structures where 4-5 moves are available but all worsen.
+    """
     out = np.zeros(4, dtype=np.float32)
     out[0] = 1.0 if _is_endgame(board) else 0.0
     if board.turn == chess.WHITE:
-        out[1] = 1.0 if board.legal_moves.count() <= 3 else 0.0
+        out[1] = 1.0 if board.legal_moves.count() <= 5 else 0.0
     else:
-        out[2] = 1.0 if board.legal_moves.count() <= 3 else 0.0
-    # Pawn breaks blocked: no pawn can advance without capture
+        out[2] = 1.0 if board.legal_moves.count() <= 5 else 0.0
     breaks_exist = False
     for color in (chess.WHITE, chess.BLACK):
         for sq in board.pieces(chess.PAWN, color):
@@ -1178,10 +1270,18 @@ def _rook_seventh_vec(board: chess.Board) -> np.ndarray:
 # ── B6: Drawn position (2 dims) ──────────────────────────────────────────────
 
 def _drawn_position_vec(board: chess.Board) -> np.ndarray:
-    """[insufficient_material, halfmove_clock_normalized]"""
+    """[is_drawn_heuristic, is_ocb_endgame]
+
+    dim 0 — any draw detected: insufficient material, OCB endgame, or Syzygy draw
+    dim 1 — opposite-colored bishop endgame specifically (strong positional draw signal)
+
+    The halfmove clock was removed — it is already encoded in fen_to_tensor and
+    carries almost no signal in puzzle/annotated-game positions (usually 0).
+    """
     out = np.zeros(2, dtype=np.float32)
-    out[0] = 1.0 if board.is_insufficient_material() else 0.0
-    out[1] = board.halfmove_clock / 100.0
+    ocb = _is_ocb_endgame(board)
+    out[0] = 1.0 if (board.is_insufficient_material() or ocb or _is_syzygy_draw(board)) else 0.0
+    out[1] = 1.0 if ocb else 0.0
     return out
 
 
@@ -1200,7 +1300,6 @@ def _shouldering_vec(board: chess.Board) -> np.ndarray:
         return out
     wkf, wkr = chess.square_file(wk), chess.square_rank(wk)
     bkf, bkr = chess.square_file(bk), chess.square_rank(bk)
-    # Target: most advanced own passer, else center
     w_adv = max((chess.square_rank(sq) for sq in board.pieces(chess.PAWN, chess.WHITE)),
                 default=-1)
     b_adv = max((7 - chess.square_rank(sq) for sq in board.pieces(chess.PAWN, chess.BLACK)),
@@ -1219,7 +1318,6 @@ def _shouldering_vec(board: chess.Board) -> np.ndarray:
     out[11 + target_rank] = 1.0
     out[19] = (wkf - bkf) / 7.0
     out[20] = (wkr - bkr) / 7.0
-    # Cutting heuristic
     if target_rank == 7 and abs(wkf - bkf) == 1 and (7 - wkr) < (7 - bkr):
         out[1] = 1.0
     if target_rank == 0 and abs(wkf - bkf) == 1 and bkr < wkr:
@@ -1242,7 +1340,6 @@ def _double_check_vec(board: chess.Board) -> np.ndarray:
     king_sq = board.king(board.turn)
     if king_sq is not None:
         out[65 + king_sq] = 1.0
-    # checking_side: who is giving check = the side NOT to move
     out[129] = 1.0 if (not board.turn) == chess.WHITE else 0.0
     return out
 
@@ -1298,13 +1395,88 @@ def _bishop_endgame_vec(board: chess.Board) -> np.ndarray:
     return out
 
 
+# ── B7: King safety (148 dims) ────────────────────────────────────────────────
+
+def _king_safety_vec(board: chess.Board) -> np.ndarray:
+    """King safety spatial map.
+    [w_zone_attacks(64), b_zone_attacks(64), w_shield(6), b_shield(6),
+     w_open_adj(3), b_open_adj(3), w_attacker_norm(1), b_attacker_norm(1)] = 148 dims
+
+    zone_attacks: 1.0 for each square in the king's zone attacked by the opponent.
+    shield: presence of friendly pawn at (file-1,file,file+1) × (rank+1,rank+2) ahead of king.
+    open_adj: open/semi-open file score for 3 adjacent files (1.0=open, 0.5=semi-open).
+    attacker_norm: distinct enemy non-pawn pieces attacking king zone / 8.0.
+    """
+    out = np.zeros(148, dtype=np.float32)
+
+    # Build global attack maps once
+    w_atk = 0
+    b_atk = 0
+    for sq in chess.scan_forward(int(board.occupied_co[chess.WHITE])):
+        w_atk |= board.attacks_mask(sq)
+    for sq in chess.scan_forward(int(board.occupied_co[chess.BLACK])):
+        b_atk |= board.attacks_mask(sq)
+    all_pawns = int(board.pawns)
+
+    for color, zone_base, shield_base, open_base, atk_base in (
+        (chess.WHITE, 0,  128, 140, 146),
+        (chess.BLACK, 64, 134, 143, 147),
+    ):
+        king_sq = board.king(color)
+        if king_sq is None:
+            continue
+        opp = not color
+        enemy_atk = b_atk if color == chess.WHITE else w_atk
+        king_f = chess.square_file(king_sq)
+        king_r = chess.square_rank(king_sq)
+
+        # King zone: 8 neighbors + 3 squares one more rank ahead
+        zone_bb = int(chess.BB_KING_ATTACKS[king_sq])
+        adj_mask = (chess.BB_FILES[max(0, king_f - 1)] | chess.BB_FILES[king_f] |
+                    chess.BB_FILES[min(7, king_f + 1)])
+        if color == chess.WHITE and king_r <= 6:
+            zone_bb |= int(chess.BB_RANKS[king_r + 1]) & adj_mask
+        elif color == chess.BLACK and king_r >= 1:
+            zone_bb |= int(chess.BB_RANKS[king_r - 1]) & adj_mask
+
+        # Squares in king zone attacked by enemy
+        for sq in chess.scan_forward(zone_bb & enemy_atk):
+            out[zone_base + sq] = 1.0
+
+        # Pawn shield: 3 files × 2 ranks ahead (up to 6 bits)
+        wp = int(board.pieces_mask(chess.PAWN, color))
+        bit = 0
+        for f in range(max(0, king_f - 1), min(8, king_f + 2)):
+            for rank_offset in (1, 2):
+                r = (king_r + rank_offset) if color == chess.WHITE else (king_r - rank_offset)
+                if 0 <= r <= 7:
+                    out[shield_base + bit] = 1.0 if (wp & chess.BB_SQUARES[chess.square(f, r)]) else 0.0
+                bit += 1
+
+        # Open / semi-open files near king (3 bits)
+        wp_files = _file_fill(wp)
+        for bit, f in enumerate(range(max(0, king_f - 1), min(8, king_f + 2))):
+            if not (chess.BB_FILES[f] & all_pawns):
+                out[open_base + bit] = 1.0    # fully open
+            elif not (chess.BB_FILES[f] & wp_files):
+                out[open_base + bit] = 0.5    # semi-open (no friendly pawn)
+
+        # Attacker count
+        ep_nopawns = int(board.occupied_co[opp]) & ~int(board.pieces_mask(chess.PAWN, opp))
+        attacker_count = sum(1 for sq in chess.scan_forward(ep_nopawns)
+                             if board.attacks_mask(sq) & zone_bb)
+        out[atk_base] = min(attacker_count / 8.0, 1.0)
+
+    return out
+
+
 # ── Phase 4 feature vector assembly ──────────────────────────────────────────
 
-ALGO_FEATURE_SIZE_V4: int = 1663   # 512 spatial (B1-B5) + 1151 B6
+ALGO_FEATURE_SIZE_V4: int = 1811   # 512 spatial (B1-B5) + 1151 B6 + 148 B7
 
 
 def algo_feature_vector_v4(fen: str) -> np.ndarray:
-    """Run Phase 4 spatial detectors and return a 1663-element float32 array.
+    """Run Phase 4 spatial detectors and return a 1811-element float32 array.
 
     Layout mirrors ALGO_FEATURE_SIZE_V4 comment above.
     Invalid FENs return an all-zeros vector.
@@ -1339,6 +1511,9 @@ def algo_feature_vector_v4(fen: str) -> np.ndarray:
         parts.append(_double_check_vec(board))     # 130
         parts.append(_promotion_vec(board))        # 18
         parts.append(_bishop_endgame_vec(board))   # 133
+
+        # B7 king safety (148)
+        parts.append(_king_safety_vec(board))      # 148
     except Exception:
         return np.zeros(ALGO_FEATURE_SIZE_V4, dtype=np.float32)
 

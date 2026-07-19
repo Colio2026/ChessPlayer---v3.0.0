@@ -44,11 +44,26 @@ from chess_coach.database.phrase_db     import PhraseDB
 
 
 _STRATEGY_NAMES: dict[str, str] = {
-    'blitz':    'Kingside Attack',
-    'flank':    'Positional Squeeze',
-    'fortress': 'Fortress Defence',
-    'feint':    'Positional Feint',
-    'general':  'Positional Play',
+    # Legacy
+    'blitz':            'Kingside Attack',
+    'flank':            'Positional Squeeze',
+    'fortress':         'Fortress Defence',
+    'feint':            'Positional Feint',
+    # Tier 1 ML strategies
+    'mating_attack':    'Mating Attack',
+    'passed_pawn':      'Passed Pawn Advance',
+    'outpost':          'Outpost Occupation',
+    'space_advantage':  'Space Advantage',
+    'pawn_storm':       'Pawn Storm',
+    'pawn_majority':    'Pawn Majority',
+    'blockade':         'Blockade',
+    'prophylaxis':      'Prophylaxis',
+    'initiative':       'Initiative',
+    'development_lead': 'Development Lead',
+    'piece_activity':   'Piece Activity',
+    'king_activity':    'King Centralisation',
+    # Fallback
+    'general':          'Positional Play',
 }
 
 _SLOT_ORDER = ('diagnosis', 'evidence', 'plan', 'urgency')

@@ -3,14 +3,19 @@
 # examples lazily (per __getitem__ call) rather than pre-loading
 # all tensors into RAM at init.
 #
-# Lazy loading is required for Phase 3 because variable-length history
+# Lazy loading is required because variable-length history
 # tensors cannot be pre-stacked into a single fixed-size tensor.
 #
 # __getitem__ returns a 4-tuple: (x, hist, seq_len, y)
-#   x        : float32 (STATIC_SIZE,)     board+move+algo features (2792-dim v4 / 1188-dim v3)
+#   x        : float32 (STATIC_SIZE_V4 + ALGO_SIZE,) = 2999-dim Phase 4
+#              float32 (STATIC_SIZE,)                 = 1188-dim Phase 3
 #   hist     : float32 (MAX_SEQ_LEN, 144) padded move history (144-dim v4 / 128-dim v3)
 #   seq_len  : int64 scalar               actual history length before padding
 #   y        : float32 (NUM_CONCEPTS,)    multi-hot concept labels
+#
+# Cache files (data/algo_cache.npy, data/v3_cache.npy) are discovered
+# automatically and opened lazily so each DataLoader worker gets its own
+# mmap handle — the OS shares the underlying page cache, so RAM stays low.
 
 from __future__ import annotations
 
@@ -25,10 +30,11 @@ from torch.utils.data import Dataset
 
 from .board_encoder import (
     fen_to_tensor, move_to_tensor, history_to_tensor, history_rich_to_tensor,
-    STATIC_SIZE, INPUT_SIZE, MOVE_SIZE, ALGO_SIZE, MAX_SEQ_LEN,
+    STATIC_SIZE, STATIC_SIZE_V4, INPUT_SIZE, MOVE_SIZE, ALGO_SIZE, ALGO_SIZE_V4,
+    SF_SIZE, MAX_SEQ_LEN,
 )
 from .concept_vocab import CONCEPTS, CONCEPT_TO_IDX, NUM_CONCEPTS
-from tools.label_positions import algo_feature_vector, algo_feature_vector_v4
+from tools.label_positions import algo_feature_vector
 
 
 class ChessConceptDataset(Dataset):
@@ -36,8 +42,8 @@ class ChessConceptDataset(Dataset):
     Multi-label classification dataset with lazy per-example encoding.
 
     Each item is (x, hist, seq_len, y):
-        x        : float32 [STATIC_SIZE]       board+move+algo features
-        hist     : float32 [MAX_SEQ_LEN, 128]  padded move history for GRU
+        x        : float32 [2999]              Phase 4: board+move+algo_v4+v3
+        hist     : float32 [MAX_SEQ_LEN, 144]  padded move history for GRU
         seq_len  : int64 scalar                actual history length
         y        : float32 [NUM_CONCEPTS]      multi-hot concept labels
 
@@ -51,17 +57,17 @@ class ChessConceptDataset(Dataset):
     train_frac  : fraction of data for training (default 0.80)
     val_frac    : fraction for validation (default 0.10)
                   remainder goes to test
+    phase4      : True → use 144-dim history tensors (Phase 4 architecture)
     """
 
     def __init__(
         self,
-        jsonl_path:  str | Path       = "data/training_raw.jsonl",
-        split:       str              = "train",
-        seed:        int              = 42,
-        train_frac:  float            = 0.80,
-        val_frac:    float            = 0.10,
-        algo_tensor: "torch.Tensor | np.ndarray | None" = None,
-        phase4:      bool             = False,   # locks history tensor to 144-dim
+        jsonl_path:  str | Path  = "data/training_raw.jsonl",
+        split:       str         = "train",
+        seed:        int         = 42,
+        train_frac:  float       = 0.80,
+        val_frac:    float       = 0.10,
+        phase4:      bool        = False,
     ) -> None:
         jsonl_path = Path(jsonl_path)
         if not jsonl_path.exists():
@@ -91,32 +97,38 @@ class ChessConceptDataset(Dataset):
             "val":   raw[n_train: n_train + n_val],
             "test":  raw[n_train + n_val:],
         }
-        self._raw = splits[split]
+        self._raw    = splits[split]
         self._phase4 = phase4
         print(f"  {split}: {len(self._raw):,} examples  "
               f"(train {n_train:,} / val {n_val:,} / test {n - n_train - n_val:,})")
-        print(f"  Lazy loading enabled — examples encoded per batch during training.")
 
-        # Algo feature cache (written by tools/build_algo_cache.py).
-        # Caller passes a numpy mmap (np.load mmap_mode='r') so both datasets share
-        # the same OS page-cache view without loading ~13 GB into RAM.
-        if algo_tensor is not None:
-            self._algo_cache = algo_tensor          # numpy mmap or tensor from caller
-            self._algo_dim: int | None = algo_tensor.shape[1]
-            print(f"  Algo cache shared from caller  {algo_tensor.shape}")
+        # Cache paths stored as strings (picklable — safe for multiprocessing spawn).
+        # The actual numpy memmaps are opened lazily in __getitem__, so every
+        # DataLoader worker opens its own file handle; the OS shares the page cache.
+        algo_path = Path("data/algo_cache.npy").resolve()
+        v3_path   = Path("data/v3_cache.npy").resolve()
+        sf_path   = Path("data/sf_cache.npy").resolve()
+        self._algo_cache_path: str | None = str(algo_path) if algo_path.exists() else None
+        self._v3_cache_path:   str | None = str(v3_path)   if v3_path.exists()   else None
+        self._sf_cache_path:   str | None = str(sf_path)   if sf_path.exists()   else None
+        self._algo_cache: np.ndarray | None = None   # opened on first __getitem__
+        self._v3_cache:   np.ndarray | None = None
+        self._sf_cache:   np.ndarray | None = None
+
+        if self._algo_cache_path:
+            print(f"  Algo cache:  {algo_path.name}  (lazy mmap, {algo_path.stat().st_size / 1e9:.2f} GB)")
         else:
-            cache_path = Path("data/algo_cache.npy").resolve()
-            if cache_path.exists():
-                print(f"  Memory-mapping algo cache ...", end=" ", flush=True)
-                self._algo_cache = np.load(str(cache_path), mmap_mode="r")
-                self._algo_dim = self._algo_cache.shape[1]
-                print(f"done  {self._algo_cache.shape}")
-            else:
-                self._algo_cache = None
-                self._algo_dim   = None
+            print(f"  No algo cache — run tools/build_algo_cache.py to build caches.")
+        if self._v3_cache_path:
+            print(f"  V3 cache:    {v3_path.name}  (lazy mmap, {v3_path.stat().st_size / 1e6:.0f} MB)")
+        else:
+            print(f"  No v3 cache — v3 features computed per example (slow).")
+        if self._sf_cache_path:
+            print(f"  SF cache:    {sf_path.name}  (lazy mmap, {sf_path.stat().st_size / 1e6:.0f} MB)")
+        else:
+            print(f"  No SF cache — SF classical eval features inactive (run build_sf_cache.py).")
 
-        # Pre-build label tensor (cheap: just integer lookups, no board computation)
-        # Kept in RAM for pos_weight computation; does NOT include board features.
+        # Pre-build label tensor (cheap: integer lookups only, no board computation).
         print(f"  Building label index ...", end=" ", flush=True)
         ys = []
         for ex in self._raw:
@@ -129,6 +141,26 @@ class ChessConceptDataset(Dataset):
         self._y = torch.stack(ys)
         print("done.")
 
+    # ── Lazy mmap openers ─────────────────────────────────────────────────────
+
+    def _get_algo_cache(self) -> np.ndarray | None:
+        """Open algo_cache mmap on first access (worker-local; picklable init)."""
+        if self._algo_cache is None and self._algo_cache_path:
+            self._algo_cache = np.load(self._algo_cache_path, mmap_mode="r")
+        return self._algo_cache
+
+    def _get_v3_cache(self) -> np.ndarray | None:
+        """Open v3_cache mmap on first access (worker-local; picklable init)."""
+        if self._v3_cache is None and self._v3_cache_path:
+            self._v3_cache = np.load(self._v3_cache_path, mmap_mode="r")
+        return self._v3_cache
+
+    def _get_sf_cache(self) -> np.ndarray | None:
+        """Open sf_cache mmap on first access (worker-local; picklable init)."""
+        if self._sf_cache is None and self._sf_cache_path:
+            self._sf_cache = np.load(self._sf_cache_path, mmap_mode="r")
+        return self._sf_cache
+
     # ── Dataset protocol ──────────────────────────────────────────────────────
 
     def __len__(self) -> int:
@@ -136,37 +168,47 @@ class ChessConceptDataset(Dataset):
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, int, torch.Tensor]:
         ex = self._raw[idx]
-        y  = self._y[idx].clone()   # clone view → independent, resizable tensor
+        y  = self._y[idx].clone()   # clone view → independent tensor
 
         try:
             board_t = fen_to_tensor(ex["fen"])
             move_t  = move_to_tensor(ex.get("move_uci", ""))
 
-            ac_idx = ex.get("_ac")
-            if self._algo_cache is not None and ac_idx is not None:
-                row    = self._algo_cache[ac_idx]
-                algo_t = torch.from_numpy(np.array(row, dtype=np.float32))
-            elif self._algo_dim is not None:
-                # cache present in main process but _ac missing for this example
-                algo_t = torch.zeros(self._algo_dim, dtype=torch.float32)
+            ac_idx     = ex.get("_ac")
+            algo_cache = self._get_algo_cache()
+            v3_cache   = self._get_v3_cache()
+
+            # V4 spatial features (ALGO_SIZE_V4 = 1811-dim) from algo_cache
+            if algo_cache is not None and ac_idx is not None:
+                algo_t = torch.from_numpy(np.array(algo_cache[ac_idx], dtype=np.float32))
             else:
                 af = ex.get("algo_features")
                 if af is not None:
                     algo_t = torch.tensor(af, dtype=torch.float32)
                 else:
-                    algo_t = torch.from_numpy(algo_feature_vector(ex["fen"]))
+                    algo_t = torch.zeros(ALGO_SIZE_V4, dtype=torch.float32)
 
-            # Phase 3 summary bits: actualized concept flags (piece IS on outpost, etc.)
-            # These directly encode what the labels measure — concat alongside spatial maps
-            # so the model can read the easy answer directly AND use fine-grained location info.
-            v3_t = torch.from_numpy(algo_feature_vector(ex["fen"]))
-            x = torch.cat([board_t, move_t, algo_t, v3_t])
+            # V3 summary (ALGO_SIZE = 59-dim) from v3_cache or computed from FEN
+            if v3_cache is not None and ac_idx is not None:
+                v3_t = torch.from_numpy(np.array(v3_cache[ac_idx], dtype=np.float32))
+            else:
+                v3_t = torch.from_numpy(algo_feature_vector(ex["fen"]))
+
+            # SF classical eval features (SF_SIZE = 14-dim) from sf_cache if available
+            sf_cache = self._get_sf_cache()
+            if sf_cache is not None and ac_idx is not None:
+                sf_t = torch.from_numpy(np.array(sf_cache[ac_idx], dtype=np.float32))
+            else:
+                sf_t = torch.zeros(SF_SIZE, dtype=torch.float32)
+
+            x = torch.cat([board_t, move_t, algo_t, v3_t, sf_t])
         except Exception:
-            algo_sz = self._algo_dim or (STATIC_SIZE - INPUT_SIZE - MOVE_SIZE)
-            x = torch.zeros(INPUT_SIZE + MOVE_SIZE + algo_sz + ALGO_SIZE, dtype=torch.float32)
+            x = torch.zeros(
+                STATIC_SIZE_V4 + ALGO_SIZE if self._phase4 else STATIC_SIZE,
+                dtype=torch.float32,
+            )
 
         if self._phase4:
-            # Always 144-dim; fall back to empty rich history for old examples
             hist_t, seq_len = history_rich_to_tensor(ex.get("history_rich", []))
         else:
             hist_t, seq_len = history_to_tensor(ex.get("history_uci", []))

@@ -5,6 +5,59 @@
 
 # ⚡ PHASE 4 — ACTIVE ENGINEERING PLAN
 
+**Current best:** Phase 4-B calibrated test macro F1 = **0.5608** (epoch 52).  
+Training stopped. Labeling improvements implemented. Full retrain pending.
+
+## All changes pending retrain (2026-07-17) — run `.\retrain_and_reparse.ps1` to absorb
+
+### tools/ingest_lichess_csv.py
+- `"perpetualCheck"` and `"stalemate"` now map → `"drawn_position"` (were silently dropped)
+- `"equality"` mapping to `"initiative"` removed (equality ≠ initiative; was polluting initiative labels)
+
+### tools/label_positions.py
+- **`_is_ocb_endgame()`** — fires when both sides have exactly 1 bishop on opposite-colored squares with no heavy pieces. Wired into silver labeler + `_GLOBAL_DETECTORS` + `_drawn_position_vec`.
+- **Syzygy tablebase** (optional) — lazy singleton reads `data/syzygy/` (or `SYZYGY_PATH` env var). Probes WDL for ≤7-piece positions. Silently disabled if files absent. Download 3-5 piece tables (~1 GB) from https://tablebase.lichess.ovh/tables/standard/
+- **`_drawn_position_vec`** (2 dims): `[is_drawn_heuristic, is_ocb_flag]` — replaced useless `halfmove_clock/100` with explicit OCB bit.
+- **`_zugzwang_vec`**: few-moves threshold raised ≤3 → ≤5 (3 almost never fired in real positions).
+- **`label_position()` silver labeler**: `drawn_position` now fires for `insufficient_material OR OCB OR syzygy_draw`.
+
+### tools/build_sf_cache.py (NEW)
+- Runs Stockfish depth-0 classical eval on every training position
+- Produces `data/sf_cache.npy` — float32 (N, 14): 7 terms × 2 sides (white/black)
+- Terms: Mobility, King safety, Threats, **Passed**, Space, Pawns, Imbalance
+- `Passed` term captures candidate passers — more than just static passed pawn detection
+- Set `STOCKFISH_PATH` env var to point to engine; writes zero cache if absent
+- `retrain_and_reparse.ps1` runs this as step 3c automatically
+
+### src/chess_coach/ml/board_encoder.py
+- `SF_SIZE = 14` added; `SF_BREAK = 2999` (offset where SF features start in x)
+- `COMBINED_SIZE_V4B` updated 1700 → **1714** (added SF_SIZE)
+
+### src/chess_coach/ml/classifier.py + dataset.py
+- x vector now 3013-dim (was 2999): appended 14 SF features after v3_summary
+- classifier forward() slices sf_t and feeds it through the bypass path alongside v3
+- predict_concepts() uses sf_t=zeros at inference (degrades gracefully)
+
+### src/chess_coach/ml/evaluate.py
+- SPOT_CHECKS: piece_activity FEN fixed (now triggers silver labeler), Lucena adds "promotion", pawn_island/isolated_pawn get `also_ok` mutual acceptance
+- spot_check() includes sf_t=zeros for Phase 4-B x construction
+
+## Next action: full retrain from scratch
+
+```powershell
+.\retrain_and_reparse.ps1
+```
+
+The script is fully uncommented and includes all steps:
+1. parse_annotated_pgn.py → training_raw.jsonl
+2. ingest_lichess_csv.py → append puzzles
+3. build_algo_cache.py → algo_cache.npy + v3_cache.npy
+4. build_sf_cache.py → sf_cache.npy (requires Stockfish)
+5. train --phase4
+6. evaluate --calibrate
+
+---
+
 **Goal:** calibrated macro F1 > 0.50  
 **Baseline:** Phase 3 = 0.4733  |  Phase 4-A1 = failed (overfit epoch 7)
 

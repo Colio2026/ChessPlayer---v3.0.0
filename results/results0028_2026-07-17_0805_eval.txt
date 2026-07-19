@@ -1,0 +1,4 @@
+Device: cuda
+Loaded checkpoint: epoch=52  val_loss=0.6384
+
+Calibrating per-class thresholds on val split …

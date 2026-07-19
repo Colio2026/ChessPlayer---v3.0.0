@@ -25,7 +25,16 @@ from typing import Optional
 SIDES      = ('white', 'black')
 PHASES     = ('opening', 'middlegame', 'endgame')
 SEVERITIES = ('critical', 'high', 'moderate', 'mild')
-STRATEGIES = ('blitz', 'flank', 'fortress', 'feint')
+STRATEGIES = (
+    # Legacy rule-based strategies (kept for backward compat with old checkpoints)
+    'blitz', 'flank', 'fortress', 'feint',
+    # Tier 1 ML concept strategies
+    'mating_attack', 'passed_pawn', 'outpost', 'space_advantage',
+    'pawn_storm', 'pawn_majority', 'blockade', 'prophylaxis',
+    'initiative', 'development_lead', 'piece_activity', 'king_activity',
+    # Fallback when no Tier 1 concept fires above threshold
+    'general',
+)
 
 
 # ── MetricSignal ─────────────────────────────────────────────────────────────

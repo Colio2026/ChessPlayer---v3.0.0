@@ -101,18 +101,10 @@ def train(args: argparse.Namespace) -> None:
     data_path = Path(args.data)
     print(f"\nLoading data from {data_path}")
 
-    # Memory-map the algo cache so the OS pages it in on demand (~13 GB, won't fit in RAM).
-    # num_workers=0 keeps everything in-process; mmap rows are copied per __getitem__ call.
-    algo_tensor = None
-    cache_path  = Path("data/algo_cache.npy")
-    if cache_path.exists():
-        import numpy as np
-        print(f"  Memory-mapping algo cache ...", end=" ", flush=True)
-        algo_tensor = np.load(str(cache_path), mmap_mode="r")
-        print(f"done  {algo_tensor.shape}")
-
-    train_ds = ChessConceptDataset(data_path, split="train", algo_tensor=algo_tensor, phase4=args.phase4)
-    val_ds   = ChessConceptDataset(data_path, split="val",   algo_tensor=algo_tensor, phase4=args.phase4)
+    # Dataset discovers algo_cache.npy and v3_cache.npy automatically and opens
+    # them lazily inside __getitem__ — each worker gets its own mmap handle.
+    train_ds = ChessConceptDataset(data_path, split="train", phase4=args.phase4)
+    val_ds   = ChessConceptDataset(data_path, split="val",   phase4=args.phase4)
 
     if args.quick:
         n = max(500, len(train_ds) // 10)
@@ -122,13 +114,13 @@ def train(args: argparse.Namespace) -> None:
 
     train_dl = DataLoader(
         train_ds, batch_size=args.batch_size,
-        shuffle=True, num_workers=0,
+        shuffle=True, num_workers=2,
         pin_memory=(device.type == "cuda"),
         collate_fn=_collate,
     )
     val_dl = DataLoader(
         val_ds, batch_size=args.batch_size * 2,
-        shuffle=False, num_workers=0,
+        shuffle=False, num_workers=2,
         collate_fn=_collate,
     )
 
@@ -238,7 +230,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train chess concept classifier")
     parser.add_argument("--data",       default="data/training_raw.jsonl")
     parser.add_argument("--epochs",     type=int,   default=100)
-    parser.add_argument("--batch-size", type=int,   default=128)
+    parser.add_argument("--batch-size", type=int,   default=256)
     parser.add_argument("--lr",         type=float, default=1e-3)
     parser.add_argument("--patience",   type=int,   default=10,
                         help="Stop after N epochs with no macro F1 improvement.")

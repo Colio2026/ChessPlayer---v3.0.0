@@ -65,6 +65,16 @@ class _InitWorker(QObject):
         self._config = config
 
     def run(self) -> None:
+        # Try the ML-based engine first; fall back to the rule-based engine
+        # when the trained checkpoint is not yet available.
+        try:
+            from chess_coach.coach.nimzo_net_engine import NimzoNetEngine
+            self.ready.emit(NimzoNetEngine.from_config(self._config))
+            return
+        except FileNotFoundError:
+            pass   # checkpoint missing — fall back gracefully
+        except Exception as exc:
+            print(f"[COACH] NimzoNetEngine failed to load: {exc} — falling back to StrategyEngine")
         try:
             from chess_coach.core.strategy_engine import StrategyEngine
             self.ready.emit(StrategyEngine.from_config(self._config))
@@ -121,11 +131,26 @@ class CoachPanel(QWidget):
 
     _DEBOUNCE_MS = 1200
     _COLOURS = {
-        "blitz":    "#EF5350",
-        "flank":    "#42A5F5",
-        "fortress": "#66BB6A",
-        "feint":    "#AB47BC",
-        "general":  "#78909C",
+        # Legacy rule-based strategies
+        "blitz":            "#EF5350",
+        "flank":            "#42A5F5",
+        "fortress":         "#66BB6A",
+        "feint":            "#AB47BC",
+        # Tier 1 ML strategies
+        "mating_attack":    "#EF5350",
+        "passed_pawn":      "#FF7043",
+        "outpost":          "#26A69A",
+        "space_advantage":  "#42A5F5",
+        "pawn_storm":       "#FF5722",
+        "pawn_majority":    "#9CCC65",
+        "blockade":         "#FFA726",
+        "prophylaxis":      "#66BB6A",
+        "initiative":       "#FFEE58",
+        "development_lead": "#26C6DA",
+        "piece_activity":   "#78909C",
+        "king_activity":    "#AB47BC",
+        # Fallback
+        "general":          "#78909C",
     }
 
     def __init__(self, config: dict, parent=None) -> None:

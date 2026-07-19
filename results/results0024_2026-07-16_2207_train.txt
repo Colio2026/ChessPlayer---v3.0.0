@@ -1,0 +1,7 @@
+
+Device: cuda
+  GPU: NVIDIA GeForce RTX 2060
+
+Loading data from data\training_raw.jsonl
+  Memory-mapping algo cache ... done  (1930213, 1663)
+Loading dataset from data\training_raw.jsonl ... 

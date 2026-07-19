@@ -58,21 +58,28 @@ COMBINED_SIZE = STATIC_SIZE + GRU_HIDDEN             # 1444 — board features +
 #   [142]    is_capture binary
 #   [143]    color      binary (white=1)
 #
-# ALGO_SIZE_V4    = 1663   (from tools/label_positions.ALGO_FEATURE_SIZE_V4)
-# STATIC_SIZE_V4  = INPUT_SIZE + MOVE_SIZE_V4 + ALGO_SIZE_V4  = 2808
-# COMBINED_SIZE_V4 = STATIC_SIZE_V4 + GRU_HIDDEN              = 3064
+# ALGO_SIZE_V4    = 1811   (from tools/label_positions.ALGO_FEATURE_SIZE_V4)
+#   1663 (B1-B6) + 148 (B7 king_safety_vec) = 1811
+# STATIC_SIZE_V4  = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE_V4  = 2940
+# COMBINED_SIZE_V4 = STATIC_SIZE_V4 + GRU_HIDDEN           = 3196
 MOVE_SIZE_V4     = 144   # GRU per-step encoding only (history_rich_to_tensor)
-ALGO_SIZE_V4     = 1663
-STATIC_SIZE_V4   = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE_V4   # 2792 (MOVE_SIZE=128 unchanged — that's current-move, not GRU)
-COMBINED_SIZE_V4 = STATIC_SIZE_V4 + GRU_HIDDEN             # 3048
+ALGO_SIZE_V4     = 1811
+STATIC_SIZE_V4   = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE_V4   # 2940 (MOVE_SIZE=128 unchanged — that's current-move, not GRU)
+COMBINED_SIZE_V4 = STATIC_SIZE_V4 + GRU_HIDDEN             # 3196
 
-# Phase 4-B: spatial bottleneck + Phase 3 summary restored
-# spatial(1663) → proj(256) | v3_summary(59) bypasses bottleneck
-# Phase 3 summary bits encode ACTUALIZED concepts (piece IS on outpost)
-# Spatial maps encode STRUCTURAL POTENTIAL (which squares could be outposts)
-# Both together: model can read direct labels AND use fine-grained location info
+# Stockfish classical eval features (pre-encoded at cache-build time via build_sf_cache.py)
+# 7 terms × 2 sides = 14 floats appended after v3_summary in x
+# white indices 0-6: Mobility, King safety, Threats, Passed, Space, Pawns, Imbalance
+# black indices 7-13: same order
+# "Passed" (white=[3], black=[10]) is the key signal for passed_pawn concept quality
+SF_SIZE  = 14
+SF_BREAK = STATIC_SIZE_V4 + ALGO_SIZE   # 2999 — offset where SF features start in x
+
+# Phase 4-B: spatial bottleneck + Phase 3 summary + SF classical eval features
+# x layout: [board(1001), move(128), algo_v4(1811), v3_summary(59), sf(14)] = 3013
+# spatial(1811) → proj(256) | v3_summary(59) + sf(14) bypass bottleneck
 PROJ_SIZE_V4       = 256
-COMBINED_SIZE_V4B  = INPUT_SIZE + MOVE_SIZE + PROJ_SIZE_V4 + ALGO_SIZE + GRU_HIDDEN  # 1001+128+256+59+256=1700
+COMBINED_SIZE_V4B  = INPUT_SIZE + MOVE_SIZE + PROJ_SIZE_V4 + ALGO_SIZE + SF_SIZE + GRU_HIDDEN  # 1001+128+256+59+14+256=1714
 
 # Max attack squares per piece type (for normalising mobility to [0, 1])
 _MOB_MAX = [2, 8, 13, 14, 27, 8]  # P  N  B  R  Q  K

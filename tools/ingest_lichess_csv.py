@@ -90,11 +90,15 @@ LICHESS_TAG_MAP: dict[str, str] = {
     "vukovicMate":        "mating_attack",
     "epauletteMate":      "mating_attack",
     # Strategic / dynamic
-    "equality":           "initiative",
+    # "equality" deliberately unmapped — Lichess uses it for "find the equalising
+    # move", which maps to neither initiative nor drawn_position cleanly.
     "defensiveMove":      "prophylaxis",
     "exposedKing":        "king_safety",
     "kingsideAttack":     "mating_attack",
     "queensideAttack":    "mating_attack",
+    # Draw themes — Lichess tags that reliably indicate a drawn position
+    "perpetualCheck":     "drawn_position",
+    "stalemate":          "drawn_position",
     # Endgame
     "rookEndgame":        "rook_endgame",
     "pawnEndgame":        "pawn_endgame",

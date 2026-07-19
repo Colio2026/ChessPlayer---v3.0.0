@@ -13,4 +13,24 @@ Loading dataset from data\training_raw.jsonl ... 1,679,221 labeled examples foun
   val: 167,922 examples  (train 1,343,376 / val 167,922 / test 167,923)
   Lazy loading enabled — examples encoded per batch during training.
   Algo cache shared from caller  (1930213, 1663)
-  Building label index ... 
+  Building label index ... done.
+
+Model: 3,029,553 parameters
+
+── Training  (100 epochs, batch 128) ─────────────────────────────────────
+Epoch  Train Loss  Val Loss  Macro F1         LR    Time  Note
+───────────────────────────────────────────────────────────────────────────
+    1      0.5427    0.4871    0.4226   1.00e-03  3024.0s  ✓ best
+    2      0.4955    0.4721    0.4234   9.99e-04  3111.9s  ✓ best
+    3      0.4810    0.4636    0.4315   9.98e-04  3014.6s  ✓ best
+    4      0.4720    0.4608    0.4298   9.96e-04  3092.2s  
+    5      0.4653    0.4566    0.4365   9.94e-04  2974.5s  ✓ best
+    6      0.4598    0.4540    0.4378   9.92e-04  43721.4s  ✓ best
+    7      0.4548    0.4521    0.4357   9.89e-04  3018.9s  
+    8      0.4509    0.4520    0.4365   9.85e-04  2957.3s  
+    9      0.4473    0.4515    0.4355   9.81e-04  2940.6s  
+   10      0.4436    0.4510    0.4378   9.77e-04  2937.5s  
+   11      0.4408    0.4494    0.4374   9.72e-04  2874.5s  
+   12      0.4377    0.4515    0.4407   9.67e-04  2908.3s  ✓ best
+   13      0.4350    0.4509    0.4417   9.61e-04  3018.7s  ✓ best
+   14      0.4327    0.4513    0.4387   9.55e-04  2970.1s  
