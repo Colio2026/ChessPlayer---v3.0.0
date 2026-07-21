@@ -60,8 +60,10 @@ def _next_results_path(tag: str) -> Path:
 from .dataset    import ChessConceptDataset
 from .classifier import ChessConceptClassifier
 from .concept_vocab import CONCEPTS, NUM_CONCEPTS
+from .evaluate   import load_thresholds
+from .paths      import DATA_DIR, CLASSIFIER_BEST, CLASSIFIER_LAST, TRAINING_JSONL
 
-CHECKPOINT_DIR  = Path("data")
+CHECKPOINT_DIR  = DATA_DIR
 LABEL_SMOOTHING = 0.05   # 0 → 0.05, 1 → 0.95; softens noisy keyword labels
 
 
@@ -108,19 +110,19 @@ def train(args: argparse.Namespace) -> None:
 
     if args.quick:
         n = max(500, len(train_ds) // 10)
-        train_ds._raw = train_ds._raw[:n]
-        train_ds._y   = train_ds._y[:n]
+        train_ds._offsets = train_ds._offsets[:n]
+        train_ds._y       = train_ds._y[:n]
         print(f"  --quick mode: using {n} training examples")
 
     train_dl = DataLoader(
         train_ds, batch_size=args.batch_size,
-        shuffle=True, num_workers=2,
+        shuffle=True, num_workers=4,
         pin_memory=(device.type == "cuda"),
         collate_fn=_collate,
     )
     val_dl = DataLoader(
         val_ds, batch_size=args.batch_size * 2,
-        shuffle=False, num_workers=2,
+        shuffle=False, num_workers=4,
         collate_fn=_collate,
     )
 
@@ -144,6 +146,11 @@ def train(args: argparse.Namespace) -> None:
     best_epoch     = 0
     patience_count = 0
 
+    # Use calibrated per-class thresholds from the previous run if available.
+    # Falls back to 0.5 per class when thresholds.json doesn't exist yet (first run).
+    # This makes checkpoint selection consistent with post-training evaluation.
+    val_thresholds = load_thresholds(default=0.5).to(device)   # [NUM_CONCEPTS]
+
     print(f"\n── Training  ({args.epochs} epochs, batch {args.batch_size}) "
           f"─────────────────────────────────────")
     print(f"{'Epoch':>5}  {'Train Loss':>10}  {'Val Loss':>8}  {'Macro F1':>8}  "
@@ -160,7 +167,8 @@ def train(args: argparse.Namespace) -> None:
             x, hist, seq_len, y = (x.to(device), hist.to(device),
                                     seq_len.to(device), y.to(device))
             optimizer.zero_grad()
-            loss = loss_fn(model(x, hist, seq_len), y)
+            y_smooth = y * (1 - LABEL_SMOOTHING) + 0.5 * LABEL_SMOOTHING
+            loss = loss_fn(model(x, hist, seq_len), y_smooth)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -179,7 +187,7 @@ def train(args: argparse.Namespace) -> None:
                                         seq_len.to(device), y.to(device))
                 logits = model(x, hist, seq_len)
                 val_loss += loss_fn(logits, y).item()
-                all_preds.append((torch.sigmoid(logits) > 0.5).cpu())
+                all_preds.append((torch.sigmoid(logits) >= val_thresholds).cpu())
                 all_targets.append(y.cpu())
         val_loss /= len(val_dl)
 
@@ -201,7 +209,7 @@ def train(args: argparse.Namespace) -> None:
                 "val_loss":   val_loss,
                 "macro_f1":   val_f1,
                 "concepts":   CONCEPTS,
-            }, CHECKPOINT_DIR / "classifier_best.pt")
+            }, CLASSIFIER_BEST)
             note = "✓ best"
         else:
             patience_count += 1
@@ -218,21 +226,21 @@ def train(args: argparse.Namespace) -> None:
         "state_dict": model.state_dict(),
         "val_loss":   val_loss,
         "concepts":   CONCEPTS,
-    }, CHECKPOINT_DIR / "classifier_last.pt")
+    }, CLASSIFIER_LAST)
 
     print(f"\n── Done ──────────────────────────────────────────────────────────────")
     print(f"Best checkpoint : epoch {best_epoch}  macro_f1={best_macro_f1:.4f}")
-    print(f"Saved to        : {CHECKPOINT_DIR / 'classifier_best.pt'}")
+    print(f"Saved to        : {CLASSIFIER_BEST}")
     print(f"\nNext step: python -m src.chess_coach.ml.evaluate")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train chess concept classifier")
-    parser.add_argument("--data",       default="data/training_raw.jsonl")
+    parser.add_argument("--data",       default=str(TRAINING_JSONL))
     parser.add_argument("--epochs",     type=int,   default=100)
     parser.add_argument("--batch-size", type=int,   default=256)
     parser.add_argument("--lr",         type=float, default=1e-3)
-    parser.add_argument("--patience",   type=int,   default=10,
+    parser.add_argument("--patience",   type=int,   default=20,
                         help="Stop after N epochs with no macro F1 improvement.")
     parser.add_argument("--quick",      action="store_true",
                         help="Use 10%% of data for a fast test run.")

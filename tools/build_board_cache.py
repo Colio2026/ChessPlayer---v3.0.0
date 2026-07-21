@@ -49,14 +49,32 @@ def main() -> None:
     if not _JSONL_PATH.exists():
         sys.exit(f"ERROR: {_JSONL_PATH} not found. Run parse_annotated_pgn.py first.")
 
-    # Determine N from algo_cache (authoritative row count) or count JSONL lines.
+    # Determine N from algo_cache (authoritative row count).
+    # Fallback: scan JSONL for max(_ac) + 1.  Do NOT count lines — caches are
+    # indexed by _ac values, not by line position, so a line count can be wrong
+    # if the JSONL has been reordered or appended since the last full build.
     if _ALGO_CACHE_PATH.exists():
         N = int(np.load(_ALGO_CACHE_PATH, mmap_mode="r").shape[0])
         print(f"Row count from algo_cache.npy: {N:,}")
     else:
-        print("algo_cache.npy not found — counting rows from JSONL ...")
-        N = sum(1 for line in open(_JSONL_PATH, "rb") if line.strip())
-        print(f"  {N:,} rows")
+        print("algo_cache.npy not found — scanning JSONL for max(_ac) ...")
+        import json as _json
+        max_ac = -1
+        with open(_JSONL_PATH, "rb") as _f:
+            for _raw in _f:
+                _s = _raw.strip()
+                if not _s:
+                    continue
+                try:
+                    _ac = _json.loads(_s).get("_ac")
+                    if _ac is not None and _ac > max_ac:
+                        max_ac = _ac
+                except Exception:
+                    pass
+        if max_ac < 0:
+            sys.exit("ERROR: No _ac indices found in JSONL. Run build_algo_cache.py first.")
+        N = max_ac + 1
+        print(f"  max(_ac) + 1 = {N:,} rows")
 
     size_gb = N * BOARD_DIMS * 4 / 1e9
     print(f"Allocating board_cache.npy: {N:,} rows × {BOARD_DIMS} cols = {size_gb:.2f} GB")

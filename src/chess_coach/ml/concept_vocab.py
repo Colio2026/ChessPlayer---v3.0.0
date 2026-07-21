@@ -3,7 +3,7 @@
 # ORDER MATTERS — index position defines the output neuron for each concept.
 # Add new concepts at the END only, or saved checkpoints become invalid.
 #
-# v3 vocab (50 concepts) — changes from v2 (44):
+# v3 vocab (49 concepts) — changes from v2 (44):
 #   Removed : exchange_sacrifice (→ sacrifice), bishop_quality (→ bad_bishop + good_bishop),
 #             pawn_weakness, endgame_technique, color_complex, square_control (→ piece_activity),
 #             minority_attack (→ pawn_storm), tempo (→ initiative)

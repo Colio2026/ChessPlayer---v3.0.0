@@ -8,7 +8,7 @@
 #   Combined      1444  = 1188 + 256 GRU hidden
 #   Layer1        1536  → BatchNorm → ReLU → Dropout(0.4)
 #   Layer2         768  → BatchNorm → ReLU → Dropout(0.2)
-#   Output          50  (raw logits)
+#   Output          49  (raw logits)
 #
 # Architecture (Phase 4-B — phase4=True)
 # ------------------------------------------------------------------
@@ -20,7 +20,7 @@
 #   Combined     1714  = 1001 + 128 + 256 proj + 59 v3 + 14 sf + 256 GRU hidden
 #   Layer1       1024  → BatchNorm → ReLU → Dropout(0.4)
 #   Layer2        512  → BatchNorm → ReLU → Dropout(0.2)
-#   Output         53  (raw logits)
+#   Output         49  (raw logits)
 #
 # Architecture (Phase 5D — phase5=True)
 # ------------------------------------------------------------------
@@ -187,8 +187,7 @@ class ChessConceptClassifier(nn.Module):
 
         if self._phase5:
             from tools.nnue_reader import compute_activations, load_feature_transformer
-            from pathlib import Path
-            nnue_path = Path("data/nn.nnue")
+            from .paths import NNUE_WEIGHTS as nnue_path
             if nnue_path.exists():
                 biases, weights = load_feature_transformer(str(nnue_path))
                 nnue_t = torch.from_numpy(compute_activations(fen, biases, weights))

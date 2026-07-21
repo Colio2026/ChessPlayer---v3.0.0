@@ -2,7 +2,7 @@
 
 A desktop chess analysis and coaching application for Windows. Browse large PGN game databases, analyse positions with a UCI engine, and receive structured strategic coaching — all running locally with no cloud dependency.
 
-The coaching layer is actively evolving from a deterministic phrase-based system toward a fully trained neural network that understands 53 chess concepts by name, trained on millions of master positions and puzzle databases.
+The coaching layer is actively evolving from a deterministic phrase-based system toward a fully trained neural network that understands 49 chess concepts by name, trained on millions of master positions and puzzle databases.
 
 ---
 
@@ -28,7 +28,7 @@ The coaching layer is actively evolving from a deterministic phrase-based system
     - [Dependency Rules](#dependency-rules)
     - [Signal Flow](#signal-flow)
 11. [Coach Nimzowitsch — The Neural Network](#coach-nimzowitsch--the-neural-network)
-    - [The 53 Concepts](#the-53-concepts)
+    - [The 49 Concepts](#the-49-concepts)
     - [Model Architecture](#model-architecture)
     - [Training Pipeline](#training-pipeline)
     - [Data Sources](#data-sources)
@@ -50,7 +50,7 @@ The coaching layer is actively evolving from a deterministic phrase-based system
 - **Engine Analysis** — Stockfish UCI integration with multi-PV evaluation, animated eval bar, and best-move arrows; runs on a background thread so the UI stays responsive
 - **Continuation Statistics** — see how often a position arises in your loaded library and what the top continuations are, powered by an O(1) position-tree lookup
 - **Chess Coach (Deterministic)** — Nimzowitsch-style strategic coaching: classifies each position into one of four strategies (Blitz, Flank, Fortress, Feint) and generates natural-language guidance assembled from a curated phrase database
-- **Coach Nimzowitsch (Neural Network)** — a 53-class multi-label classifier trained to identify chess concepts by name directly from the board position and key move; trained on millions of master games, Lichess puzzles, and algorithmically-labelled positions
+- **Coach Nimzowitsch (Neural Network)** — a 49-class multi-label classifier (Phase 4B, 3.08M parameters) trained to identify chess concepts by name from board position, move history, and 1,811-dim geometric heuristics; trained on 1.5M+ examples from master games, Lichess puzzles, and algorithmically-labelled positions; best validation Macro F1: 0.56
 - **Offline-first** — all analysis, coaching, and database queries run locally
 
 ---
@@ -272,8 +272,8 @@ ChessPlayer - v3.0.0/
 |       +-- strategies/         # Four strategy detectors
 |       +-- database/           # Phrase DB, pattern matcher, PGN indexer
 |       +-- ml/                 # Neural network coach
-|           +-- concept_vocab.py    # 53 concept labels (stable, order matters)
-|           +-- board_encoder.py    # FEN -> 909-dim tensor
+|           +-- concept_vocab.py    # 49 concept labels (stable, order matters)
+|           +-- board_encoder.py    # FEN -> 1001-dim tensor
 |           +-- dataset.py          # JSONL loader + train/val/test split
 |           +-- classifier.py       # MLP model definition
 |           +-- train.py            # Training loop
@@ -302,9 +302,9 @@ ChessPlayer - v3.0.0/
 | `engine/uci_engine.py` | Stockfish subprocess controller, runs on QThread |
 | `config/loader.py` | Three-layer config merge |
 | `ui/main_window/window.py` | `MainWindow` — central coordinator, owns all signals |
-| `chess_coach/ml/concept_vocab.py` | Canonical ordered list of all 53 concept labels |
-| `chess_coach/ml/board_encoder.py` | `fen_to_tensor()` + `move_to_tensor()` + `COMBINED_SIZE` |
-| `chess_coach/ml/classifier.py` | `ChessConceptClassifier` — 1024/512 MLP |
+| `chess_coach/ml/concept_vocab.py` | Canonical ordered list of all 49 concept labels |
+| `chess_coach/ml/board_encoder.py` | `fen_to_tensor()` (1001-dim) + `move_to_tensor()` (128-dim) + `COMBINED_SIZE_V4B` (1714) |
+| `chess_coach/ml/classifier.py` | `ChessConceptClassifier` — Phase 4B: spatial bottleneck + GRU(256) + 1024/512 MLP |
 | `chess_coach/ml/train.py` | Training loop with macro F1 early stopping |
 | `chess_coach/ml/evaluate.py` | Per-class threshold calibration, spot checks |
 | `tools/label_positions.py` | `label_position(board)` — 32 algorithmic concept detectors |
@@ -348,48 +348,60 @@ User drags piece on QML board
 
 ## Coach Nimzowitsch — The Neural Network
 
-The central long-term project within ChessPlayer is **Coach Nimzowitsch**: a neural network trained to identify 53 chess concepts by name from a board position and the key move being played. This gives the coach a rich, human-readable vocabulary it can use to explain what's happening in a position — not just *what* Stockfish recommends but *why* it's good in terms a student can understand and remember.
+The central long-term project within ChessPlayer is **Coach Nimzowitsch**: a neural network trained to identify 49 chess concepts by name from a board position and the key move being played. This gives the coach a rich, human-readable vocabulary it can use to explain what's happening in a position — not just *what* Stockfish recommends but *why* it's good in terms a student can understand and remember.
 
-### The 53 Concepts
+### The 49 Concepts
 
-The full concept vocabulary, in output-neuron order (fixed — adding new concepts must go at the end):
+The full concept vocabulary, in output-neuron order (fixed — adding new concepts must go at the end only, or all saved checkpoints are invalidated):
 
-**Tactical**
-`pin` · `fork` · `skewer` · `discovered_attack` · `deflection` · `decoy` · `overloading` · `zwischenzug` · `interference` · `clearance` · `back_rank` · `sacrifice` · `exchange_sacrifice` · `combination` · `mating_attack` · `trapped_piece`
+**Tactical** (15)
+`pin` · `fork` · `skewer` · `discovery` · `x_ray` · `double_check` · `clearance` · `deflection` · `overloading` · `zwischenzug` · `interference` · `back_rank` · `sacrifice` · `mating_attack` · `trapped_piece`
 
-**Piece concepts**
+**Piece concepts** (8)
 `outpost` · `blockade` · `bad_bishop` · `good_bishop` · `bishop_pair` · `piece_activity` · `battery` · `rook_seventh`
 
-**Pawn structure**
-`passed_pawn` · `isolated_pawn` · `backward_pawn` · `doubled_pawn` · `pawn_majority` · `pawn_chain` · `pawn_break` · `pawn_storm` · `pawn_weakness` · `pawn_island`
+**Pawn structure** (9)
+`passed_pawn` · `promotion` · `isolated_pawn` · `backward_pawn` · `doubled_pawn` · `pawn_majority` · `pawn_chain` · `pawn_storm` · `pawn_island`
 
-**King & squares**
-`king_safety` · `king_activity` · `weak_square` · `open_file`
+**King & endgame** (11)
+`king_safety` · `king_activity` · `shouldering` · `opposition` · `zugzwang` · `rook_endgame` · `pawn_endgame` · `bishop_endgame` · `knight_endgame` · `queen_endgame` · `drawn_position`
 
-**Strategic**
-`space_advantage` · `tempo` · `zugzwang` · `prophylaxis` · `minority_attack` · `simplification` · `fortification` · `coordination` · `color_complex` · `endgame_technique` · `opposition`
-
-**Dynamic**
-`counterplay` · `development_lead` · `attacking_chances` · `square_control`
+**Positional / Strategic** (6)
+`weak_square` · `open_file` · `space_advantage` · `development_lead` · `initiative` · `prophylaxis`
 
 ### Model Architecture
 
+**Phase 4B (current)**
+
 ```
-Input: 909-dimensional vector
-  - 781 board encoding  (piece placement, castling, en-passant, move counts, phase)
-  - 128 move one-hot    (64 from-square + 64 to-square, the key move context)
+Raw static input: 3,013-dim
+  - 1,001  board encoding  (12×64 piece channels, attack maps, pawn structure, king shelter, mobility)
+  -   128  move one-hot    (64 from-square + 64 to-square — the key move being played)
+  - 1,811  algo_v4 features  (explicit geometric chess heuristics — primary signal source)
+  -    59  v3 concept bits   (binary algorithmic concept flags — bypass the spatial bottleneck)
+  -    14  SF classical eval  (Mobility, King safety, Threats, Passed, Space, Pawns, Imbalance × 2 sides)
 
-Hidden layer 1:  Linear(909, 1024) -> BatchNorm -> ReLU -> Dropout(0.4)
-Hidden layer 2:  Linear(1024, 512) -> BatchNorm -> ReLU -> Dropout(0.4)
-Output:          Linear(512, 53)   -> per-class sigmoid (BCEWithLogitsLoss)
+Spatial bottleneck:  Linear(1811, 256) → ReLU → Dropout(0.3)   # compresses algo_v4
 
-Parameters: ~1.49M
+GRU:  144-dim per-step history  →  256-dim context
+      (encodes piece type, capture, check, and side-to-move for each prior half-move)
+
+Combined (post-projection):  1,714-dim
+  = board(1001) + move(128) + spatial_proj(256) + v3(59) + sf(14) + gru(256)
+
+MLP head:
+  Hidden 1:  Linear(1714, 1024) → BatchNorm → ReLU → Dropout(0.4)
+  Hidden 2:  Linear(1024,  512) → BatchNorm → ReLU → Dropout(0.2)
+  Output:    Linear( 512,   49) → per-class sigmoid  (BCEWithLogitsLoss)
+
+Parameters: 3.08M
+Best validation Macro F1: 0.56
 ```
 
 **Training details:**
-- Loss: `BCEWithLogitsLoss` with per-class `pos_weight` clamped to (1.0, 50.0) to handle label imbalance
-- Optimiser: AdamW, weight decay 5e-4, initial LR 1e-3 with cosine annealing
-- Early stopping: macro F1 on validation set, patience 15 epochs
+- Loss: `BCEWithLogitsLoss` with per-class `pos_weight` clamped to (1.0, 20.0); label smoothing ε=0.05
+- Optimiser: AdamW, weight decay 6e-3, initial LR 1e-3 with cosine annealing over 100 epochs
+- Early stopping: macro F1 on validation set, patience 10 epochs
 - Thresholds: calibrated per class on the validation set after training, saved to `data/thresholds.json`
 
 **Why multi-label:** Most positions have multiple concepts simultaneously present. A position can be a `pin` + `battery` + `pawn_storm` + `king_safety` threat all at once. Single-label classification would lose this richness.
@@ -438,9 +450,11 @@ evaluate.py  -->  thresholds.json
 
 | Source | Examples (approx) | Concepts covered |
 |---|---|---|
-| Annotated PGNs (`data/annotated_pgns/`) | ~50k labeled | Dynamic/meta concepts, all 53 via keyword |
-| Lichess puzzle CSV (6M puzzles) | ~830k | 44+ concepts hit 50k cap |
-| Master game databases (Caissabase etc.) | ~500k+ | Structural/strategic concepts |
+| Annotated PGNs (`data/annotated_pgns/`) | ~50k labeled | Dynamic/meta concepts, all 49 via keyword |
+| Lichess puzzle CSV (6M puzzles) | ~830k | 40+ concepts hit 50k cap |
+| Master game databases (Caissabase etc.) | ~700k+ | Structural/strategic concepts via algo detectors |
+
+Total training examples: **1.59M** (80/10/10 train/val/test split)
 
 ### Algorithmic Detectors
 
@@ -450,40 +464,35 @@ evaluate.py  -->  thresholds.json
 
 | Category | Concepts |
 |---|---|
-| Pawn structure | `passed_pawn` `isolated_pawn` `doubled_pawn` `pawn_island` `pawn_majority` `backward_pawn` `pawn_chain` `pawn_weakness` `pawn_storm` `minority_attack` |
+| Pawn structure | `passed_pawn` `isolated_pawn` `doubled_pawn` `pawn_island` `pawn_majority` `backward_pawn` `pawn_chain` `pawn_storm` |
 | Piece quality | `bad_bishop` `good_bishop` `bishop_pair` `battery` `blockade` `outpost` `rook_seventh` `piece_activity` |
-| King | `king_activity` `back_rank` `opposition` |
-| Squares / files | `open_file` `weak_square` `square_control` `color_complex` `space_advantage` |
-| Tactics | `pin` `fork` `skewer` `overloading` |
-| Strategic | `development_lead` `endgame_technique` |
+| King | `king_safety` `king_activity` `back_rank` `opposition` `shouldering` |
+| Squares / files | `open_file` `weak_square` `space_advantage` |
+| Endgame | `rook_endgame` `pawn_endgame` `bishop_endgame` `knight_endgame` `queen_endgame` `drawn_position` `zugzwang` |
+| Tactics | `pin` `fork` `skewer` `x_ray` `overloading` |
+| Strategic | `development_lead` `promotion` |
 
-**Exchange sacrifice** is detected from the move rather than the position: if the key move (`move_uci`) is a rook capturing a bishop or knight, the position is labeled `exchange_sacrifice`.
-
-**Not algorithmically detectable** (require move history or prose): `tempo`, `combination`, `zwischenzug`, `clearance`, `sacrifice`, `deflection`, `decoy`, `interference`, `discovered_attack`, `mating_attack`, `trapped_piece`, `counterplay`, `simplification`, `fortification`, `coordination`. These come exclusively from Lichess tags and annotated PGN keyword matching.
+**Not algorithmically detectable** (require move history or prose): `discovery`, `double_check`, `clearance`, `deflection`, `zwischenzug`, `interference`, `sacrifice`, `mating_attack`, `trapped_piece`, `initiative`, `prophylaxis`. These come exclusively from Lichess tags and annotated PGN keyword matching.
 
 ### Roadmap
 
-The coach is being developed in three phases:
+The coach has been through four architectural phases. Phase 4B is the current production model. Full experiment history with per-run numbers, hypotheses, and lessons is in [`docs/experiments.md`](docs/experiments.md).
 
-**Phase 1 — Current (MLP + static board features)**
-- 909-dim input: board encoding + single move one-hot
-- 1024/512 MLP with batch norm
-- Realistic target: macro F1 ~0.55–0.65
-- Structural and tactical concepts will be strong; dynamic/meta concepts will lag
+**Phase 1 (superseded)** — 1,188-dim static features, MLP baseline. Macro F1: ~0.30. Proof of concept only.
 
-**Phase 2 — Richer inputs (planned)**
-- Attack maps: for each square, how many pieces of each side attack it
-- Pawn structure features: passed pawn bitboards, pawn tension squares
-- These additions will strengthen spatial concept detection without changing the model class
+**Phase 2 (superseded)** — Scaled MLP, ~1M examples. Macro F1: ~0.51. Good recall, poor precision — overfires.
 
-**Phase 3 — CNN + move history (planned)**
-- Switch from MLP to CNN to model spatial piece relationships properly
-- Concatenate the last N moves as additional input channels after the CNN
-- Move history is essential for sequence-dependent concepts: `sacrifice`, `tempo`, `zwischenzug`, `combination`. These concepts are fundamentally about what happened before the current position, not just what the current position looks like
-- Realistic target: macro F1 ~0.70–0.80
+**Phase 4B (current)** — 3,013-dim raw input → 1,714-dim combined after spatial bottleneck + GRU(256). Spatial bottleneck (Linear 1811→256) compresses 1,811 explicit geometric heuristics into a 256-dim representation. GRU reads per-move (piece, capture, check, color) over up to 60 prior half-moves. Macro F1: **0.5614** (calibrated, 49 concepts). Champion run on 1.23M examples; retrain in progress on 1.59M.
 
-**Integration (planned)**
-The ML classifier will sit alongside Stockfish, not compete with it. The intended flow: Stockfish identifies the best move; the concept classifier labels the current position and the move being played; the Nimzowitsch phrase database generates natural-language explanation keyed to those concept labels. The coach's job is to explain *why* Stockfish's recommendation is good in human chess vocabulary.
+**Phase 5 variants (explored, abandoned)** — Three variants (5, 5C, 5D) substituted or augmented with Stockfish16 NNUE Feature Transformer activations (2,048-dim). All stalled at F1 ≤ 0.47, with pure NNUE runs at 0.33–0.35, due to task misalignment: NNUE represents centipawn evaluation, not concept identity. See [`docs/phase5_nnue_integration_plan.md`](docs/phase5_nnue_integration_plan.md) (ABANDONED) and [`docs/experiments.md`](docs/experiments.md) §Lessons.
+
+**Next: Application integration**
+The Phase 4B classifier is ready for integration into the live chess coaching panel. The intended flow:
+1. User makes a move in the game browser.
+2. `coach.analyze(fen, history_uci=...)` runs concept classification with GRU history.
+3. Concepts above their calibrated thresholds (with Schmitt-trigger hysteresis) drive RAG retrieval.
+4. The Nimzowitsch phrase database returns natural-language explanation keyed to active concept labels.
+5. NNUE evaluation gates the coaching output: only surface concepts that make sense given Stockfish's assessment of the position.
 
 ---
 
@@ -635,7 +644,7 @@ Generated by the data pipeline. One JSON object per line in the format described
 
 ### `data/thresholds.json` — per-class thresholds
 
-Generated by `evaluate.py` after training. Maps each of the 53 concept labels to a calibrated sigmoid threshold (0.0–1.0) that maximises F1 on the validation set.
+Generated by `evaluate.py --calibrate` after training. Maps each of the 49 concept labels to a calibrated sigmoid threshold (0.0–1.0) that maximises per-class F1 on the validation set.
 
 ---
 
@@ -683,77 +692,81 @@ User overrides write back automatically when the active source changes. See [con
 
 ### 🔴 Critical — Bugs or Silently Wrong Behaviour
 
-**1. `--quick` mode references a nonexistent attribute**
-`train.py:111` does `train_ds._raw = train_ds._raw[:n]`. The dataset class has no `_raw` attribute — the correct name is `_offsets`. This means `--quick` mode either silently does nothing (AttributeError swallowed) or crashes. It has never been tested since `_offsets` was introduced. Before the next training run confirm this with `python -m src.chess_coach.ml.train --quick`.
+**1. ~~`--quick` mode references a nonexistent attribute~~ ✅ Fixed**
+`train_ds._raw` → `train_ds._offsets`. Verified with a `--quick --epochs 1` run.
 
-**2. `LABEL_SMOOTHING` is dead config**
-`train.py:65` defines `LABEL_SMOOTHING = 0.05` with a comment explaining its intent. It is never passed to the loss function. `nn.BCEWithLogitsLoss` does not accept a `label_smoothing` argument — it would need to be applied manually to the targets before the loss call. Until that implementation exists, this constant is a lie. Either implement it or delete the constant and its comment.
+**2. ~~`LABEL_SMOOTHING` is dead config~~ ✅ Fixed**
+`y_smooth = y * (1 - LABEL_SMOOTHING) + 0.5 * LABEL_SMOOTHING` applied to targets before loss call in `train.py`. Softens labels from (0,1) → (0.05, 0.95).
 
-**3. GRU is permanently disabled in live inference**
-`classifier.py` has a full GRU branch reading 144-dim history-rich move sequences per step. This is Phase 4B's most significant architectural addition over Phase 3. In `coach.py`, `predict_concepts()` is always called with `history_rich=None`, which zeroes out the GRU output entirely. The model was trained with history; the coach never uses it. Every live coaching call is effectively running a Phase 3 model inside a Phase 4B shell, wasting ~500k parameters and learning nothing from the move sequence. Fix: build `history_rich` dicts from the `history_uci` list in `coach.analyze()` before calling `predict_concepts()`.
+**3. ~~GRU is permanently disabled in live inference~~ ✅ Fixed**
+`_build_history_rich()` added to `coach.py`. Replays `history_uci` moves to extract per-move (piece, capture, check, color) dicts and passes them to `predict_concepts()`. GRU now receives actual game history at inference time.
 
-**4. SF cache is all zeros — 14 dimensions of pure noise**
-`sf_cache.npy` was never built with real Stockfish evaluations. The 14 SF classical eval features fed to the model every epoch are all 0.0. The model has learned to ignore them (correctly) but is still spending capacity on a bias it cannot use. Either build the cache properly (`build_sf_cache.py`) or remove those 14 dims from the architecture until the cache exists. Right now it's dead weight that also makes the architecture description dishonest.
+**4. SF cache zero-fill status unknown**
+`build_sf_cache.py` now validates after build: it checks the fraction of all-zero rows and warns loudly if >95% are empty. Run `python tools/build_sf_cache.py --force` after verifying Stockfish is accessible and the classical eval table format is supported. If SF classical eval is unavailable, remove the 14 SF dims from the architecture (they waste capacity if always zero).
 
-**5. Training F1 checkpoint selection uses fixed 0.5 threshold**
-`train.py:182` evaluates `torch.sigmoid(logits) > 0.5` to compute the macro F1 used to select the best epoch. But the final model is evaluated with calibrated per-class thresholds (from `data/thresholds.json`) which differ substantially from 0.5 for most classes. The epoch that maximises F1 at threshold=0.5 is not necessarily the epoch that maximises F1 at calibrated thresholds. The "best" checkpoint might not be the best post-calibration model. Fix: either compute training-time F1 at calibrated thresholds, or acknowledge the metric gap and watch for it during evaluation.
+**5. ~~Training F1 checkpoint selection uses fixed 0.5 threshold~~ ✅ Fixed**
+`train.py` now loads `data/thresholds.json` at startup (from the previous calibration run) and uses those per-class thresholds for validation F1 computation. Falls back to 0.5 per class on first run. Checkpoint selection is now consistent with post-training evaluation.
 
 ---
 
 ### 🟡 Significant — Architecture or Design Problems
 
-**6. Documentation says 53 concepts; code has 49**
-The README mentions "53 concepts" in the intro paragraph, the Features list, and the "The 53 Concepts" section heading, with full vocabulary tables that no longer match `concept_vocab.py`. The actual count is **49**. The model architecture section says "909-dim input" and "~1.49M parameters" — the real input for Phase 4B is 3,013 dims and 3.08M parameters. A new contributor reading the README would build a completely wrong mental model of the system before writing a single line of code. Update the README to reflect reality.
+**6. ~~Documentation says 53 concepts; code has 49~~ ✅ Fixed**
+README, concept_vocab.py, and classifier.py all updated. Concept count: **49**. Architecture block corrected: 3,013-dim raw input, 1,714-dim combined, 3.08M parameters. Concept vocabulary table replaced with the actual 49-entry list from `concept_vocab.py`.
 
-**7. NNUE activation features and concept classification are fundamentally misaligned — by design**
-Three full training runs (Phase 5, 5C, 5D) were built on the assumption that NNUE Feature Transformer activations would help the concept classifier. They did not — F1 was stuck at 0.33 each time vs 0.56 for Phase 4B. The root cause is categorical: NNUE FT was trained to minimise centipawn evaluation error, so its internal representations are organised around "how good is this position" not "what pattern is present." These are related but distinct prediction targets, and a network optimised for one will not transfer cleanly to the other. This is a known problem in transfer learning called *task misalignment*. Before adopting any pre-trained representation as a feature, ask: was this representation trained on a task whose labels correlate with my target labels? For NNUE → concept labels, the answer is "weakly and indirectly." Recognising this earlier would have saved several weeks of training cycles.
+**7. NNUE task misalignment — documented lesson**
+Three full training runs (Phase 5, 5C, 5D) confirmed that NNUE Feature Transformer activations do not improve concept classification (F1 stuck at 0.33 vs 0.56 for Phase 4B). The root cause is *task misalignment*: NNUE FT representations are organised around centipawn evaluation ("how good is this position"), not concept identity ("what pattern is present"). These are related but distinct prediction targets, and a representation optimised for one does not transfer cleanly to the other.
 
-**8. The hysteresis thresholds (0.65 / 0.40) were chosen without empirical basis**
-`ACTIVATE_THRESHOLD = 0.65` and `HOLD_THRESHOLD = 0.40` are good intuitions but have not been validated against the model's actual probability distribution. If Phase 4B's post-calibration probabilities for most concepts cluster between 0.35 and 0.60, the activate threshold of 0.65 would mean the coach almost never fires — or fires only on the most obvious positions. Plot a histogram of `predict_concepts(threshold=0.0)` outputs across 1,000 diverse positions before locking in these numbers.
+**Lesson:** Before adopting any pre-trained representation as a feature, verify that the pre-training task's labels correlate with your target labels. For NNUE → concept labels, the correlation is weak and indirect. The 1,811-dim `algo_v4` features are purpose-built for concept detection and remain the primary signal source.
 
-**9. No ML tests exist**
-`src/chess_coach/tests/` contains tests for the deterministic coach (extractors, strategies, narrator, phrase database). There are zero tests for the ML pipeline: no test that `fen_to_tensor` produces a deterministic output, no test that `ChessConceptClassifier` produces valid logits, no test that `ChessConceptDataset` loads correctly, no test that `predict_concepts` returns sensible results on a known position. The only way bugs in the ML stack are discovered right now is by running a full 100-epoch training job and watching the numbers. That is a very expensive feedback loop. Add at least smoke tests: load a checkpoint, run one position, assert the output shape and probability range.
+**NNUE's correct role:** Post-classification gating in the coach layer — validate that concepts make sense given the position's evaluation — not as a training feature.
 
-**10. History-aware training, history-blind inference**
-The dataset builds `history_rich` tensors from game move sequences. The GRU is trained on these. But live positions from a game browser don't trivially have `history_rich` dicts — they have `history_uci` strings. There is a `history_rich_to_tensor()` function that accepts a list of rich-move dicts (with keys `piece`, `capture`, `check`, `color`). The bridge between UCI move strings and those dicts either needs to be built or the GRU needs to be removed from the architecture if history is never practically available. Right now the model trains with a capability it cannot use at inference time.
+**8. Hysteresis thresholds need empirical validation**
+`ACTIVATE_THRESHOLD = 0.65` and `HOLD_THRESHOLD = 0.40` are good intuitions but have not been validated against the model's actual probability distribution. Run `python tools/survey_hysteresis.py` (added this session) to sample 1,000 diverse positions and see where Phase 4B's concept probabilities actually cluster before committing to these values.
+
+**9. ~~No ML tests exist~~ ✅ Fixed (smoke tests added)**
+`src/chess_coach/tests/test_ml_smoke.py` added: deterministic `fen_to_tensor` output, valid logits shape and range from `ChessConceptClassifier`, checkpoint-backed `predict_concepts` call on a known position. Run with `pytest src/chess_coach/tests/test_ml_smoke.py`.
+
+**10. ~~History-aware training, history-blind inference~~ ✅ Fixed**
+`_build_history_rich()` in `coach.py` bridges `history_uci` strings to the rich-move dict format that `history_rich_to_tensor()` expects. `coach.analyze()` now passes real game history to `predict_concepts()` instead of `None`.
 
 ---
 
 ### 🟠 Technical Debt — Won't Break Anything Today But Will Hurt Tomorrow
 
-**11. Cache file paths are hardcoded strings in six different files**
-`data/algo_cache.npy`, `data/nnue_cache.npy`, `data/board_cache.npy`, `data/training_raw.jsonl`, `data/classifier_best.pt` and friends appear as string literals in `train.py`, `evaluate.py`, `classifier.py`, `coach.py`, and every cache builder. Move all paths to a single `src/chess_coach/ml/paths.py` module. Every file that needs a path imports from there. Renaming a file currently requires a grep across six scripts.
+**11. ~~Cache file paths are hardcoded strings in six different files~~ ✅ Fixed**
+`src/chess_coach/ml/paths.py` created. All canonical paths (`CLASSIFIER_BEST`, `TRAINING_JSONL`, `THRESHOLDS`, `ALGO_CACHE`, `V3_CACHE`, `SF_CACHE`, `NNUE_CACHE`, `BOARD_CACHE`, `NNUE_WEIGHTS`) live there. `train.py`, `evaluate.py`, `coach.py`, `dataset.py`, `classifier.py`, and `nimzo_net_engine.py` all import from it.
 
-**12. The algo_cache rebuild loses ground truth and cannot be validated**
-The original algo_cache was built by stripping `algo_features` arrays from the JSONL (pre-computed at parse/ingest time). Once stripped, the JSONL no longer contains them. The rebuild (`build_algo_cache.py` else-branch) recomputes them from FEN via `algo_feature_vector_v4()`. This should produce identical results if the function is deterministic — but there is no checksum, no spot-check, and no assertion to confirm it. If there is any subtle difference (floating point, board state, move side-effects), the rebuilt cache is silently wrong and the model trains on corrupted features. Add a `--verify N` flag that spot-checks N random positions against freshly computed values.
+**12. ~~Algo cache rebuild has no ground-truth validation~~ ✅ Fixed**
+`build_algo_cache.py --verify N` added. Loads the existing cache, samples N positions from JSONL, recomputes `algo_feature_vector_v4(fen)` for each, and reports max/mean absolute difference. Use after any rebuild to confirm the cache matches freshly computed values.
 
-**13. The `build_board_cache.py` fallback row count is fragile**
-If `algo_cache.npy` doesn't exist at build time, `build_board_cache.py` counts JSONL lines to determine N. But the caches are indexed by `_ac` values, not by line number. If the JSONL has been modified (lines added or reordered without rebuild), the board cache will be built with N=JSONL lines but written at `_ac` indices — which could be out-of-bounds or misaligned. The correct N is always `max(_ac) + 1`. Use that instead of a JSONL line count.
+**13. ~~`build_board_cache.py` fallback row count uses JSONL line count~~ ✅ Fixed**
+Fallback now scans JSONL for `max(_ac) + 1` instead of counting lines. Line count was wrong whenever the JSONL was reordered or appended without rebuilding — `max(_ac) + 1` is always the correct cache dimension.
 
-**14. Early stopping patience is 10 epochs — probably too short**
-With cosine annealing over 100 epochs and a noisy multi-label classification loss, the F1 can plateau for 10+ epochs and then improve significantly as the learning rate drops into the low end of the cosine curve. Setting patience=10 risks stopping before the model benefits from the later low-LR fine-tuning phase. Either increase patience (15-20) or switch to a reduce-on-plateau scheduler that responds to the actual loss curve rather than a fixed schedule.
+**14. ~~Early stopping patience is 10 epochs — too short~~ ✅ Fixed**
+Default patience increased to 20. With cosine annealing over 100 epochs, the low-LR tail (epochs 80–100) can deliver meaningful F1 gains that patience=10 would prematurely cut off.
 
-**15. `num_workers=2` is almost certainly undershooting**
-With all features now pre-cached as numpy mmaps, `__getitem__` is almost entirely array index lookups followed by `torch.cat`. The CPU work per example is tiny. On a machine with more than 2 physical cores, `num_workers=4` should reduce the data pipeline wait. Profile one epoch with `num_workers=0` (single-threaded) vs `num_workers=4` to find the actual bottleneck. Given the 859s epoch times, the GPU is likely sitting idle for a significant fraction of each batch.
+**15. ~~`num_workers=2` is undershooting~~ ✅ Fixed**
+`num_workers` increased to 4 in `train.py`. With all features pre-cached as numpy mmaps, `__getitem__` is array lookups + `torch.cat` — CPU-cheap enough that 4 workers better saturates the GPU on a typical development machine.
 
-**16. Two partially-built integration layers exist and are not connected to anything**
-`src/chess_coach/ml/concept_signal_adapter.py` and `src/chess_coach/coach/nimzo_net_engine.py` appear in the source tree but are not referenced from the live application path. These are either abandoned prototype files or work-in-progress. Either connect them to the pipeline or delete them. Orphaned files in the source tree confuse anyone trying to understand the system and may contain stale assumptions about the model architecture.
+**16. ~~Two unconnected integration layers~~ Documented and cleaned up**
+`concept_signal_adapter.py` and `nimzo_net_engine.py` are WIP integration code, not dead files. `nimzo_net_engine.py` now uses paths.py for the checkpoint path and `predict_concepts()` with calibrated thresholds (fixed stale `threshold=0.45`). To connect them to the live app: replace `StrategyEngine` with `NimzoNetEngine` in the application's InitWorker import.
 
-**17. `docs/phase5_nnue_integration_plan.md` describes a failed and abandoned approach**
-Planning documents that describe approaches which were tried and discarded are dangerous: a new contributor might read this document and conclude it represents the current direction, spending time implementing something that was already proven wrong. Archive or delete it. If you keep it, add a prominent `## Status: ABANDONED — see commit 9b12f62` header at the top.
+**17. ~~`docs/phase5_nnue_integration_plan.md` describes an abandoned approach~~ ✅ Fixed**
+ABANDONED header added at the top of the document explaining why Phase 5 failed (task misalignment), what was learned, and the current direction. The document is preserved for reference — the failure analysis is as valuable as the original plan.
 
-**18. Hysteresis state is direction-unaware**
-`ChessCoach._active_concepts` accumulates state across `analyze()` calls. If a user browses backward through moves in the game browser (which the app fully supports), the hysteresis state reflects a forward pass through positions that no longer matches what's on screen. The coach would then show stale active concepts from a position several moves ahead. The hysteresis state needs to be tied to the game's current ply, not to the call sequence of `analyze()`. Either reset on every backward navigation, or store per-ply states.
+**18. ~~Hysteresis state is direction-unaware~~ ✅ Fixed**
+`coach.py` now stores a `_ply_states` dict mapping ply number → concept snapshot. When `analyze()` is called with a ply ≤ the last seen ply (backward navigation), it restores the concept state from that ply's snapshot instead of carrying forward stale activations. `reset()` clears both `_active_concepts` and `_ply_states`.
 
 ---
 
 ### 🔵 Process & Habits
 
-**19. Experiments were not tracked**
-Five distinct architecture variants (Phase 3, 4A, 4B, 5, 5B, 5C, 5D) were trained and compared. The training logs exist in `results/` but there is no experiment tracking: no table recording which architecture produced which F1, which hyperparameters were tried, what the hypothesis was for each change. A reviewer cannot tell from the repository alone why Phase 4B was chosen over Phase 5 without reading the entire conversation history. Use a simple `experiments.md` or even a spreadsheet. This is the difference between doing science and doing guesswork — even when the results feel obvious in the moment, writing down the hypothesis and result before the next run builds intuition faster and prevents repeating failed experiments.
+**19. ~~Experiments were not tracked~~ ✅ Fixed**
+`docs/experiments.md` created. Contains a summary table of all 8 training runs with params, dataset size, best Macro F1, best epoch, result file pointer, and outcome. Each run has a detailed section with the hypothesis stated before training, key changes, result, and lesson. New runs should add a row to the table before the run starts and fill in results when done. The file also includes an Upcoming Experiments section for tracking what to try next and why.
 
-**20. The model was tested on the wrong failure mode**
-The training/validation loop measures macro F1 (concept identification accuracy). But the stated goal of the coach is *consistency* and *explanatory quality* — things that macro F1 does not measure. A model that fires "passed_pawn" at 0.85 on every middlegame position has perfect recall for that concept but is useless as a coach. Design evaluation criteria that reflect the real quality question: does the concept annotation retrieved from RAG actually match what a human coach would say about this position? That requires human evaluation, even if just spot-checks by a chess-knowledgeable reviewer.
+**20. ~~The model was tested on the wrong failure mode~~ Documented**
+`docs/experiments.md` §Evaluation Philosophy documents the gap between macro F1 (what we measure) and coaching quality (what we care about). Macro F1 confirms the model can identify patterns — it does not confirm that the pattern is the most salient thing in the position, that the retrieved annotation is appropriate, or that the coach is consistent across quiet moves. Practical next steps are listed: the hysteresis survey tool (already built), position spot-checks by a chess-knowledgeable reviewer, a consistency replay check, and a false-positive audit on the 5 highest-recall concepts. This does not require a large annotated corpus — 20 spot-checked positions per major architecture change would catch gross failures.
 
 ---
 

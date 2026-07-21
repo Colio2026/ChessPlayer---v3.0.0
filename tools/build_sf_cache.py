@@ -208,12 +208,22 @@ def build(jsonl_path: Path, cache_path: Path, sf_path: str | None) -> None:
                 pass
 
     print(f"\n  {done:,} processed  {errors} errors  ({time.time() - t0:.0f}s)")
+
+    # Validate: warn loudly if the cache is effectively all zeros.
+    nonzero_rows = int(np.any(arr != 0, axis=1).sum())
+    zero_frac    = 1.0 - nonzero_rows / n
     del arr   # flush mmap to disk
 
     if sf is not None:
         sf.close()
 
     print(f"SF cache → {cache_path}  ({cache_path.stat().st_size / 1e6:.1f} MB)")
+    if zero_frac > 0.95:
+        print(f"\nWARNING: {zero_frac*100:.1f}% of rows are all-zero — SF features are inactive.")
+        print("  Check that Stockfish supports 'Use NNUE value false' and outputs a classical eval table.")
+        print("  If SF is unavailable, remove the 14 SF dims from the architecture to avoid wasted capacity.")
+    else:
+        print(f"  Non-zero rows: {nonzero_rows:,} / {n:,}  ({(1-zero_frac)*100:.1f}% populated)")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ from .board_encoder import (
     SF_SIZE, NNUE_SIZE, MAX_SEQ_LEN,
 )
 from .concept_vocab import CONCEPTS, CONCEPT_TO_IDX, NUM_CONCEPTS
+from .paths import ALGO_CACHE, V3_CACHE, SF_CACHE, NNUE_CACHE, BOARD_CACHE
 from tools.label_positions import algo_feature_vector
 
 
@@ -134,11 +135,11 @@ class ChessConceptDataset(Dataset):
         # Cache paths stored as strings (picklable — safe for multiprocessing spawn).
         # The actual numpy memmaps are opened lazily in __getitem__, so every
         # DataLoader worker opens its own file handle; the OS shares the page cache.
-        algo_path  = Path("data/algo_cache.npy").resolve()
-        v3_path    = Path("data/v3_cache.npy").resolve()
-        sf_path    = Path("data/sf_cache.npy").resolve()
-        nnue_path  = Path("data/nnue_cache.npy").resolve()
-        board_path = Path("data/board_cache.npy").resolve()
+        algo_path  = ALGO_CACHE.resolve()
+        v3_path    = V3_CACHE.resolve()
+        sf_path    = SF_CACHE.resolve()
+        nnue_path  = NNUE_CACHE.resolve()
+        board_path = BOARD_CACHE.resolve()
         self._algo_cache_path:  str | None = str(algo_path)  if algo_path.exists()  else None
         self._v3_cache_path:    str | None = str(v3_path)    if v3_path.exists()    else None
         self._sf_cache_path:    str | None = str(sf_path)    if sf_path.exists()    else None

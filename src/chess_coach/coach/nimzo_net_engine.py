@@ -34,8 +34,8 @@ from chess_coach.core.conflict_resolver import ResolverResult
 from chess_coach.coach.narrator         import assemble
 from chess_coach.database.phrase_db     import PhraseDB
 from chess_coach.ml.concept_signal_adapter import adapt, infer_strategy
-
-_CHECKPOINT = Path("data/classifier_best.pt")
+from chess_coach.ml.paths               import CLASSIFIER_BEST as _CHECKPOINT
+from chess_coach.ml.evaluate            import load_thresholds
 
 
 class NimzoNetEngine:
@@ -80,7 +80,7 @@ class NimzoNetEngine:
         fen   = board.fen()
         phase = get_phase(board)
 
-        concepts = self._model.predict_concepts(fen, threshold=0.45)
+        concepts = self._model.predict_concepts(fen)
 
         signals = adapt(concepts, board, phase, player_side)
         primary, secondary, confidence, tie_band = infer_strategy(concepts)

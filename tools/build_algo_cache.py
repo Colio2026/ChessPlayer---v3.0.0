@@ -167,11 +167,65 @@ def _reindex(jsonl_path: Path) -> int:
     return row
 
 
+def _verify(jsonl_path: Path, algo_cache_path: Path, n_samples: int) -> None:
+    """Spot-check N random positions: recompute algo_feature_vector_v4 and compare to cache."""
+    import random
+    from label_positions import algo_feature_vector_v4
+
+    cache = np.load(str(algo_cache_path), mmap_mode="r")
+    print(f"\nVerifying {n_samples} random positions from {jsonl_path.name} against {algo_cache_path.name} ...")
+
+    with open(jsonl_path, encoding="utf-8", errors="replace") as f:
+        all_lines = [l.strip() for l in f if l.strip()]
+
+    rng = random.Random(42)
+    samples = rng.sample(all_lines, min(n_samples, len(all_lines)))
+
+    max_err = 0.0
+    mean_err = 0.0
+    checked = 0
+    mismatches = 0
+
+    for raw in samples:
+        try:
+            ex  = json.loads(raw)
+            ac  = ex.get("_ac")
+            fen = ex.get("fen", "")
+            if ac is None or not fen:
+                continue
+            fresh = algo_feature_vector_v4(fen).astype("float32")
+            cached = np.array(cache[ac], dtype="float32")
+            diff   = float(np.abs(fresh - cached).max())
+            mean_err += diff
+            max_err   = max(max_err, diff)
+            checked  += 1
+            if diff > 1e-4:
+                mismatches += 1
+        except Exception as exc:
+            print(f"  Warning: {exc}")
+
+    if checked == 0:
+        print("  No valid samples found — cannot verify.")
+        return
+
+    mean_err /= checked
+    print(f"  Checked  : {checked}")
+    print(f"  Max Δ    : {max_err:.6f}")
+    print(f"  Mean Δ   : {mean_err:.6f}")
+    print(f"  Mismatches (Δ > 1e-4): {mismatches}")
+    if mismatches == 0:
+        print("  ✓ Cache matches freshly computed values.")
+    else:
+        print(f"  ✗ {mismatches} positions differ — cache may be stale. Re-run with --force.")
+
+
 def main() -> None:
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true",
                     help="Rebuild caches even if they already exist (use after a fresh parse)")
+    ap.add_argument("--verify", type=int, default=0, metavar="N",
+                    help="Spot-check N random positions: recompute vs cached values. Exits after check.")
     args = ap.parse_args()
 
     jsonl_path      = Path("data/training_raw.jsonl")
@@ -181,6 +235,12 @@ def main() -> None:
 
     if not jsonl_path.exists():
         sys.exit(f"Not found: {jsonl_path}")
+
+    if args.verify:
+        if not algo_cache_path.exists():
+            sys.exit(f"Cannot verify — algo_cache not found: {algo_cache_path}")
+        _verify(jsonl_path, algo_cache_path, args.verify)
+        return
 
     if args.force:
         # Delete stale caches so the full build runs below.
@@ -326,7 +386,7 @@ def main() -> None:
             print(f"V3 cache   → {v3_cache_path}  ({v3_cache_path.stat().st_size / 1e6:.1f} MB)")
 
     print("\nDone.  Run training next:")
-    print("  python -m src.chess_coach.ml.train --phase5")
+    print("  python -m src.chess_coach.ml.train --phase4")
 
 
 if __name__ == "__main__":

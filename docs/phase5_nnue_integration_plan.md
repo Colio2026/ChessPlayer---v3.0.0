@@ -3,6 +3,20 @@
 
 ---
 
+## ⛔ Status: ABANDONED — see commit 9b12f62
+
+Three training runs (Phase 5, 5C, 5D) validated this plan against real data. All three stalled at Macro F1 ~0.33, versus 0.56 for Phase 4B without NNUE.
+
+**Root cause:** NNUE Feature Transformer representations are organized around centipawn evaluation ("how good is this position"), not concept identity ("what pattern is present"). This is task misalignment — the pre-training labels don't correlate with our target labels. Section §7 of this document confidently claims `algo_feature_vector_v4` would be "retired" by NNUE. The opposite happened: algo_v4 *is* the primary signal source and NNUE is the one that was retired.
+
+**What was learned:** Pre-trained representations must be evaluated for task alignment before being adopted as features. The hypothesis in §2 ("the NNUE has already done the hard work") was incorrect — NNUE's hard work was learning to evaluate, which is a different task from concept classification.
+
+**Current direction:** Phase 4B with algo_v4 spatial features + GRU history + Schmitt-trigger hysteresis in the coach layer. NNUE's correct future role is post-classification gating (validate concept relevance given evaluation), not a training input.
+
+This document is preserved for reference. Do not implement anything described here without re-validating the task alignment assumption first.
+
+---
+
 ## 1. The Core Idea
 
 Stockfish's NNUE is not one monolithic network — it has two distinct stages:

@@ -23,7 +23,7 @@ from typing import Optional
 import chess
 import torch
 
-_CKPT_PATH = Path("data/classifier_best.pt")
+from src.chess_coach.ml.paths import CLASSIFIER_BEST as _CKPT_PATH
 
 # Hysteresis thresholds — a concept must cross ACTIVATE to turn on,
 # but only needs to stay above HOLD to remain the coaching theme.
@@ -42,6 +42,35 @@ def _replay_fens(start_fen: str, history_uci: list[str]) -> list[str]:
         except Exception:
             break
     return fens
+
+
+def _build_history_rich(start_fen: str, history_uci: list[str]) -> tuple[list[str], list[dict]]:
+    """Replay history_uci and return (fens, history_rich).
+
+    history_rich is a list of dicts compatible with history_rich_to_tensor:
+      uci, piece (int 1-6), captured (int 1-6|None), is_check (bool), color (int 1|0)
+    """
+    board = chess.Board(start_fen)
+    fens  = [board.fen()]
+    rich  = []
+    for uci in history_uci:
+        try:
+            move      = chess.Move.from_uci(uci)
+            piece     = board.piece_type_at(move.from_square)          # 1-6 or None
+            cap_piece = board.piece_type_at(move.to_square)            # 1-6 or None
+            color     = 1 if board.turn == chess.WHITE else 0
+            board.push(move)
+            rich.append({
+                "uci":       uci,
+                "piece":     piece,
+                "captured":  cap_piece,
+                "is_check":  board.is_check(),
+                "color":     color,
+            })
+            fens.append(board.fen())
+        except Exception:
+            break
+    return fens, rich
 
 
 class ChessCoach:
@@ -67,13 +96,17 @@ class ChessCoach:
         self._retriever      = None
         self._ckpt_path      = Path(ckpt_path)
         self._device         = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._active_concepts: set[str] = set()   # hysteresis state — persists across moves
+        self._active_concepts: set[str] = set()          # current hysteresis state
+        self._ply_states: dict[int, set[str]] = {}       # per-ply snapshot for backward navigation
+        self._last_ply: int = -1
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def reset(self) -> None:
         """Clear hysteresis state. Call at the start of every new game."""
         self._active_concepts = set()
+        self._ply_states      = {}
+        self._last_ply        = -1
 
     def _ensure_loaded(self) -> None:
         if self._model is not None:
@@ -111,7 +144,7 @@ class ChessCoach:
                      for c in prob_map}
         self._active_concepts = {c for c, p in raw_probs if p >= threshold[c]}
         return sorted(
-            [(c, prob_map[c]) for c in new_active],
+            [(c, prob_map[c]) for c in self._active_concepts],
             key=lambda t: -t[1],
         )
 
@@ -147,20 +180,33 @@ class ChessCoach:
         self._ensure_loaded()
 
         history_fens: list[str] = []
+        history_rich: list[dict] = []
         if history_uci:
-            history_fens = _replay_fens(start_fen, history_uci)
+            history_fens, history_rich = _build_history_rich(start_fen, history_uci)
+
+        # Direction-aware hysteresis: if the user navigated backward (ply decreased),
+        # restore the concept state from that earlier ply instead of carrying forward
+        # stale activations from a position that is no longer on screen.
+        current_ply = len(history_uci) if history_uci else 0
+        if self._use_hysteresis and current_ply <= self._last_ply:
+            self._active_concepts = self._ply_states.get(current_ply, set()).copy()
 
         if self._use_hysteresis:
             # Get all concept probabilities above the hold floor so the Schmitt
             # trigger can see concepts rising toward ACTIVATE and falling below HOLD.
             raw = self._model.predict_concepts(
-                fen, history_rich=None, threshold=HOLD_THRESHOLD * 0.5
+                fen, history_rich=history_rich or None, threshold=HOLD_THRESHOLD * 0.5
             )
             concepts = self._apply_hysteresis(raw)
         else:
             concepts = self._model.predict_concepts(
-                fen, history_rich=None, threshold=threshold
+                fen, history_rich=history_rich or None, threshold=threshold
             )
+
+        # Snapshot hysteresis state at this ply so backward navigation can restore it.
+        if self._use_hysteresis:
+            self._ply_states[current_ply] = self._active_concepts.copy()
+            self._last_ply = current_ply
 
         concept_names = [name for name, _ in concepts]
 

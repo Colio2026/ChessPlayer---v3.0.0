@@ -48,6 +48,7 @@ import chess as _chess
 from .classifier    import ChessConceptClassifier
 from .dataset       import ChessConceptDataset
 from .concept_vocab import CONCEPTS, NUM_CONCEPTS
+from .paths         import CLASSIFIER_BEST, TRAINING_JSONL, THRESHOLDS
 
 class _Tee:
     def __init__(self, log_path: Path) -> None:
@@ -72,10 +73,10 @@ def _next_results_path(tag: str) -> Path:
     return results_dir / f"results{n:04d}_{stamp}_{tag}.txt"
 
 
-DEFAULT_CHECKPOINT  = Path("data/classifier_best.pt")
-DEFAULT_DATA        = Path("data/training_raw.jsonl")
+DEFAULT_CHECKPOINT  = CLASSIFIER_BEST
+DEFAULT_DATA        = TRAINING_JSONL
 DEFAULT_THRESHOLD   = 0.4
-THRESHOLDS_PATH     = Path("data/thresholds.json")
+THRESHOLDS_PATH     = THRESHOLDS
 
 # Famous positions and their expected concepts
 SPOT_CHECKS: list[dict] = [
