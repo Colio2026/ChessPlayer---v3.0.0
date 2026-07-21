@@ -672,3 +672,89 @@ User overrides write back automatically when the active source changes. See [con
 - New coaching phrases go in the phrase DB seed scripts keyed by `strategy/metric/severity/fragment_type`.
 - New extractors go in `src/chess_coach/extractors/` and must be added to the strategy engine's extractor list.
 - Run the coach test suite before pushing: `pytest src/chess_coach/tests/`.
+
+---
+
+## Code Review — Known Flaws & Technical Debt
+
+> This section is a senior-developer audit of the current state of the project. It is written in the spirit of a hard but fair internship review: the goal is not to catalogue shame but to create a clear improvement backlog. Every item below is a real problem with a real fix. Work through them.
+
+---
+
+### 🔴 Critical — Bugs or Silently Wrong Behaviour
+
+**1. `--quick` mode references a nonexistent attribute**
+`train.py:111` does `train_ds._raw = train_ds._raw[:n]`. The dataset class has no `_raw` attribute — the correct name is `_offsets`. This means `--quick` mode either silently does nothing (AttributeError swallowed) or crashes. It has never been tested since `_offsets` was introduced. Before the next training run confirm this with `python -m src.chess_coach.ml.train --quick`.
+
+**2. `LABEL_SMOOTHING` is dead config**
+`train.py:65` defines `LABEL_SMOOTHING = 0.05` with a comment explaining its intent. It is never passed to the loss function. `nn.BCEWithLogitsLoss` does not accept a `label_smoothing` argument — it would need to be applied manually to the targets before the loss call. Until that implementation exists, this constant is a lie. Either implement it or delete the constant and its comment.
+
+**3. GRU is permanently disabled in live inference**
+`classifier.py` has a full GRU branch reading 144-dim history-rich move sequences per step. This is Phase 4B's most significant architectural addition over Phase 3. In `coach.py`, `predict_concepts()` is always called with `history_rich=None`, which zeroes out the GRU output entirely. The model was trained with history; the coach never uses it. Every live coaching call is effectively running a Phase 3 model inside a Phase 4B shell, wasting ~500k parameters and learning nothing from the move sequence. Fix: build `history_rich` dicts from the `history_uci` list in `coach.analyze()` before calling `predict_concepts()`.
+
+**4. SF cache is all zeros — 14 dimensions of pure noise**
+`sf_cache.npy` was never built with real Stockfish evaluations. The 14 SF classical eval features fed to the model every epoch are all 0.0. The model has learned to ignore them (correctly) but is still spending capacity on a bias it cannot use. Either build the cache properly (`build_sf_cache.py`) or remove those 14 dims from the architecture until the cache exists. Right now it's dead weight that also makes the architecture description dishonest.
+
+**5. Training F1 checkpoint selection uses fixed 0.5 threshold**
+`train.py:182` evaluates `torch.sigmoid(logits) > 0.5` to compute the macro F1 used to select the best epoch. But the final model is evaluated with calibrated per-class thresholds (from `data/thresholds.json`) which differ substantially from 0.5 for most classes. The epoch that maximises F1 at threshold=0.5 is not necessarily the epoch that maximises F1 at calibrated thresholds. The "best" checkpoint might not be the best post-calibration model. Fix: either compute training-time F1 at calibrated thresholds, or acknowledge the metric gap and watch for it during evaluation.
+
+---
+
+### 🟡 Significant — Architecture or Design Problems
+
+**6. Documentation says 53 concepts; code has 49**
+The README mentions "53 concepts" in the intro paragraph, the Features list, and the "The 53 Concepts" section heading, with full vocabulary tables that no longer match `concept_vocab.py`. The actual count is **49**. The model architecture section says "909-dim input" and "~1.49M parameters" — the real input for Phase 4B is 3,013 dims and 3.08M parameters. A new contributor reading the README would build a completely wrong mental model of the system before writing a single line of code. Update the README to reflect reality.
+
+**7. NNUE activation features and concept classification are fundamentally misaligned — by design**
+Three full training runs (Phase 5, 5C, 5D) were built on the assumption that NNUE Feature Transformer activations would help the concept classifier. They did not — F1 was stuck at 0.33 each time vs 0.56 for Phase 4B. The root cause is categorical: NNUE FT was trained to minimise centipawn evaluation error, so its internal representations are organised around "how good is this position" not "what pattern is present." These are related but distinct prediction targets, and a network optimised for one will not transfer cleanly to the other. This is a known problem in transfer learning called *task misalignment*. Before adopting any pre-trained representation as a feature, ask: was this representation trained on a task whose labels correlate with my target labels? For NNUE → concept labels, the answer is "weakly and indirectly." Recognising this earlier would have saved several weeks of training cycles.
+
+**8. The hysteresis thresholds (0.65 / 0.40) were chosen without empirical basis**
+`ACTIVATE_THRESHOLD = 0.65` and `HOLD_THRESHOLD = 0.40` are good intuitions but have not been validated against the model's actual probability distribution. If Phase 4B's post-calibration probabilities for most concepts cluster between 0.35 and 0.60, the activate threshold of 0.65 would mean the coach almost never fires — or fires only on the most obvious positions. Plot a histogram of `predict_concepts(threshold=0.0)` outputs across 1,000 diverse positions before locking in these numbers.
+
+**9. No ML tests exist**
+`src/chess_coach/tests/` contains tests for the deterministic coach (extractors, strategies, narrator, phrase database). There are zero tests for the ML pipeline: no test that `fen_to_tensor` produces a deterministic output, no test that `ChessConceptClassifier` produces valid logits, no test that `ChessConceptDataset` loads correctly, no test that `predict_concepts` returns sensible results on a known position. The only way bugs in the ML stack are discovered right now is by running a full 100-epoch training job and watching the numbers. That is a very expensive feedback loop. Add at least smoke tests: load a checkpoint, run one position, assert the output shape and probability range.
+
+**10. History-aware training, history-blind inference**
+The dataset builds `history_rich` tensors from game move sequences. The GRU is trained on these. But live positions from a game browser don't trivially have `history_rich` dicts — they have `history_uci` strings. There is a `history_rich_to_tensor()` function that accepts a list of rich-move dicts (with keys `piece`, `capture`, `check`, `color`). The bridge between UCI move strings and those dicts either needs to be built or the GRU needs to be removed from the architecture if history is never practically available. Right now the model trains with a capability it cannot use at inference time.
+
+---
+
+### 🟠 Technical Debt — Won't Break Anything Today But Will Hurt Tomorrow
+
+**11. Cache file paths are hardcoded strings in six different files**
+`data/algo_cache.npy`, `data/nnue_cache.npy`, `data/board_cache.npy`, `data/training_raw.jsonl`, `data/classifier_best.pt` and friends appear as string literals in `train.py`, `evaluate.py`, `classifier.py`, `coach.py`, and every cache builder. Move all paths to a single `src/chess_coach/ml/paths.py` module. Every file that needs a path imports from there. Renaming a file currently requires a grep across six scripts.
+
+**12. The algo_cache rebuild loses ground truth and cannot be validated**
+The original algo_cache was built by stripping `algo_features` arrays from the JSONL (pre-computed at parse/ingest time). Once stripped, the JSONL no longer contains them. The rebuild (`build_algo_cache.py` else-branch) recomputes them from FEN via `algo_feature_vector_v4()`. This should produce identical results if the function is deterministic — but there is no checksum, no spot-check, and no assertion to confirm it. If there is any subtle difference (floating point, board state, move side-effects), the rebuilt cache is silently wrong and the model trains on corrupted features. Add a `--verify N` flag that spot-checks N random positions against freshly computed values.
+
+**13. The `build_board_cache.py` fallback row count is fragile**
+If `algo_cache.npy` doesn't exist at build time, `build_board_cache.py` counts JSONL lines to determine N. But the caches are indexed by `_ac` values, not by line number. If the JSONL has been modified (lines added or reordered without rebuild), the board cache will be built with N=JSONL lines but written at `_ac` indices — which could be out-of-bounds or misaligned. The correct N is always `max(_ac) + 1`. Use that instead of a JSONL line count.
+
+**14. Early stopping patience is 10 epochs — probably too short**
+With cosine annealing over 100 epochs and a noisy multi-label classification loss, the F1 can plateau for 10+ epochs and then improve significantly as the learning rate drops into the low end of the cosine curve. Setting patience=10 risks stopping before the model benefits from the later low-LR fine-tuning phase. Either increase patience (15-20) or switch to a reduce-on-plateau scheduler that responds to the actual loss curve rather than a fixed schedule.
+
+**15. `num_workers=2` is almost certainly undershooting**
+With all features now pre-cached as numpy mmaps, `__getitem__` is almost entirely array index lookups followed by `torch.cat`. The CPU work per example is tiny. On a machine with more than 2 physical cores, `num_workers=4` should reduce the data pipeline wait. Profile one epoch with `num_workers=0` (single-threaded) vs `num_workers=4` to find the actual bottleneck. Given the 859s epoch times, the GPU is likely sitting idle for a significant fraction of each batch.
+
+**16. Two partially-built integration layers exist and are not connected to anything**
+`src/chess_coach/ml/concept_signal_adapter.py` and `src/chess_coach/coach/nimzo_net_engine.py` appear in the source tree but are not referenced from the live application path. These are either abandoned prototype files or work-in-progress. Either connect them to the pipeline or delete them. Orphaned files in the source tree confuse anyone trying to understand the system and may contain stale assumptions about the model architecture.
+
+**17. `docs/phase5_nnue_integration_plan.md` describes a failed and abandoned approach**
+Planning documents that describe approaches which were tried and discarded are dangerous: a new contributor might read this document and conclude it represents the current direction, spending time implementing something that was already proven wrong. Archive or delete it. If you keep it, add a prominent `## Status: ABANDONED — see commit 9b12f62` header at the top.
+
+**18. Hysteresis state is direction-unaware**
+`ChessCoach._active_concepts` accumulates state across `analyze()` calls. If a user browses backward through moves in the game browser (which the app fully supports), the hysteresis state reflects a forward pass through positions that no longer matches what's on screen. The coach would then show stale active concepts from a position several moves ahead. The hysteresis state needs to be tied to the game's current ply, not to the call sequence of `analyze()`. Either reset on every backward navigation, or store per-ply states.
+
+---
+
+### 🔵 Process & Habits
+
+**19. Experiments were not tracked**
+Five distinct architecture variants (Phase 3, 4A, 4B, 5, 5B, 5C, 5D) were trained and compared. The training logs exist in `results/` but there is no experiment tracking: no table recording which architecture produced which F1, which hyperparameters were tried, what the hypothesis was for each change. A reviewer cannot tell from the repository alone why Phase 4B was chosen over Phase 5 without reading the entire conversation history. Use a simple `experiments.md` or even a spreadsheet. This is the difference between doing science and doing guesswork — even when the results feel obvious in the moment, writing down the hypothesis and result before the next run builds intuition faster and prevents repeating failed experiments.
+
+**20. The model was tested on the wrong failure mode**
+The training/validation loop measures macro F1 (concept identification accuracy). But the stated goal of the coach is *consistency* and *explanatory quality* — things that macro F1 does not measure. A model that fires "passed_pawn" at 0.85 on every middlegame position has perfect recall for that concept but is useless as a coach. Design evaluation criteria that reflect the real quality question: does the concept annotation retrieved from RAG actually match what a human coach would say about this position? That requires human evaluation, even if just spot-checks by a chess-knowledgeable reviewer.
+
+---
+
+**Summary for the intern:** The engineering fundamentals here are solid — the cache architecture, the lazy mmap pattern, the multi-label setup, the separation between deterministic and neural coaches. The dataset pipeline is genuinely well-structured. The biggest lessons are: (1) validate pre-trained representations against your actual task before building on them; (2) dead config is worse than no config; (3) test your ML pipeline like you test your application code; (4) write down what you expected before you run the experiment.

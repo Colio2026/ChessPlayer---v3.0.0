@@ -37,6 +37,7 @@ SF_DIM   = 14
 SF_TERMS = ["Mobility", "King safety", "Threats", "Passed", "Space", "Pawns", "Imbalance"]
 
 _CANDIDATE_SF_PATHS = [
+    Path("assets/engines/stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"),
     Path("assets/engines/stockfish-windows-x86-64-avx2/stockfish/stockfish.exe"),
     Path("assets/engines/stockfish/stockfish.exe"),
     Path("stockfish.exe"),
@@ -152,12 +153,14 @@ class _SFProc:
 
 def build(jsonl_path: Path, cache_path: Path, sf_path: str | None) -> None:
     algo_path = Path("data/algo_cache.npy")
-    if not algo_path.exists():
-        sys.exit("data/algo_cache.npy not found — run build_algo_cache.py first")
-
-    probe = np.load(str(algo_path), mmap_mode="r")
-    n     = probe.shape[0]
-    del probe
+    if algo_path.exists():
+        probe = np.load(str(algo_path), mmap_mode="r")
+        n     = probe.shape[0]
+        del probe
+    else:
+        print("algo_cache.npy not found — counting rows from JSONL (Phase 5 mode) ...")
+        n = sum(1 for line in open(jsonl_path, "rb") if line.strip())
+        print(f"  {n:,} rows")
 
     size_mb = n * SF_DIM * 4 / 1e6
     print(f"Allocating sf_cache  {n:,} × {SF_DIM}  ({size_mb:.1f} MB) ...")

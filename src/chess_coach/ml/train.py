@@ -103,8 +103,8 @@ def train(args: argparse.Namespace) -> None:
 
     # Dataset discovers algo_cache.npy and v3_cache.npy automatically and opens
     # them lazily inside __getitem__ — each worker gets its own mmap handle.
-    train_ds = ChessConceptDataset(data_path, split="train", phase4=args.phase4)
-    val_ds   = ChessConceptDataset(data_path, split="val",   phase4=args.phase4)
+    train_ds = ChessConceptDataset(data_path, split="train", phase4=args.phase4, phase5=args.phase5)
+    val_ds   = ChessConceptDataset(data_path, split="val",   phase4=args.phase4, phase5=args.phase5)
 
     if args.quick:
         n = max(500, len(train_ds) // 10)
@@ -125,7 +125,7 @@ def train(args: argparse.Namespace) -> None:
     )
 
     # ── model ─────────────────────────────────────────────────────────────────
-    model = ChessConceptClassifier(phase4=args.phase4).to(device)
+    model = ChessConceptClassifier(phase4=args.phase4, phase5=args.phase5).to(device)
     total_params = sum(p.numel() for p in model.parameters())
     print(f"\nModel: {total_params:,} parameters")
 
@@ -238,7 +238,11 @@ def main() -> None:
                         help="Use 10%% of data for a fast test run.")
     parser.add_argument("--phase4",     action="store_true",
                         help="Use Phase 4 architecture (COMBINED_SIZE_V4, MOVE_SIZE_V4=144).")
+    parser.add_argument("--phase5",     action="store_true",
+                        help="Use Phase 5 architecture (NNUE FT perception, COMBINED_SIZE_V5=2518).")
     args = parser.parse_args()
+    if args.phase5:
+        args.phase4 = False   # phase5 supersedes phase4
     log_path = _next_results_path("train")
     tee = _Tee(log_path)
     sys.stdout = tee

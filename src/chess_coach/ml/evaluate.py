@@ -43,6 +43,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+import chess as _chess
+
 from .classifier    import ChessConceptClassifier
 from .dataset       import ChessConceptDataset
 from .concept_vocab import CONCEPTS, NUM_CONCEPTS
@@ -298,6 +300,32 @@ SPOT_CHECKS: list[dict] = [
         "fen":  "4k3/8/8/8/8/8/8/4KB2 w - - 0 1",
         "expect": ["drawn_position"],
     },
+    # ── Opening positions (ECO-identified) ───────────────────────────────────
+    {
+        "name": "Opening — Ruy Lopez Berlin (C65)",
+        "history_uci": ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "g8f6"],
+        "fen": "r1bqkb1r/pppp1ppp/2n2n2/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+        "expect": ["development_lead", "piece_activity"],
+    },
+    {
+        "name": "Opening — Nimzo-Indian classical (E32)",
+        "history_uci": ["d2d4", "g8f6", "c2c4", "e7e6", "b1c3", "f8b4", "d1c2"],
+        "fen": "rnbqk2r/pppp1ppp/4pn2/8/1bPP4/2N5/PPQ1PPPP/R1B1KBNR b KQkq - 1 4",
+        "expect": ["bishop_pair", "development_lead"],
+    },
+    {
+        "name": "Opening — Sicilian Najdorf (B90)",
+        "history_uci": ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6"],
+        "fen": "rnbqkb1r/1p2pppp/p2p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 6",
+        "expect": ["space_advantage", "development_lead"],
+    },
+    {
+        "name": "Opening — QGD Slav exchange (D10)",
+        "history_uci": ["d2d4", "d7d5", "c2c4", "c7c6", "b1c3", "g8f6", "c4d5", "c6d5"],
+        "fen": "rnbqkb1r/pp2pppp/5n2/3p4/3P4/2N5/PP2PPPP/R1BQKBNR w KQkq - 0 5",
+        "expect": ["isolated_pawn", "open_file"],
+        "also_ok": ["pawn_island"],
+    },
     # ── Positional / Strategic ────────────────────────────────────────────────
     {
         "name": "Weak square — dark square holes around king",
@@ -362,14 +390,15 @@ def save_thresholds(thresholds: dict[str, float],
 def calibrate_thresholds(model: ChessConceptClassifier,
                           data_path: Path,
                           device: torch.device,
-                          is_phase4: bool = False) -> dict[str, float]:
+                          is_phase4: bool = False,
+                          is_phase5: bool = False) -> dict[str, float]:
     """
     Sweep thresholds 0.05–0.95 per class on the *val* split and pick the
     value that maximises F1 for each class.  Classes with no positives in
     val default to 0.5.
     """
     print("\nCalibrating per-class thresholds on val split …")
-    val_ds = ChessConceptDataset(data_path, split="val", phase4=is_phase4)
+    val_ds = ChessConceptDataset(data_path, split="val", phase4=is_phase4, phase5=is_phase5)
     val_dl = DataLoader(val_ds, batch_size=256, shuffle=False, num_workers=0)
 
     all_probs  = []
@@ -439,8 +468,9 @@ def evaluate_dataset(model: ChessConceptClassifier,
                      data_path: Path,
                      device: torch.device,
                      thresholds: torch.Tensor,
-                     is_phase4: bool = False) -> None:
-    test_ds = ChessConceptDataset(data_path, split="test", phase4=is_phase4)
+                     is_phase4: bool = False,
+                     is_phase5: bool = False) -> None:
+    test_ds = ChessConceptDataset(data_path, split="test", phase4=is_phase4, phase5=is_phase5)
     if len(test_ds) == 0:
         print("No test examples — skipping dataset evaluation.")
         return
@@ -498,6 +528,69 @@ def evaluate_dataset(model: ChessConceptClassifier,
               f"{sup:7d}  {t:6.2f}  {bar}{flag}")
 
 
+def _identify_eco(history_uci: list[str]) -> dict | None:
+    """Walk history FENs against eco_db.json; return deepest ECO match."""
+    eco_db_path = Path("data/eco_db.json")
+    if not eco_db_path.exists():
+        return None
+    try:
+        eco_db = json.loads(eco_db_path.read_text())
+        board  = _chess.Board()
+        fens   = [board.fen()]
+        for uci in history_uci:
+            board.push_uci(uci)
+            fens.append(board.fen())
+        best: dict | None = None
+        for fen in fens:
+            norm  = " ".join(fen.split()[:4])
+            entry = eco_db.get(norm)
+            if entry and (best is None or entry["depth"] > best["depth"]):
+                best = entry
+        return best
+    except Exception:
+        return None
+
+
+def _endgame_type(fen: str) -> str | None:
+    """Return a human-readable endgame material description, or None if not an endgame."""
+    board  = _chess.Board(fen)
+    pieces = board.piece_map()
+    non_kings = {sq: p for sq, p in pieces.items() if p.piece_type != _chess.KING}
+    if len(non_kings) > 8:
+        return None   # not an endgame
+
+    has = {pt: False for pt in [_chess.QUEEN, _chess.ROOK, _chess.BISHOP,
+                                  _chess.KNIGHT, _chess.PAWN]}
+    for p in non_kings.values():
+        has[p.piece_type] = True
+
+    if not any(has.values()):
+        return "Bare kings (draw)"
+    if not has[_chess.QUEEN] and not has[_chess.ROOK] and \
+       not has[_chess.BISHOP] and not has[_chess.KNIGHT]:
+        return "King and pawn(s)"
+    if has[_chess.ROOK] and not has[_chess.QUEEN] and \
+       not has[_chess.BISHOP] and not has[_chess.KNIGHT]:
+        return "Rook endgame"
+    if has[_chess.BISHOP] and not has[_chess.QUEEN] and \
+       not has[_chess.ROOK] and not has[_chess.KNIGHT]:
+        w_sq = [sq for sq, p in pieces.items()
+                if p.piece_type == _chess.BISHOP and p.color == _chess.WHITE]
+        b_sq = [sq for sq, p in pieces.items()
+                if p.piece_type == _chess.BISHOP and p.color == _chess.BLACK]
+        if w_sq and b_sq:
+            sq_col = lambda sq: (_chess.square_file(sq) + _chess.square_rank(sq)) % 2
+            opp = (sq_col(w_sq[0]) != sq_col(b_sq[0]))
+            return "Opposite-colour bishops" if opp else "Same-colour bishops"
+        return "Bishop endgame"
+    if has[_chess.KNIGHT] and not has[_chess.QUEEN] and \
+       not has[_chess.ROOK] and not has[_chess.BISHOP]:
+        return "Knight endgame"
+    if has[_chess.QUEEN] and not has[_chess.ROOK]:
+        return "Queen endgame"
+    return "Complex endgame"
+
+
 def spot_check(model: ChessConceptClassifier,
                thresholds: torch.Tensor) -> None:
     print(f"\n── Spot Checks ────────────────────────────────────────────────────────")
@@ -506,21 +599,32 @@ def spot_check(model: ChessConceptClassifier,
         SF_SIZE,
     )
     from tools.label_positions import algo_feature_vector, algo_feature_vector_v4
+    from .board_encoder import NNUE_SIZE
     device    = next(model.parameters()).device
+    is_phase5 = model._phase5
     is_phase4 = model.spatial_proj is not None
 
     all_pass = True
     for sc in SPOT_CHECKS:
-        board_t = fen_to_tensor(sc["fen"])
+        fen     = sc["fen"]
+        board_t = fen_to_tensor(fen)
         move_t  = move_to_tensor(sc.get("move_uci", ""))
-        if is_phase4:
-            spatial_t = torch.from_numpy(algo_feature_vector_v4(sc["fen"]))
-            v3_t      = torch.from_numpy(algo_feature_vector(sc["fen"]))
+        if is_phase5:
+            # NNUE activations unavailable at eval time without cache — use zeros
+            nnue_t = torch.zeros(NNUE_SIZE, dtype=torch.float32)
+            algo_t = torch.from_numpy(algo_feature_vector_v4(fen))
+            v3_t   = torch.from_numpy(algo_feature_vector(fen))
+            sf_t   = torch.zeros(SF_SIZE, dtype=torch.float32)
+            x      = torch.cat([nnue_t, board_t, move_t, algo_t, sf_t, v3_t]).unsqueeze(0).to(device)
+            hist_t, seq_len = history_rich_to_tensor([])
+        elif is_phase4:
+            spatial_t = torch.from_numpy(algo_feature_vector_v4(fen))
+            v3_t      = torch.from_numpy(algo_feature_vector(fen))
             sf_t      = torch.zeros(SF_SIZE, dtype=torch.float32)
             x         = torch.cat([board_t, move_t, spatial_t, v3_t, sf_t]).unsqueeze(0).to(device)
             hist_t, seq_len = history_rich_to_tensor([])
         else:
-            algo_t = torch.from_numpy(algo_feature_vector(sc["fen"]))
+            algo_t = torch.from_numpy(algo_feature_vector(fen))
             x      = torch.cat([board_t, move_t, algo_t]).unsqueeze(0).to(device)
             hist_t, seq_len = history_to_tensor([])
         hist_t    = hist_t.unsqueeze(0).to(device)
@@ -539,13 +643,32 @@ def spot_check(model: ChessConceptClassifier,
         # A missing expected concept is forgiven if any also_ok concept was detected
         alt_found = bool(also_ok & pred_set)
         miss      = [c for c in expected if c not in pred_set and not alt_found]
-        status    = "PASS" if not miss else "MISS"
+        status    = "MISS" if miss else "PASS"
         if miss:
             all_pass = False
+
+        # Position context: ECO name (opening positions) + endgame type
+        history_uci = sc.get("history_uci")
+        eco_info    = _identify_eco(history_uci) if history_uci else None
+        eg_type     = _endgame_type(fen)
+
+        context_parts = []
+        if eco_info:
+            eco_str = eco_info["eco"]
+            if eco_info.get("opening"):
+                eco_str += f" {eco_info['opening']}"
+            if eco_info.get("variation"):
+                eco_str += f", {eco_info['variation']}"
+            context_parts.append(eco_str)
+        if eg_type:
+            context_parts.append(eg_type)
+        context_line = " | ".join(context_parts) if context_parts else ""
 
         top5 = sorted(enumerate(probs.tolist()), key=lambda kv: -kv[1])[:5]
         top5_str = ", ".join(f"{CONCEPTS[i]}({p:.2f})" for i, p in top5)
         print(f"\n  {status} — {sc['name']}")
+        if context_line:
+            print(f"       context  : {context_line}")
         print(f"       expected : {expected}")
         print(f"       missing  : {miss or '—'}")
         print(f"       top preds: {top5_str}")
@@ -575,28 +698,33 @@ def _main() -> None:
         print("Run training first: python -m src.chess_coach.ml.train")
         return
 
-    # Load model — detect Phase 4 checkpoint by presence of spatial_proj weights
-    ckpt     = torch.load(ckpt_path, map_location=device, weights_only=False)
-    is_phase4 = any(k.startswith("spatial_proj") for k in ckpt["state_dict"])
-    model    = ChessConceptClassifier(phase4=is_phase4).to(device)
-    model.load_state_dict(ckpt["state_dict"])
+    # Load model — detect phase from checkpoint weights
+    ckpt      = torch.load(ckpt_path, map_location=device, weights_only=False)
+    sd        = ckpt["state_dict"]
+    is_phase5 = any(k.startswith("nnue_proj") for k in sd)
+    is_phase4 = any(k.startswith("spatial_proj") for k in sd) and not is_phase5
+    model     = ChessConceptClassifier(phase4=is_phase4, phase5=is_phase5).to(device)
+    model.load_state_dict(sd)
     model.eval()
     epoch    = ckpt.get("epoch", "?")
     val_loss = ckpt.get("val_loss", float("nan"))
-    print(f"Loaded checkpoint: epoch={epoch}  val_loss={val_loss:.4f}")
+    phase_tag = "Phase 5" if is_phase5 else ("Phase 4" if is_phase4 else "Phase 3")
+    print(f"Loaded checkpoint: epoch={epoch}  val_loss={val_loss:.4f}  ({phase_tag})")
 
     data_path = Path(args.data)
 
     # Calibrate thresholds if requested, then save
     if args.calibrate:
-        cal = calibrate_thresholds(model, data_path, device, is_phase4=is_phase4)
+        cal = calibrate_thresholds(model, data_path, device,
+                                   is_phase4=is_phase4, is_phase5=is_phase5)
         save_thresholds(cal)
 
     # Load thresholds (calibrated file if it exists, global fallback otherwise)
     thresholds = load_thresholds(default=args.threshold)
 
     if not args.spot_check_only:
-        evaluate_dataset(model, data_path, device, thresholds, is_phase4=is_phase4)
+        evaluate_dataset(model, data_path, device, thresholds,
+                         is_phase4=is_phase4, is_phase5=is_phase5)
 
     spot_check(model, thresholds)
 

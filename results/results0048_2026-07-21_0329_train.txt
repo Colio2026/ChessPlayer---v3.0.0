@@ -1,0 +1,52 @@
+
+Device: cuda
+  GPU: NVIDIA GeForce RTX 2060
+
+Loading data from data\training_raw.jsonl
+Loading dataset from data\training_raw.jsonl ... 1,591,442 labeled examples found.
+  train: 1,273,153 examples  (train 1,273,153 / val 159,144 / test 159,145)
+  Algo cache:  algo_cache.npy  (lazy mmap, 13.35 GB)
+  V3 cache:    v3_cache.npy  (lazy mmap, 435 MB)
+  SF cache:    sf_cache.npy  (lazy mmap, 83 MB)
+  NNUE cache:  nnue_cache.npy  (lazy mmap, 15.09 GB)
+  Board cache: board_cache.npy  (lazy mmap, 7.38 GB)
+Loading dataset from data\training_raw.jsonl ... 1,591,442 labeled examples found.
+  val: 159,144 examples  (train 1,273,153 / val 159,144 / test 159,145)
+  Algo cache:  algo_cache.npy  (lazy mmap, 13.35 GB)
+  V3 cache:    v3_cache.npy  (lazy mmap, 435 MB)
+  SF cache:    sf_cache.npy  (lazy mmap, 83 MB)
+  NNUE cache:  nnue_cache.npy  (lazy mmap, 15.09 GB)
+  Board cache: board_cache.npy  (lazy mmap, 7.38 GB)
+
+Model: 3,868,465 parameters
+
+── Training  (100 epochs, batch 256) ─────────────────────────────────────
+Epoch  Train Loss  Val Loss  Macro F1         LR    Time  Note
+───────────────────────────────────────────────────────────────────────────
+    1      0.6403    0.5553    0.3383   1.00e-03  1160.2s  ✓ best
+    2      0.5616    0.5419    0.3387   9.99e-04  1133.0s  ✓ best
+    3      0.5478    0.5339    0.3482   9.98e-04  1125.2s  ✓ best
+    4      0.5376    0.5275    0.3542   9.96e-04  1133.2s  ✓ best
+    5      0.5293    0.5254    0.3412   9.94e-04  1137.9s  
+    6      0.5220    0.5230    0.3469   9.92e-04  1129.4s  
+    7      0.5155    0.5227    0.3512   9.89e-04  1128.6s  
+    8      0.5093    0.5223    0.3587   9.85e-04  1153.4s  ✓ best
+    9      0.5040    0.5238    0.3522   9.81e-04  1137.0s  
+   10      0.4988    0.5242    0.3611   9.77e-04  1155.2s  ✓ best
+   11      0.4940    0.5245    0.3500   9.72e-04  1157.1s  
+   12      0.4892    0.5291    0.3624   9.67e-04  1138.1s  ✓ best
+   13      0.4851    0.5332    0.3548   9.61e-04  1125.2s  
+   14      0.4817    0.5351    0.3669   9.55e-04  1137.0s  ✓ best
+   15      0.4776    0.5383    0.3648   9.48e-04  1129.8s  
+   16      0.4742    0.5370    0.3640   9.41e-04  1129.9s  
+   17      0.4712    0.5380    0.3654   9.34e-04  1132.2s  
+   18      0.4680    0.5453    0.3570   9.26e-04  1132.6s  
+   19      0.4653    0.5457    0.3686   9.18e-04  1154.0s  ✓ best
+   20      0.4627    0.5471    0.3681   9.09e-04  1137.3s  
+   21      0.4600    0.5537    0.3696   9.00e-04  1129.6s  ✓ best
+   22      0.4576    0.5465    0.3583   8.91e-04  1128.4s  
+   23      0.4555    0.5643    0.3698   8.81e-04  1130.0s  ✓ best
+   24      0.4531    0.5586    0.3605   8.71e-04  1128.4s  
+   25      0.4510    0.5719    0.3714   8.61e-04  1127.9s  ✓ best
+   26      0.4490    0.5725    0.3730   8.50e-04  1126.4s  ✓ best
+   27      0.4470    0.5704    0.3659   8.39e-04  1138.3s  

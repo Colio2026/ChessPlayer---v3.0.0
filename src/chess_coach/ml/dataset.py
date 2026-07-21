@@ -31,7 +31,7 @@ from torch.utils.data import Dataset
 from .board_encoder import (
     fen_to_tensor, move_to_tensor, history_to_tensor, history_rich_to_tensor,
     STATIC_SIZE, STATIC_SIZE_V4, INPUT_SIZE, MOVE_SIZE, ALGO_SIZE, ALGO_SIZE_V4,
-    SF_SIZE, MAX_SEQ_LEN,
+    SF_SIZE, NNUE_SIZE, MAX_SEQ_LEN,
 )
 from .concept_vocab import CONCEPTS, CONCEPT_TO_IDX, NUM_CONCEPTS
 from tools.label_positions import algo_feature_vector
@@ -48,6 +48,8 @@ class ChessConceptDataset(Dataset):
         y        : float32 [NUM_CONCEPTS]      multi-hot concept labels
 
     Only examples with at least one theme label are included.
+    JSON lines are NOT held in RAM — only byte offsets are stored.
+    Each DataLoader worker opens its own file handle on first __getitem__.
 
     Parameters
     ----------
@@ -68,78 +70,106 @@ class ChessConceptDataset(Dataset):
         train_frac:  float       = 0.80,
         val_frac:    float       = 0.10,
         phase4:      bool        = False,
+        phase5:      bool        = False,
     ) -> None:
         jsonl_path = Path(jsonl_path)
         if not jsonl_path.exists():
             sys.exit(f"Dataset file not found: {jsonl_path}\n"
                      "Run tools/parse_annotated_pgn.py first.")
 
+        # Scan in binary mode so f.tell() byte offsets are exact on Windows.
+        # Only parse themes + _ac — full JSON is not kept in memory.
         print(f"Loading dataset from {jsonl_path} ...", end=" ", flush=True)
-        raw = []
-        with open(jsonl_path, encoding="utf-8", errors="replace") as f:
-            for line in f:
+        all_offsets: list[int] = []
+        all_ys: list[torch.Tensor] = []
+        with open(jsonl_path, "rb") as f:
+            while True:
+                offset = f.tell()
+                raw = f.readline()
+                if not raw:
+                    break
+                raw = raw.strip()
+                if not raw:
+                    continue
                 try:
-                    ex = json.loads(line)
+                    ex = json.loads(raw.decode("utf-8", errors="replace"))
                     if ex.get("themes"):
-                        raw.append(ex)
+                        all_offsets.append(offset)
+                        y = torch.zeros(NUM_CONCEPTS, dtype=torch.float32)
+                        for theme in ex["themes"]:
+                            cidx = CONCEPT_TO_IDX.get(theme)
+                            if cidx is not None:
+                                y[cidx] = 1.0
+                        all_ys.append(y)
                 except Exception:
                     pass
-        print(f"{len(raw):,} labeled examples found.")
+        print(f"{len(all_offsets):,} labeled examples found.")
 
-        # Reproducible shuffle + split
+        # Reproducible shuffle + split over indices only (no data in RAM).
         rng = random.Random(seed)
-        rng.shuffle(raw)
-        n       = len(raw)
+        order = list(range(len(all_offsets)))
+        rng.shuffle(order)
+        n       = len(order)
         n_train = int(n * train_frac)
         n_val   = int(n * val_frac)
-        splits  = {
-            "train": raw[:n_train],
-            "val":   raw[n_train: n_train + n_val],
-            "test":  raw[n_train + n_val:],
+        split_idx = {
+            "train": order[:n_train],
+            "val":   order[n_train: n_train + n_val],
+            "test":  order[n_train + n_val:],
         }
-        self._raw    = splits[split]
+        sel = split_idx[split]
+        self._offsets: list[int] = [all_offsets[i] for i in sel]
+        self._y = torch.stack([all_ys[i] for i in sel])
+        # Release the full lists — only the split subset is needed.
+        del all_offsets, all_ys, order, sel
+
+        self._jsonl_path = str(jsonl_path.resolve())
+        self._file: object = None   # opened lazily per DataLoader worker
+
         self._phase4 = phase4
-        print(f"  {split}: {len(self._raw):,} examples  "
+        self._phase5 = phase5
+        print(f"  {split}: {len(self._offsets):,} examples  "
               f"(train {n_train:,} / val {n_val:,} / test {n - n_train - n_val:,})")
 
         # Cache paths stored as strings (picklable — safe for multiprocessing spawn).
         # The actual numpy memmaps are opened lazily in __getitem__, so every
         # DataLoader worker opens its own file handle; the OS shares the page cache.
-        algo_path = Path("data/algo_cache.npy").resolve()
-        v3_path   = Path("data/v3_cache.npy").resolve()
-        sf_path   = Path("data/sf_cache.npy").resolve()
-        self._algo_cache_path: str | None = str(algo_path) if algo_path.exists() else None
-        self._v3_cache_path:   str | None = str(v3_path)   if v3_path.exists()   else None
-        self._sf_cache_path:   str | None = str(sf_path)   if sf_path.exists()   else None
-        self._algo_cache: np.ndarray | None = None   # opened on first __getitem__
-        self._v3_cache:   np.ndarray | None = None
-        self._sf_cache:   np.ndarray | None = None
+        algo_path  = Path("data/algo_cache.npy").resolve()
+        v3_path    = Path("data/v3_cache.npy").resolve()
+        sf_path    = Path("data/sf_cache.npy").resolve()
+        nnue_path  = Path("data/nnue_cache.npy").resolve()
+        board_path = Path("data/board_cache.npy").resolve()
+        self._algo_cache_path:  str | None = str(algo_path)  if algo_path.exists()  else None
+        self._v3_cache_path:    str | None = str(v3_path)    if v3_path.exists()    else None
+        self._sf_cache_path:    str | None = str(sf_path)    if sf_path.exists()    else None
+        self._nnue_cache_path:  str | None = str(nnue_path)  if (nnue_path.exists() and phase5)  else None
+        self._board_cache_path: str | None = str(board_path) if board_path.exists() else None
+        self._algo_cache:  np.ndarray | None = None   # opened on first __getitem__
+        self._v3_cache:    np.ndarray | None = None
+        self._sf_cache:    np.ndarray | None = None
+        self._nnue_cache:  np.ndarray | None = None
+        self._board_cache: np.ndarray | None = None
 
         if self._algo_cache_path:
             print(f"  Algo cache:  {algo_path.name}  (lazy mmap, {algo_path.stat().st_size / 1e9:.2f} GB)")
         else:
-            print(f"  No algo cache — run tools/build_algo_cache.py to build caches.")
+            print("  No algo cache — run tools/build_algo_cache.py to build caches.")
         if self._v3_cache_path:
             print(f"  V3 cache:    {v3_path.name}  (lazy mmap, {v3_path.stat().st_size / 1e6:.0f} MB)")
         else:
-            print(f"  No v3 cache — v3 features computed per example (slow).")
+            print("  No v3 cache — v3 features computed per example (slow).")
         if self._sf_cache_path:
             print(f"  SF cache:    {sf_path.name}  (lazy mmap, {sf_path.stat().st_size / 1e6:.0f} MB)")
         else:
-            print(f"  No SF cache — SF classical eval features inactive (run build_sf_cache.py).")
-
-        # Pre-build label tensor (cheap: integer lookups only, no board computation).
-        print(f"  Building label index ...", end=" ", flush=True)
-        ys = []
-        for ex in self._raw:
-            y = torch.zeros(NUM_CONCEPTS, dtype=torch.float32)
-            for theme in ex["themes"]:
-                idx = CONCEPT_TO_IDX.get(theme)
-                if idx is not None:
-                    y[idx] = 1.0
-            ys.append(y)
-        self._y = torch.stack(ys)
-        print("done.")
+            print("  No SF cache — SF classical eval features inactive (run build_sf_cache.py).")
+        if self._nnue_cache_path:
+            print(f"  NNUE cache:  {nnue_path.name}  (lazy mmap, {nnue_path.stat().st_size / 1e9:.2f} GB)")
+        else:
+            print("  No NNUE cache — NNUE features inactive (run build_nnue_cache.py).")
+        if self._board_cache_path:
+            print(f"  Board cache: {board_path.name}  (lazy mmap, {board_path.stat().st_size / 1e9:.2f} GB)")
+        else:
+            print("  No board cache — board tensor computed per example (run build_board_cache.py).")
 
     # ── Lazy mmap openers ─────────────────────────────────────────────────────
 
@@ -161,54 +191,97 @@ class ChessConceptDataset(Dataset):
             self._sf_cache = np.load(self._sf_cache_path, mmap_mode="r")
         return self._sf_cache
 
+    def _get_nnue_cache(self) -> np.ndarray | None:
+        """Open nnue_cache mmap on first access (worker-local; picklable init)."""
+        if self._nnue_cache is None and self._nnue_cache_path:
+            self._nnue_cache = np.load(self._nnue_cache_path, mmap_mode="r")
+        return self._nnue_cache
+
+    def _get_board_cache(self) -> np.ndarray | None:
+        """Open board_cache mmap on first access (worker-local; picklable init)."""
+        if self._board_cache is None and self._board_cache_path:
+            self._board_cache = np.load(self._board_cache_path, mmap_mode="r")
+        return self._board_cache
+
     # ── Dataset protocol ──────────────────────────────────────────────────────
 
     def __len__(self) -> int:
-        return len(self._raw)
+        return len(self._offsets)
+
+    def _read_example(self, idx: int) -> dict:
+        """Seek to the stored byte offset and parse the JSON line."""
+        if self._file is None:
+            self._file = open(self._jsonl_path, "rb")
+        self._file.seek(self._offsets[idx])
+        return json.loads(self._file.readline().decode("utf-8", errors="replace"))
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, int, torch.Tensor]:
-        ex = self._raw[idx]
+        ex = self._read_example(idx)
         y  = self._y[idx].clone()   # clone view → independent tensor
 
         try:
-            board_t = fen_to_tensor(ex["fen"])
-            move_t  = move_to_tensor(ex.get("move_uci", ""))
+            fen    = ex["fen"]
+            move_t = move_to_tensor(ex.get("move_uci", ""))
+            ac_idx = ex.get("_ac")
 
-            ac_idx     = ex.get("_ac")
-            algo_cache = self._get_algo_cache()
-            v3_cache   = self._get_v3_cache()
-
-            # V4 spatial features (ALGO_SIZE_V4 = 1811-dim) from algo_cache
-            if algo_cache is not None and ac_idx is not None:
-                algo_t = torch.from_numpy(np.array(algo_cache[ac_idx], dtype=np.float32))
-            else:
-                af = ex.get("algo_features")
-                if af is not None:
-                    algo_t = torch.tensor(af, dtype=torch.float32)
-                else:
-                    algo_t = torch.zeros(ALGO_SIZE_V4, dtype=torch.float32)
-
-            # V3 summary (ALGO_SIZE = 59-dim) from v3_cache or computed from FEN
+            # V3 summary (ALGO_SIZE = 59-dim): binary concept bits (all phases)
+            v3_cache = self._get_v3_cache()
             if v3_cache is not None and ac_idx is not None:
                 v3_t = torch.from_numpy(np.array(v3_cache[ac_idx], dtype=np.float32))
             else:
-                v3_t = torch.from_numpy(algo_feature_vector(ex["fen"]))
+                v3_t = torch.from_numpy(algo_feature_vector(fen))
 
-            # SF classical eval features (SF_SIZE = 14-dim) from sf_cache if available
+            # SF classical eval features (SF_SIZE = 14-dim)
             sf_cache = self._get_sf_cache()
             if sf_cache is not None and ac_idx is not None:
                 sf_t = torch.from_numpy(np.array(sf_cache[ac_idx], dtype=np.float32))
             else:
                 sf_t = torch.zeros(SF_SIZE, dtype=torch.float32)
 
-            x = torch.cat([board_t, move_t, algo_t, v3_t, sf_t])
-        except Exception:
-            x = torch.zeros(
-                STATIC_SIZE_V4 + ALGO_SIZE if self._phase4 else STATIC_SIZE,
-                dtype=torch.float32,
-            )
+            # Board tensor (1001 dims) — use cache if available, else compute on-the-fly
+            board_cache = self._get_board_cache()
+            if board_cache is not None and ac_idx is not None:
+                board_t = torch.from_numpy(np.array(board_cache[ac_idx], dtype=np.float32))
+            else:
+                board_t = fen_to_tensor(fen)
 
-        if self._phase4:
+            if self._phase5:
+                # Phase 5D: NNUE (2048) + board (1001) + move (128) + algo_v4 (1811) + sf (14) + v3 (59)
+                nnue_cache = self._get_nnue_cache()
+                if nnue_cache is not None and ac_idx is not None:
+                    nnue_t = torch.from_numpy(np.array(nnue_cache[ac_idx], dtype=np.float32))
+                else:
+                    nnue_t = torch.zeros(NNUE_SIZE, dtype=torch.float32)
+                algo_cache = self._get_algo_cache()
+                if algo_cache is not None and ac_idx is not None:
+                    algo_t = torch.from_numpy(np.array(algo_cache[ac_idx], dtype=np.float32))
+                else:
+                    algo_t = torch.zeros(ALGO_SIZE_V4, dtype=torch.float32)
+                x = torch.cat([nnue_t, board_t, move_t, algo_t, sf_t, v3_t])
+            elif self._phase4:
+                # Phase 4-B: board (1001) + move (128) + algo_v4 (1811) + v3 (59) + sf (14)
+                algo_cache = self._get_algo_cache()
+                if algo_cache is not None and ac_idx is not None:
+                    algo_t = torch.from_numpy(np.array(algo_cache[ac_idx], dtype=np.float32))
+                else:
+                    af = ex.get("algo_features")
+                    algo_t = torch.tensor(af, dtype=torch.float32) if af is not None \
+                             else torch.zeros(ALGO_SIZE_V4, dtype=torch.float32)
+                x = torch.cat([board_t, move_t, algo_t, v3_t, sf_t])
+            else:
+                # Phase 3: board (1001) + move (128) + v3 (59) = STATIC_SIZE (1188)
+                x = torch.cat([board_t, move_t, v3_t])
+
+        except Exception:
+            if self._phase5:
+                x = torch.zeros(NNUE_SIZE + INPUT_SIZE + MOVE_SIZE + ALGO_SIZE_V4 + SF_SIZE + ALGO_SIZE,
+                                dtype=torch.float32)
+            elif self._phase4:
+                x = torch.zeros(STATIC_SIZE_V4 + ALGO_SIZE + SF_SIZE, dtype=torch.float32)
+            else:
+                x = torch.zeros(STATIC_SIZE, dtype=torch.float32)
+
+        if self._phase4 or self._phase5:
             hist_t, seq_len = history_rich_to_tensor(ex.get("history_rich", []))
         else:
             hist_t, seq_len = history_to_tensor(ex.get("history_uci", []))

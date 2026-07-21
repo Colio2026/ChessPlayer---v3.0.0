@@ -81,6 +81,37 @@ SF_BREAK = STATIC_SIZE_V4 + ALGO_SIZE   # 2999 — offset where SF features star
 PROJ_SIZE_V4       = 256
 COMBINED_SIZE_V4B  = INPUT_SIZE + MOVE_SIZE + PROJ_SIZE_V4 + ALGO_SIZE + SF_SIZE + GRU_HIDDEN  # 1001+128+256+59+14+256=1714
 
+# Phase 5: NNUE Feature Transformer replaces the 1811-dim algo_v4 spatial features.
+# Frozen SF16 FT weights produce a 2048-dim perception vector (1024 per king perspective).
+# x layout: [nnue(2048), board_meta(13), move(128), sf_classical(14), v3_summary(59)] = 2262
+# NNUE bottleneck: 2048 → 256 via learnable projection (mirrors Phase 4's spatial_proj).
+# This keeps the combined input to the head at 726 (vs 2518 without bottleneck),
+# preventing the 59 v3 signal dims from being drowned by 2048 raw NNUE dims.
+NNUE_SIZE         = 2048   # 2 × L1_HALF (white + black king perspectives)
+BOARD_META_SIZE   = 13     # side_to_move(1) + castling(4) + ep_file(8)
+STATIC_SIZE_V5    = NNUE_SIZE + BOARD_META_SIZE + MOVE_SIZE + SF_SIZE  # 2048+13+128+14=2203
+COMBINED_SIZE_V5  = STATIC_SIZE_V5 + ALGO_SIZE + GRU_HIDDEN            # 2203+59+256=2518
+
+NNUE_PROJ_SIZE    = 256    # NNUE bottleneck output (same dim as Phase 4 spatial_proj)
+STATIC_SIZE_V5B   = NNUE_PROJ_SIZE + BOARD_META_SIZE + MOVE_SIZE + SF_SIZE + ALGO_SIZE  # 256+13+128+14+59=470
+COMBINED_SIZE_V5B = STATIC_SIZE_V5B + GRU_HIDDEN                                        # 470+256=726
+
+# Phase 5C: NNUE bottleneck + full board tensor (restores explicit piece placement).
+# x layout: [nnue(2048), board(1001), move(128), sf(14), v3(59)] = 3250 raw input
+# After nnue_proj(256): [proj(256), board(1001), move(128), sf(14), v3(59)] = 1458 static
+# Same combined size as Phase 4B (1714), so same head width applies.
+STATIC_SIZE_V5C   = NNUE_PROJ_SIZE + INPUT_SIZE + MOVE_SIZE + SF_SIZE + ALGO_SIZE  # 256+1001+128+14+59=1458
+COMBINED_SIZE_V5C = STATIC_SIZE_V5C + GRU_HIDDEN                                   # 1458+256=1714
+
+# Phase 5D: NNUE bottleneck + algo_v4 bottleneck + full board tensor.
+# Both evaluation signal (NNUE) and explicit concept features (algo_v4) feed the head.
+# x layout: [nnue(2048), board(1001), move(128), algo_v4(1811), sf(14), v3(59)] = 5061 raw
+# After nnue_proj(256) + spatial_proj(256):
+#   [nnue_proj(256), board(1001), move(128), algo_proj(256), sf(14), v3(59)] = 1714 static
+# Combined 1970 = 1714 static + 256 GRU
+STATIC_SIZE_V5D   = NNUE_PROJ_SIZE + INPUT_SIZE + MOVE_SIZE + PROJ_SIZE_V4 + SF_SIZE + ALGO_SIZE  # 256+1001+128+256+14+59=1714
+COMBINED_SIZE_V5D = STATIC_SIZE_V5D + GRU_HIDDEN                                                   # 1714+256=1970
+
 # Max attack squares per piece type (for normalising mobility to [0, 1])
 _MOB_MAX = [2, 8, 13, 14, 27, 8]  # P  N  B  R  Q  K
 
@@ -298,6 +329,28 @@ def history_rich_to_tensor(
         except Exception:
             pass
     return out, seq_len
+
+
+def board_meta_tensor(fen: str) -> torch.Tensor:
+    """
+    Encode the 13 non-piece FEN features as a float32 tensor.
+    Used in Phase 5 alongside NNUE activations (which encode piece placement).
+
+    Layout (BOARD_META_SIZE = 13):
+      [0]      Side to move  — 1.0=white, 0.0=black
+      [1:5]    Castling rights — [WK, WQ, BK, BQ], 1.0 if available
+      [5:13]   En-passant file — one-hot over files a–h, all zeros if none
+    """
+    board = chess.Board(fen)
+    arr   = np.zeros(BOARD_META_SIZE, dtype=np.float32)
+    arr[0] = 1.0 if board.turn == chess.WHITE else 0.0
+    arr[1] = 1.0 if board.has_kingside_castling_rights(chess.WHITE)  else 0.0
+    arr[2] = 1.0 if board.has_queenside_castling_rights(chess.WHITE) else 0.0
+    arr[3] = 1.0 if board.has_kingside_castling_rights(chess.BLACK)  else 0.0
+    arr[4] = 1.0 if board.has_queenside_castling_rights(chess.BLACK) else 0.0
+    if board.ep_square is not None:
+        arr[5 + chess.square_file(board.ep_square)] = 1.0
+    return torch.from_numpy(arr)
 
 
 def move_to_tensor(move_uci: str) -> torch.Tensor:

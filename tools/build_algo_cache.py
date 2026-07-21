@@ -137,7 +137,43 @@ def _build_v3_only(jsonl_path: Path, v3_arr: np.ndarray, n: int) -> None:
     print()
 
 
+def _reindex(jsonl_path: Path) -> int:
+    """Rewrite JSONL adding _ac=row_number to every line that lacks it.
+
+    Returns the number of rows written.  Fast sequential pass — no cache
+    rebuild needed.  Triggered when caches exist but the JSONL was replaced
+    (e.g. re-parsed) without going through build_algo_cache.
+    """
+    tmp = jsonl_path.with_suffix(".reindex.tmp")
+    row = 0
+    with open(jsonl_path, encoding="utf-8", errors="replace") as fin, \
+         open(tmp, "w", encoding="utf-8") as fout:
+        for raw in fin:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                ex = json.loads(line)
+                if "_ac" not in ex:
+                    ex["_ac"] = row
+                fout.write(json.dumps(ex, separators=(",", ":")) + "\n")
+            except Exception:
+                fout.write(line + "\n")
+            row += 1
+            if row % 200_000 == 0:
+                print(f"  {row:,} lines reindexed ...", end="\r", flush=True)
+    print()
+    tmp.replace(jsonl_path)
+    return row
+
+
 def main() -> None:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--force", action="store_true",
+                    help="Rebuild caches even if they already exist (use after a fresh parse)")
+    args = ap.parse_args()
+
     jsonl_path      = Path("data/training_raw.jsonl")
     algo_cache_path = Path("data/algo_cache.npy")
     v3_cache_path   = Path("data/v3_cache.npy")
@@ -146,9 +182,27 @@ def main() -> None:
     if not jsonl_path.exists():
         sys.exit(f"Not found: {jsonl_path}")
 
-    need_v3 = not v3_cache_path.exists()
-    if not need_v3:
-        print("Both caches already exist. Delete data/v3_cache.npy to rebuild.")
+    if args.force:
+        # Delete stale caches so the full build runs below.
+        for p in (algo_cache_path, v3_cache_path):
+            if p.exists():
+                p.unlink()
+                print(f"  Removed stale cache: {p}")
+
+    need_algo = not algo_cache_path.exists()
+    need_v3   = not v3_cache_path.exists()
+    has_ac    = _peek_has_field(jsonl_path, "_ac")
+
+    if not need_algo and not need_v3 and has_ac:
+        print("Both caches exist and JSONL has _ac indices — nothing to do.")
+        return
+
+    if not need_algo and not need_v3 and not has_ac:
+        # Caches are fine but JSONL was replaced without _ac indices (e.g. re-parse).
+        # Fast reindex pass only — no cache rebuild needed.
+        print("Caches exist but JSONL is missing _ac indices — reindexing ...")
+        n = _reindex(jsonl_path)
+        print(f"Reindexed {n:,} lines → {jsonl_path}")
         return
 
     has_algo_features = _peek_has_field(jsonl_path, "algo_features")
@@ -180,31 +234,99 @@ def main() -> None:
         print(f"JSONL       → {jsonl_path}  ({jsonl_path.stat().st_size / 1e9:.2f} GB)")
 
     else:
-        # ── V3-only build: JSONL already stripped, algo_cache already exists ──
-        if not algo_cache_path.exists():
-            sys.exit(
-                "algo_cache.npy not found and JSONL has no algo_features.\n"
-                "Re-parse from scratch: .\\retrain_and_reparse.ps1"
+        # ── Stripped JSONL: algo_features already extracted in a prior run ─────
+        # Recompute both caches from FEN. algo_feature_vector_v4 recomputes the
+        # 1811-dim features; algo_feature_vector recomputes the 59-dim v3 bits.
+        # _ac indices are already stamped — no JSONL rewrite needed unless missing.
+        from label_positions import algo_feature_vector, algo_feature_vector_v4
+
+        ALGO_DIM = 1811
+
+        print(f"Scanning {jsonl_path} for line count ...")
+        n = 0
+        with open(jsonl_path, "rb") as f:
+            for raw in f:
+                if raw.strip():
+                    n += 1
+        print(f"  {n:,} lines")
+
+        if need_algo:
+            algo_gb = n * ALGO_DIM * 4 / 1e9
+            print(f"Allocating algo cache  {n:,} × {ALGO_DIM}  ({algo_gb:.2f} GB) ...")
+            algo_arr = np.lib.format.open_memmap(
+                str(algo_cache_path), mode="w+", dtype="float32", shape=(n, ALGO_DIM)
             )
-        probe = np.load(str(algo_cache_path), mmap_mode="r")
-        n     = probe.shape[0]
-        del probe
+        else:
+            algo_arr = None
 
-        v3_gb = n * V3_DIM * 4 / 1e9
-        print(f"Allocating v3 cache  {n:,} × {V3_DIM}  ({v3_gb:.3f} GB) ...")
-        v3_arr = np.lib.format.open_memmap(
-            str(v3_cache_path), mode="w+", dtype="float32", shape=(n, V3_DIM)
-        )
+        if need_v3:
+            v3_gb = n * V3_DIM * 4 / 1e9
+            print(f"Allocating v3 cache    {n:,} × {V3_DIM}  ({v3_gb:.3f} GB) ...")
+            v3_arr = np.lib.format.open_memmap(
+                str(v3_cache_path), mode="w+", dtype="float32", shape=(n, V3_DIM)
+            )
+        else:
+            v3_arr = None
 
-        print(f"Computing v3 features from {jsonl_path} ({n:,} examples) ...")
-        print("This may take 10-20 minutes depending on CPU speed.")
-        _build_v3_only(jsonl_path, v3_arr, n)
-        del v3_arr
+        needs_rewrite = not has_ac
+        zero_algo = np.zeros(ALGO_DIM, dtype="float32")
+        zero_v3   = np.zeros(V3_DIM,   dtype="float32")
+        row = 0
 
-        print(f"V3 cache → {v3_cache_path}  ({v3_cache_path.stat().st_size / 1e6:.1f} MB)")
+        import time as _time
+        t0 = _time.time()
+
+        ctx = open(tmp_path, "w", encoding="utf-8") if needs_rewrite else None
+        with open(jsonl_path, encoding="utf-8", errors="replace") as fin:
+            for raw_line in fin:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    ex     = json.loads(line)
+                    ac_idx = ex.get("_ac", row)
+                    fen    = ex.get("fen", "")
+                    if algo_arr is not None:
+                        try:
+                            algo_arr[ac_idx] = algo_feature_vector_v4(fen).astype("float32")
+                        except Exception:
+                            algo_arr[ac_idx] = zero_algo
+                    if v3_arr is not None:
+                        try:
+                            v3_arr[ac_idx] = algo_feature_vector(fen).astype("float32")
+                        except Exception:
+                            v3_arr[ac_idx] = zero_v3
+                    if ctx is not None:
+                        ex["_ac"] = row
+                        ctx.write(json.dumps(ex, separators=(",", ":")) + "\n")
+                except Exception:
+                    if algo_arr is not None:
+                        algo_arr[row] = zero_algo
+                    if v3_arr is not None:
+                        v3_arr[row] = zero_v3
+                    if ctx is not None:
+                        ctx.write(line + "\n")
+                row += 1
+                if row % 50_000 == 0:
+                    elapsed = _time.time() - t0
+                    rate    = row / elapsed if elapsed > 0 else 0
+                    remain  = (n - row) / rate if rate > 0 else 0
+                    print(f"  {row:>8,} / {n:,}  {rate:,.0f}/s  ETA {remain/60:.1f}m", end="\r", flush=True)
+        print()
+
+        if ctx is not None:
+            ctx.close()
+            tmp_path.replace(jsonl_path)
+
+        if algo_arr is not None:
+            del algo_arr
+            print(f"Algo cache → {algo_cache_path}  ({algo_cache_path.stat().st_size / 1e9:.2f} GB)")
+        if v3_arr is not None:
+            del v3_arr
+            print(f"V3 cache   → {v3_cache_path}  ({v3_cache_path.stat().st_size / 1e6:.1f} MB)")
 
     print("\nDone.  Run training next:")
-    print("  python -m src.chess_coach.ml.train --phase4")
+    print("  python -m src.chess_coach.ml.train --phase5")
 
 
 if __name__ == "__main__":

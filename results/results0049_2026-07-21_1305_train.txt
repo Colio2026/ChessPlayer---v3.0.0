@@ -1,0 +1,27 @@
+
+Device: cuda
+  GPU: NVIDIA GeForce RTX 2060
+
+Loading data from data\training_raw.jsonl
+Loading dataset from data\training_raw.jsonl ... 1,591,442 labeled examples found.
+  train: 1,273,153 examples  (train 1,273,153 / val 159,144 / test 159,145)
+  Algo cache:  algo_cache.npy  (lazy mmap, 13.35 GB)
+  V3 cache:    v3_cache.npy  (lazy mmap, 435 MB)
+  SF cache:    sf_cache.npy  (lazy mmap, 83 MB)
+  No NNUE cache — NNUE features inactive (run build_nnue_cache.py).
+  Board cache: board_cache.npy  (lazy mmap, 7.38 GB)
+Loading dataset from data\training_raw.jsonl ... 1,591,442 labeled examples found.
+  val: 159,144 examples  (train 1,273,153 / val 159,144 / test 159,145)
+  Algo cache:  algo_cache.npy  (lazy mmap, 13.35 GB)
+  V3 cache:    v3_cache.npy  (lazy mmap, 435 MB)
+  SF cache:    sf_cache.npy  (lazy mmap, 83 MB)
+  No NNUE cache — NNUE features inactive (run build_nnue_cache.py).
+  Board cache: board_cache.npy  (lazy mmap, 7.38 GB)
+
+Model: 3,081,777 parameters
+
+── Training  (100 epochs, batch 256) ─────────────────────────────────────
+Epoch  Train Loss  Val Loss  Macro F1         LR    Time  Note
+───────────────────────────────────────────────────────────────────────────
+    1      0.6015    0.5523    0.3335   1.00e-03  859.6s  ✓ best
+    2      0.5593    0.5384    0.3394   9.99e-04  811.0s  ✓ best

@@ -1,7 +1,7 @@
 # classifier.py
 # GRU + MLP network: board features + move history → chess concept probabilities.
 #
-# Architecture (Phase 3 — current)
+# Architecture (Phase 3)
 # ---------------------------------
 #   Static input  1188  (1001 board + 128 move + 59 algo bits)
 #   GRU input      128  one-hot from-sq + to-sq per history step
@@ -10,7 +10,7 @@
 #   Layer2         768  → BatchNorm → ReLU → Dropout(0.2)
 #   Output          50  (raw logits)
 #
-# Architecture (Phase 4-B — activated by passing phase4=True to __init__)
+# Architecture (Phase 4-B — phase4=True)
 # ------------------------------------------------------------------
 #   x layout     3013  [board(1001), move(128), algo_v4(1811), v3(59), sf(14)]
 #   Spatial proj 1811 → 256  Linear → ReLU → Dropout(0.3) compresses algo_v4
@@ -21,6 +21,18 @@
 #   Layer1       1024  → BatchNorm → ReLU → Dropout(0.4)
 #   Layer2        512  → BatchNorm → ReLU → Dropout(0.2)
 #   Output         53  (raw logits)
+#
+# Architecture (Phase 5D — phase5=True)
+# ------------------------------------------------------------------
+#   x layout     5061  [nnue(2048), board(1001), move(128), algo_v4(1811), sf(14), v3(59)]
+#   NNUE proj   2048 → 256  Linear → ReLU → Dropout(0.3)  (SF evaluation signal)
+#   Algo proj   1811 → 256  Linear → ReLU → Dropout(0.3)  (explicit concept features)
+#   After proj   1714  [nnue_proj(256), board(1001), move(128), algo_proj(256), sf(14), v3(59)]
+#   GRU input     144  history_rich per-step (same as Phase 4)
+#   Combined     1970  = 1714 static + 256 GRU hidden
+#   Layer1       1024  → BatchNorm → ReLU → Dropout(0.4)
+#   Layer2        512  → BatchNorm → ReLU → Dropout(0.2)
+#   Output         49  (raw logits)
 #
 # Puzzles (no game history) receive seq_len=0 → GRU output zeroed out.
 
@@ -35,6 +47,8 @@ from .board_encoder import (
     COMBINED_SIZE_V4, MOVE_SIZE_V4,
     ALGO_SIZE_V4, PROJ_SIZE_V4, COMBINED_SIZE_V4B,
     INPUT_SIZE, ALGO_SIZE, STATIC_SIZE_V4, SF_SIZE, SF_BREAK,
+    NNUE_SIZE,
+    NNUE_PROJ_SIZE, COMBINED_SIZE_V5D,
 )
 from .concept_vocab import NUM_CONCEPTS, CONCEPTS
 
@@ -48,19 +62,33 @@ class ChessConceptClassifier(nn.Module):
         num_concepts: int   = NUM_CONCEPTS,
         dropout:      float = 0.4,
         dropout2:     float = 0.2,
-        phase4:       bool  = False,    # True → Phase 4 sizes (COMBINED_SIZE_V4, MOVE_SIZE_V4)
+        phase4:       bool  = False,
+        phase5:       bool  = False,    # True → Phase 5: frozen NNUE perception layer
     ) -> None:
         super().__init__()
-        if phase4:
-            input_size = COMBINED_SIZE_V4B   # 1700 = 1129 board+move + 256 proj + 59 v3 + 256 GRU
+        self._phase5 = phase5
+        if phase5:
+            input_size = COMBINED_SIZE_V5D  # 1970 = 1714 static + 256 GRU
             hidden1    = 1024
             hidden2    = 512
-        gru_in = MOVE_SIZE_V4 if phase4 else MOVE_SIZE
+        elif phase4:
+            input_size = COMBINED_SIZE_V4B  # 1714 = 1458 projected + 256 GRU
+            hidden1    = 1024
+            hidden2    = 512
+        gru_in = MOVE_SIZE_V4 if (phase4 or phase5) else MOVE_SIZE
+        # Phase 4 + Phase 5D: compress algo_v4(1811) → 256 before the head.
         self.spatial_proj = nn.Sequential(
             nn.Linear(ALGO_SIZE_V4, PROJ_SIZE_V4),
             nn.ReLU(),
             nn.Dropout(0.30),
-        ) if phase4 else None
+        ) if phase4 or phase5 else None
+        # Phase 5D: additionally compress NNUE(2048) → 256 (SF evaluation signal).
+        # Runs alongside spatial_proj — both bottlenecks feed the head in parallel.
+        self.nnue_proj = nn.Sequential(
+            nn.Linear(NNUE_SIZE, NNUE_PROJ_SIZE),
+            nn.ReLU(),
+            nn.Dropout(0.30),
+        ) if phase5 else None
         self.gru = nn.GRU(
             input_size=gru_in,
             hidden_size=GRU_HIDDEN,
@@ -101,18 +129,26 @@ class ChessConceptClassifier(nn.Module):
         no_hist = (seq_len == 0).float().unsqueeze(1).to(gru_out.device)
         gru_out = gru_out * (1.0 - no_hist)
 
-        # Phase 4-B: compress algo_v4(1811) → 256 via spatial_proj; v3 and SF bypass bottleneck
-        # x layout: [board(1001), move(128), algo_v4(1811), v3(59), sf(14)] = 3013
-        # v3 encodes actualized concepts (piece IS on outpost, backward pawn EXISTS)
-        # sf encodes Stockfish classical eval terms per side (Passed, Mobility, King safety, …)
-        if self.spatial_proj is not None:
-            board_move = x[:, :INPUT_SIZE + MOVE_SIZE]            # (B, 1129) board+move
-            spatial    = x[:, INPUT_SIZE + MOVE_SIZE:STATIC_SIZE_V4]  # (B, 1811) algo_v4
-            v3_summary = x[:, STATIC_SIZE_V4:SF_BREAK]           # (B,   59) v3 bits
-            sf_t       = x[:, SF_BREAK:]                          # (B,   14) SF eval
-            x = torch.cat([board_move, self.spatial_proj(spatial), v3_summary, sf_t], dim=1)  # (B, 1458)
+        # Phase 5D: two parallel bottlenecks — nnue_proj(2048→256) + spatial_proj(1811→256)
+        # x layout raw: [nnue(2048), board(1001), move(128), algo_v4(1811), sf(14), v3(59)]
+        # Phase 4:  spatial_proj only on algo_v4(1811) → 256
+        # Phase 3:  x passes through unchanged
+        if self._phase5:
+            _bm  = NNUE_SIZE + INPUT_SIZE + MOVE_SIZE              # board+move end = 3177
+            _ae  = _bm + ALGO_SIZE_V4                              # algo end       = 4988
+            nnue_proj  = self.nnue_proj(x[:, :NNUE_SIZE])         # (B, 256)
+            board_move = x[:, NNUE_SIZE:_bm]                       # (B, 1129)
+            algo_proj  = self.spatial_proj(x[:, _bm:_ae])         # (B, 256)
+            sf_v3      = x[:, _ae:]                                # (B,  73) sf+v3
+            x = torch.cat([nnue_proj, board_move, algo_proj, sf_v3], dim=1)  # (B, 1714)
+        elif self.spatial_proj is not None:
+            board_move = x[:, :INPUT_SIZE + MOVE_SIZE]                     # (B, 1129)
+            spatial    = x[:, INPUT_SIZE + MOVE_SIZE:STATIC_SIZE_V4]       # (B, 1811)
+            v3_summary = x[:, STATIC_SIZE_V4:SF_BREAK]                     # (B,   59)
+            sf_t       = x[:, SF_BREAK:]                                    # (B,   14)
+            x = torch.cat([board_move, self.spatial_proj(spatial), v3_summary, sf_t], dim=1)
 
-        combined = torch.cat([x, gru_out], dim=1)   # (B, 1700) phase4 or (B, 1444) phase3
+        combined = torch.cat([x, gru_out], dim=1)
         return self.net(combined)
 
     @torch.no_grad()
@@ -147,20 +183,33 @@ class ChessConceptClassifier(nn.Module):
         else:
             t_vec = torch.full((NUM_CONCEPTS,), threshold)
 
-        board_t = fen_to_tensor(fen)
-        move_t  = move_to_tensor("")
+        move_t = move_to_tensor("")
 
-        is_phase4 = self.spatial_proj is not None
-        if is_phase4:
+        if self._phase5:
+            from tools.nnue_reader import compute_activations, load_feature_transformer
+            from pathlib import Path
+            nnue_path = Path("data/nn.nnue")
+            if nnue_path.exists():
+                biases, weights = load_feature_transformer(str(nnue_path))
+                nnue_t = torch.from_numpy(compute_activations(fen, biases, weights))
+            else:
+                nnue_t = torch.zeros(NNUE_SIZE, dtype=torch.float32)
+            board_t  = fen_to_tensor(fen)
+            algo_v4  = torch.from_numpy(algo_feature_vector_v4(fen))
+            v3_t     = torch.from_numpy(algo_feature_vector(fen))
+            sf_t     = torch.zeros(SF_SIZE, dtype=torch.float32)
+            x = torch.cat([nnue_t, board_t, move_t, algo_v4, sf_t, v3_t]).unsqueeze(0).to(device)
+            hist_t, seq_len = history_rich_to_tensor(history_rich or [])
+        elif self.spatial_proj is not None:
+            board_t = fen_to_tensor(fen)
             algo_v4 = torch.from_numpy(algo_feature_vector_v4(fen))
-            v3      = torch.from_numpy(algo_feature_vector(fen))
-            # SF features are zeros at inference — the model degrades gracefully.
-            # For full inference quality, run build_sf_cache.py and load sf_cache here.
+            v3_t    = torch.from_numpy(algo_feature_vector(fen))
             sf_t    = torch.zeros(SF_SIZE, dtype=torch.float32)
-            x = torch.cat([board_t, move_t, algo_v4, v3, sf_t]).unsqueeze(0).to(device)
+            x = torch.cat([board_t, move_t, algo_v4, v3_t, sf_t]).unsqueeze(0).to(device)
             hist_t, seq_len = history_rich_to_tensor(history_rich or [])
         else:
-            algo_t = torch.from_numpy(algo_feature_vector(fen))
+            board_t = fen_to_tensor(fen)
+            algo_t  = torch.from_numpy(algo_feature_vector(fen))
             x = torch.cat([board_t, move_t, algo_t]).unsqueeze(0).to(device)
             hist_t, seq_len = history_to_tensor(history_uci or [])
 
