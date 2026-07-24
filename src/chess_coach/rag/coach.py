@@ -17,18 +17,27 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
 import chess
 import torch
 
+from src.chess_coach.ml.paths import ACTIVATE_THRESHOLDS as _ACT_PATH
 from src.chess_coach.ml.paths import CLASSIFIER_BEST as _CKPT_PATH
 
-# Hysteresis thresholds — a concept must cross ACTIVATE to turn on,
-# but only needs to stay above HOLD to remain the coaching theme.
+# Global fallback hysteresis thresholds.
+# Per-concept ACTIVATE values are loaded from data/activate_thresholds.json;
+# ACTIVATE_THRESHOLD is only used for concepts absent from that file.
 ACTIVATE_THRESHOLD = 0.65
 HOLD_THRESHOLD     = 0.40
+
+_ACTIVATE_PER_CONCEPT: dict[str, float] = (
+    json.loads(_ACT_PATH.read_text(encoding="utf-8"))
+    if _ACT_PATH.exists()
+    else {}
+)
 
 
 def _replay_fens(start_fen: str, history_uci: list[str]) -> list[str]:
@@ -135,13 +144,17 @@ class ChessCoach:
     ) -> list[tuple[str, float]]:
         """Schmitt-trigger filter over concept probabilities.
 
-        A concept activates when its probability crosses ACTIVATE_THRESHOLD (0.65).
+        A concept activates when its probability crosses its per-concept ACTIVATE threshold
+        (loaded from data/activate_thresholds.json; defaults to ACTIVATE_THRESHOLD=0.65).
         Once active it stays active as long as probability stays above HOLD_THRESHOLD (0.40).
-        This prevents the coach from changing its mind on every quiet move.
+        This prevents the coach from flip-flopping on common structural features.
         """
         prob_map  = dict(raw_probs)
-        threshold = {c: HOLD_THRESHOLD if c in self._active_concepts else ACTIVATE_THRESHOLD
-                     for c in prob_map}
+        threshold = {
+            c: HOLD_THRESHOLD if c in self._active_concepts
+               else _ACTIVATE_PER_CONCEPT.get(c, ACTIVATE_THRESHOLD)
+            for c in prob_map
+        }
         self._active_concepts = {c for c, p in raw_probs if p >= threshold[c]}
         return sorted(
             [(c, prob_map[c]) for c in self._active_concepts],

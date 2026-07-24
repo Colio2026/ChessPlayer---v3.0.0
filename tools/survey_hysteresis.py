@@ -3,8 +3,8 @@
 
 Samples N positions from training_raw.jsonl, runs predict_concepts(threshold=0.0)
 on each, and prints a histogram of raw probabilities per concept — helping you
-validate whether ACTIVATE_THRESHOLD=0.65 and HOLD_THRESHOLD=0.40 are appropriate
-for Phase 4B's actual output distribution.
+validate whether the per-concept ACTIVATE thresholds in data/activate_thresholds.json
+and the global HOLD_THRESHOLD=0.40 are appropriate for Phase 4B's actual output.
 
 Usage
 -----
@@ -21,6 +21,10 @@ import sys
 from pathlib import Path
 
 import torch
+
+_ACTIVATE_THRESHOLDS_PATH = Path("data/activate_thresholds.json")
+_GLOBAL_ACTIVATE = 0.65
+_GLOBAL_HOLD     = 0.40
 
 # Add repo root to path so src imports resolve.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -59,7 +63,7 @@ def main() -> None:
 
     phase_tag = "Phase 5D" if is_phase5 else ("Phase 4B" if is_phase4 else "Phase 3")
     print(f"Loaded {ckpt_path.name}  ({phase_tag})")
-    print(f"Sampling {args.n} positions from {jsonl_path.name} …\n")
+    print(f"Sampling {args.n} positions from {jsonl_path.name} ...\n")
 
     # Collect a random sample of FENs
     rng = random.Random(args.seed)
@@ -90,39 +94,48 @@ def main() -> None:
 
     print(f"Sampled {n} positions  ({errors} errors)\n")
 
-    # Compute percentiles per concept
-    import statistics
+    activate_per_concept: dict[str, float] = (
+        json.loads(_ACTIVATE_THRESHOLDS_PATH.read_text(encoding="utf-8"))
+        if _ACTIVATE_THRESHOLDS_PATH.exists()
+        else {}
+    )
+    using_per_concept = bool(activate_per_concept)
 
     concept_stats = []
     for i, concept in enumerate(CONCEPTS):
-        col    = [row[i] for row in all_probs]
-        col_s  = sorted(col)
-        p50    = col_s[n // 2]
-        p75    = col_s[int(n * 0.75)]
-        p90    = col_s[int(n * 0.90)]
-        p95    = col_s[int(n * 0.95)]
-        p99    = col_s[int(n * 0.99)]
-        above_65 = sum(1 for v in col if v >= 0.65) / n * 100
-        above_40 = sum(1 for v in col if v >= 0.40) / n * 100
-        concept_stats.append((concept, p50, p75, p90, p95, p99, above_65, above_40))
+        col       = [row[i] for row in all_probs]
+        col_s     = sorted(col)
+        p50       = col_s[n // 2]
+        p75       = col_s[int(n * 0.75)]
+        p90       = col_s[int(n * 0.90)]
+        p95       = col_s[int(n * 0.95)]
+        p99       = col_s[int(n * 0.99)]
+        act_thr   = activate_per_concept.get(concept, _GLOBAL_ACTIVATE)
+        above_act = sum(1 for v in col if v >= act_thr) / n * 100
+        above_40  = sum(1 for v in col if v >= _GLOBAL_HOLD) / n * 100
+        concept_stats.append((concept, p50, p75, p90, p95, p99, act_thr, above_act, above_40))
 
+    act_label = ">ACT" if using_per_concept else f">{_GLOBAL_ACTIVATE}"
     print(f"{'Concept':<22}  {'p50':>5}  {'p75':>5}  {'p90':>5}  {'p95':>5}  {'p99':>5}"
-          f"  {'>0.65':>6}  {'>0.40':>6}")
-    print("─" * 80)
-    for concept, p50, p75, p90, p95, p99, a65, a40 in concept_stats:
+          f"  {'ACT':>5}  {act_label:>6}  {'>0.40':>6}")
+    print("-" * 84)
+    for concept, p50, p75, p90, p95, p99, act_thr, a_act, a40 in concept_stats:
         warn = ""
-        if a65 < 1.0:
-            warn = "  ← ACTIVATE threshold almost never reached"
-        elif a65 > 30:
-            warn = "  ← fires very frequently; consider raising ACTIVATE"
+        if a_act < 1.0:
+            warn = "  <- ACTIVATE threshold almost never reached"
+        elif a_act > 20:
+            warn = "  <- fires very frequently; consider raising ACTIVATE"
         print(f"{concept:<22}  {p50:5.3f}  {p75:5.3f}  {p90:5.3f}  {p95:5.3f}  {p99:5.3f}"
-              f"  {a65:6.1f}%  {a40:6.1f}%{warn}")
+              f"  {act_thr:5.2f}  {a_act:6.1f}%  {a40:6.1f}%{warn}")
 
-    print(f"\nCurrent thresholds: ACTIVATE=0.65  HOLD=0.40")
-    print("'>0.65' = fraction of positions where this concept would activate from cold.")
+    if using_per_concept:
+        print(f"\nPer-concept ACTIVATE loaded from {_ACTIVATE_THRESHOLDS_PATH}")
+        print(f"Global fallback: ACTIVATE={_GLOBAL_ACTIVATE}  HOLD={_GLOBAL_HOLD}")
+    else:
+        print(f"\nNo {_ACTIVATE_THRESHOLDS_PATH} found -- using global ACTIVATE={_GLOBAL_ACTIVATE}  HOLD={_GLOBAL_HOLD}")
+    print("'ACT' = per-concept ACTIVATE threshold  '>ACT' = fire rate from cold.")
     print("'>0.40' = fraction of positions where an active concept would remain active.")
-    print("\nIf most concepts show '<1%' in the '>0.65' column, ACTIVATE is too high.")
-    print("If most concepts show '>20%' in the '>0.65' column, ACTIVATE is too low.")
+    print("\nTarget: '>ACT' column should show 5-15% for most concepts.")
 
 
 if __name__ == "__main__":

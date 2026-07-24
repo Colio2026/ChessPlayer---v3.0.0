@@ -31,9 +31,12 @@ DEFAULT_CHECKPOINT = Path("data/classifier_best.pt")
 
 def inspect(ckpt_path: Path) -> None:
     device = torch.device("cpu")
-    model  = ChessConceptClassifier()
     ckpt   = torch.load(ckpt_path, map_location=device, weights_only=False)
-    model.load_state_dict(ckpt["state_dict"])
+    sd     = ckpt.get("state_dict", ckpt)
+    is_phase5 = any(k.startswith("nnue_proj")    for k in sd)
+    is_phase4 = any(k.startswith("spatial_proj") for k in sd) and not is_phase5
+    model  = ChessConceptClassifier(phase4=is_phase4, phase5=is_phase5)
+    model.load_state_dict(sd)
     model.eval()
 
     epoch    = ckpt.get("epoch", "?")
@@ -73,12 +76,12 @@ def inspect(ckpt_path: Path) -> None:
 
     # ── 2. Output layer norm per concept ─────────────────────────────────────
     print(f"\n{'=' * 65}")
-    print("OUTPUT LAYER  —  Weight L2-norm per concept")
+    print("OUTPUT LAYER -- Weight L2-norm per concept")
     print("(low norm = weak signal, model barely learned this concept)")
     print("=" * 65)
 
-    W_out = sd["net.8.weight"].float()   # [57, 256]
-    b_out = sd["net.8.bias"].float()     # [57]
+    W_out = sd["net.8.weight"].float()   # [NUM_CONCEPTS, hidden]
+    b_out = sd["net.8.bias"].float()     # [NUM_CONCEPTS]
 
     norms = W_out.norm(dim=1)            # one norm per concept
     order = norms.argsort()              # weakest first
@@ -89,7 +92,6 @@ def inspect(ckpt_path: Path) -> None:
     for idx in order:
         concept = CONCEPTS[idx]
         n       = norms[idx].item()
-        b       = b_out[idx].item()
         bar     = "#" * int(n / max_norm * 30)
         flag    = "  <- WEAK" if n < 0.3 * max_norm else ""
         print(f"  {concept:<23}  {n:>7.3f}  {bar}{flag}")

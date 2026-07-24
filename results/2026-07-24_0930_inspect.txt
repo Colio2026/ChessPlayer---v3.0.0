@@ -1,0 +1,116 @@
+﻿
+Checkpoint: data\classifier_best.pt
+Epoch 30  |  val_loss 0.6367
+
+=================================================================
+LAYER WEIGHT STATISTICS
+=================================================================
+Layer                                          Shape     Mean      Std    L2 norm
+-----------------------------------------------------------------
+  L1  Linear  weight                    (1024, 1737)   0.0478   0.3582     481.95
+  L1  Linear  bias                           (1024,)   0.0000   0.0051       0.16
+  L1  BatchNorm gamma                        (1024,)   0.3577   0.0497      11.56
+  L1  BatchNorm beta                         (1024,)  -0.3785   0.1172      12.68
+  L2  Linear  weight                     (512, 1024)  -0.1156   0.3530     268.96
+  L2  Linear  bias                            (512,)   0.0009   0.0069       0.16
+  L2  BatchNorm gamma                         (512,)   0.3631   0.0640       8.34
+  L2  BatchNorm beta                          (512,)  -0.4014   0.1396       9.62
+  Out Linear  weight                       (49, 512)   0.0175   0.3014      47.81
+  Out Linear  bias                             (49,)  -0.5261   0.1448       3.82
+
+=================================================================
+OUTPUT LAYER -- Weight L2-norm per concept
+(low norm = weak signal, model barely learned this concept)
+=================================================================
+
+Concept                       Norm  Bar
+-------------------------------------------------------
+  shouldering                3.457  ############
+  double_check               5.305  ##################
+  opposition                 5.324  ##################
+  pawn_endgame               5.356  ##################
+  zugzwang                   5.552  ###################
+  bishop_endgame             5.667  ###################
+  king_safety                5.699  ####################
+  drawn_position             5.791  ####################
+  mating_attack              5.921  ####################
+  king_activity              6.143  #####################
+  rook_seventh               6.243  #####################
+  clearance                  6.278  ######################
+  zwischenzug                6.288  ######################
+  deflection                 6.302  ######################
+  promotion                  6.341  ######################
+  fork                       6.346  ######################
+  pawn_storm                 6.360  ######################
+  rook_endgame               6.362  ######################
+  trapped_piece              6.388  ######################
+  knight_endgame             6.391  ######################
+  pin                        6.497  ######################
+  skewer                     6.521  ######################
+  space_advantage            6.542  #######################
+  queen_endgame              6.542  #######################
+  backward_pawn              6.647  #######################
+  piece_activity             6.773  #######################
+  doubled_pawn               6.949  ########################
+  outpost                    6.997  ########################
+  interference               7.016  ########################
+  back_rank                  7.031  ########################
+  bishop_pair                7.134  #########################
+  pawn_island                7.200  #########################
+  weak_square                7.202  #########################
+  good_bishop                7.217  #########################
+  prophylaxis                7.232  #########################
+  development_lead           7.270  #########################
+  bad_bishop                 7.540  ##########################
+  discovery                  7.570  ##########################
+  overloading                7.580  ##########################
+  initiative                 7.667  ##########################
+  pawn_majority              7.869  ###########################
+  open_file                  7.874  ###########################
+  battery                    7.947  ###########################
+  sacrifice                  7.971  ############################
+  passed_pawn                8.036  ############################
+  x_ray                      8.085  ############################
+  blockade                   8.086  ############################
+  isolated_pawn              8.322  #############################
+  pawn_chain                 8.525  ##############################
+
+=================================================================
+DEAD NEURON ESTIMATE  (BatchNorm gamma near zero)
+(gamma < 0.1 means the layer learned to suppress that neuron)
+=================================================================
+
+  Layer 1 BatchNorm  (1024 neurons)
+    gamma < 0.1 (dead)  :    0 / 1024  (0.0%)
+    gamma < 0.3 (weak)  :   75 / 1024  (7.3%)
+    gamma mean          : 0.3577
+    gamma std           : 0.0497
+
+  Layer 2 BatchNorm  (512 neurons)
+    gamma < 0.1 (dead)  :    0 / 512  (0.0%)
+    gamma < 0.3 (weak)  :   76 / 512  (14.8%)
+    gamma mean          : 0.3631
+    gamma std           : 0.0640
+
+=================================================================
+TUNING GUIDE
+=================================================================
+
+  PROBLEM                    LIKELY CAUSE              FIX
+  -------------------------------------------------------------
+  Concept norm is very low   Too few training examples  More data for that concept
+                             Keywords not matching      Expand keyword list
+                             Concept too abstract       Fold into a related concept
+
+  Many dead neurons (>20%)   Dropout too high           Lower dropout (0.3)
+                             LR too high initially      Reduce warmup LR
+
+  Weight std very large      Overfitting                Increase dropout / weight_decay
+  (L2 norm > 30 per neuron)                             More diverse training data
+
+  Weight std very small      Underfitting               Larger hidden layers
+  (L2 norm < 5 per neuron)   LR too low                 Increase LR or train longer
+
+  Concepts bleed into each   Keywords too broad         Tighten keywords
+  other (low precision)      Concepts overlap           Consider merging concepts
+

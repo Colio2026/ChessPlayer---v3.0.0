@@ -40,11 +40,11 @@ _MOB_OFFSET    = 989   # mobility per piece type per side
 
 INPUT_SIZE    = 1001
 MOVE_SIZE     = 128
-ALGO_SIZE     = 59          # concept bottleneck bits from algo detectors
+ALGO_SIZE     = 82          # v3 concept bottleneck bits — 36 per-color×2 + 10 global
 MAX_SEQ_LEN   = 60          # half-moves of game history stored per example
 GRU_HIDDEN    = 256         # GRU hidden size, appended to board features at head
-STATIC_SIZE   = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE   # 1188 — board+move+algo
-COMBINED_SIZE = STATIC_SIZE + GRU_HIDDEN             # 1444 — board features + GRU output
+STATIC_SIZE   = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE   # 1197 — board+move+algo
+COMBINED_SIZE = STATIC_SIZE + GRU_HIDDEN             # 1453 — board features + GRU output
 
 # ── Phase 4 constants (kept separate until full pipeline cutover) ─────────────
 # Switch active constants to these when parse → ingest → train pipeline re-runs.
@@ -58,14 +58,15 @@ COMBINED_SIZE = STATIC_SIZE + GRU_HIDDEN             # 1444 — board features +
 #   [142]    is_capture binary
 #   [143]    color      binary (white=1)
 #
-# ALGO_SIZE_V4    = 1811   (from tools/label_positions.ALGO_FEATURE_SIZE_V4)
-#   1663 (B1-B6) + 148 (B7 king_safety_vec) = 1811
-# STATIC_SIZE_V4  = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE_V4  = 2940
-# COMBINED_SIZE_V4 = STATIC_SIZE_V4 + GRU_HIDDEN           = 3196
+# ALGO_SIZE_V4    = 3779   (from tools/label_positions.ALGO_FEATURE_SIZE_V4)
+#   512 (B1-B5) + 1151 (B6) + 148 (B7 king_safety) + 680 (B8 tactical maps)
+#   + 1288 (B9 pawn/mating/interference/initiative/prophylaxis/sacrifice/clearance/deflection/zwischenzug) = 3779
+# STATIC_SIZE_V4  = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE_V4  = 4908
+# COMBINED_SIZE_V4 = STATIC_SIZE_V4 + GRU_HIDDEN           = 5164
 MOVE_SIZE_V4     = 144   # GRU per-step encoding only (history_rich_to_tensor)
-ALGO_SIZE_V4     = 1811
-STATIC_SIZE_V4   = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE_V4   # 2940 (MOVE_SIZE=128 unchanged — that's current-move, not GRU)
-COMBINED_SIZE_V4 = STATIC_SIZE_V4 + GRU_HIDDEN             # 3196
+ALGO_SIZE_V4     = 3779
+STATIC_SIZE_V4   = INPUT_SIZE + MOVE_SIZE + ALGO_SIZE_V4   # 4908 (MOVE_SIZE=128 unchanged — that's current-move, not GRU)
+COMBINED_SIZE_V4 = STATIC_SIZE_V4 + GRU_HIDDEN             # 5164
 
 # Stockfish classical eval features (pre-encoded at cache-build time via build_sf_cache.py)
 # 7 terms × 2 sides = 14 floats appended after v3_summary in x
@@ -73,44 +74,39 @@ COMBINED_SIZE_V4 = STATIC_SIZE_V4 + GRU_HIDDEN             # 3196
 # black indices 7-13: same order
 # "Passed" (white=[3], black=[10]) is the key signal for passed_pawn concept quality
 SF_SIZE  = 14
-SF_BREAK = STATIC_SIZE_V4 + ALGO_SIZE   # 2999 — offset where SF features start in x
+SF_BREAK = STATIC_SIZE_V4 + ALGO_SIZE   # 4990 — offset where SF features start in x
 
-# Phase 4-B: spatial bottleneck + Phase 3 summary + SF classical eval features
-# x layout: [board(1001), move(128), algo_v4(1811), v3_summary(59), sf(14)] = 3013
-# spatial(1811) → proj(256) | v3_summary(59) + sf(14) bypass bottleneck
+# Phase 4-B: spatial bottleneck + v3 bypass + SF classical eval features
+# x layout: [board(1001), move(128), algo_v4(3779), v3_summary(82), sf(14)] = 5004
+# spatial(3779) → proj(256) | v3_summary(82) + sf(14) bypass bottleneck
 PROJ_SIZE_V4       = 256
-COMBINED_SIZE_V4B  = INPUT_SIZE + MOVE_SIZE + PROJ_SIZE_V4 + ALGO_SIZE + SF_SIZE + GRU_HIDDEN  # 1001+128+256+59+14+256=1714
+COMBINED_SIZE_V4B  = INPUT_SIZE + MOVE_SIZE + PROJ_SIZE_V4 + ALGO_SIZE + SF_SIZE + GRU_HIDDEN  # 1001+128+256+82+14+256=1737
 
-# Phase 5: NNUE Feature Transformer replaces the 1811-dim algo_v4 spatial features.
+# Phase 5: NNUE Feature Transformer replaces the algo_v4 spatial features.
 # Frozen SF16 FT weights produce a 2048-dim perception vector (1024 per king perspective).
-# x layout: [nnue(2048), board_meta(13), move(128), sf_classical(14), v3_summary(59)] = 2262
+# x layout: [nnue(2048), board_meta(13), move(128), sf_classical(14), v3_summary(68)] = 2271
 # NNUE bottleneck: 2048 → 256 via learnable projection (mirrors Phase 4's spatial_proj).
-# This keeps the combined input to the head at 726 (vs 2518 without bottleneck),
-# preventing the 59 v3 signal dims from being drowned by 2048 raw NNUE dims.
 NNUE_SIZE         = 2048   # 2 × L1_HALF (white + black king perspectives)
 BOARD_META_SIZE   = 13     # side_to_move(1) + castling(4) + ep_file(8)
 STATIC_SIZE_V5    = NNUE_SIZE + BOARD_META_SIZE + MOVE_SIZE + SF_SIZE  # 2048+13+128+14=2203
-COMBINED_SIZE_V5  = STATIC_SIZE_V5 + ALGO_SIZE + GRU_HIDDEN            # 2203+59+256=2518
+COMBINED_SIZE_V5  = STATIC_SIZE_V5 + ALGO_SIZE + GRU_HIDDEN            # 2203+68+256=2527
 
 NNUE_PROJ_SIZE    = 256    # NNUE bottleneck output (same dim as Phase 4 spatial_proj)
-STATIC_SIZE_V5B   = NNUE_PROJ_SIZE + BOARD_META_SIZE + MOVE_SIZE + SF_SIZE + ALGO_SIZE  # 256+13+128+14+59=470
-COMBINED_SIZE_V5B = STATIC_SIZE_V5B + GRU_HIDDEN                                        # 470+256=726
+STATIC_SIZE_V5B   = NNUE_PROJ_SIZE + BOARD_META_SIZE + MOVE_SIZE + SF_SIZE + ALGO_SIZE  # 256+13+128+14+68=479
+COMBINED_SIZE_V5B = STATIC_SIZE_V5B + GRU_HIDDEN                                        # 479+256=735
 
 # Phase 5C: NNUE bottleneck + full board tensor (restores explicit piece placement).
-# x layout: [nnue(2048), board(1001), move(128), sf(14), v3(59)] = 3250 raw input
-# After nnue_proj(256): [proj(256), board(1001), move(128), sf(14), v3(59)] = 1458 static
-# Same combined size as Phase 4B (1714), so same head width applies.
-STATIC_SIZE_V5C   = NNUE_PROJ_SIZE + INPUT_SIZE + MOVE_SIZE + SF_SIZE + ALGO_SIZE  # 256+1001+128+14+59=1458
-COMBINED_SIZE_V5C = STATIC_SIZE_V5C + GRU_HIDDEN                                   # 1458+256=1714
+# x layout: [nnue(2048), board(1001), move(128), sf(14), v3(68)] = 3259 raw input
+# After nnue_proj(256): [proj(256), board(1001), move(128), sf(14), v3(68)] = 1467 static
+STATIC_SIZE_V5C   = NNUE_PROJ_SIZE + INPUT_SIZE + MOVE_SIZE + SF_SIZE + ALGO_SIZE  # 256+1001+128+14+68=1467
+COMBINED_SIZE_V5C = STATIC_SIZE_V5C + GRU_HIDDEN                                   # 1467+256=1723
 
 # Phase 5D: NNUE bottleneck + algo_v4 bottleneck + full board tensor.
-# Both evaluation signal (NNUE) and explicit concept features (algo_v4) feed the head.
-# x layout: [nnue(2048), board(1001), move(128), algo_v4(1811), sf(14), v3(59)] = 5061 raw
+# x layout: [nnue(2048), board(1001), move(128), algo_v4(2491), sf(14), v3(68)] = 5750 raw
 # After nnue_proj(256) + spatial_proj(256):
-#   [nnue_proj(256), board(1001), move(128), algo_proj(256), sf(14), v3(59)] = 1714 static
-# Combined 1970 = 1714 static + 256 GRU
-STATIC_SIZE_V5D   = NNUE_PROJ_SIZE + INPUT_SIZE + MOVE_SIZE + PROJ_SIZE_V4 + SF_SIZE + ALGO_SIZE  # 256+1001+128+256+14+59=1714
-COMBINED_SIZE_V5D = STATIC_SIZE_V5D + GRU_HIDDEN                                                   # 1714+256=1970
+#   [nnue_proj(256), board(1001), move(128), algo_proj(256), sf(14), v3(68)] = 1723 static
+STATIC_SIZE_V5D   = NNUE_PROJ_SIZE + INPUT_SIZE + MOVE_SIZE + PROJ_SIZE_V4 + SF_SIZE + ALGO_SIZE  # 256+1001+128+256+14+68=1723
+COMBINED_SIZE_V5D = STATIC_SIZE_V5D + GRU_HIDDEN                                                   # 1723+256=1979
 
 # Max attack squares per piece type (for normalising mobility to [0, 1])
 _MOB_MAX = [2, 8, 13, 14, 27, 8]  # P  N  B  R  Q  K

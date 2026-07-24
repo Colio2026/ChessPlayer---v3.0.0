@@ -140,7 +140,12 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "make room for",
         "clear the way", "clears the way",
         "remove from the diagonal",
-        "empty the square", "moves out of the way"
+        "empty the square", "moves out of the way",
+        "clear the path", "clears the path",
+        "open the diagonal for", "open the file for", "open the rank for",
+        "clear the rank", "clears the rank",
+        "get out of the way", "steps aside", "moves aside",
+        "move the piece away to",
     ],
     "deflection": [
         "deflect", "deflection", "lure away", "draw away",
@@ -151,6 +156,11 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "tempt",
         "bait",
         "draw the queen",
+        "deflects the defender", "drive away the defender", "force the defender away",
+        "draw the rook away", "draw the bishop away", "draw the knight away",
+        "forced away from", "driven away from",
+        "overloads the defender", "defender is deflected",
+        "guardian is lured", "protector is lured",
     ],
     "overloading": [
         "overloaded", "overloading", "too many duties", "cannot defend both",
@@ -165,15 +175,24 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "in between move", "interpolat",
         "plays in between",
         "intermediate check", "in-between check",
+        "before recapturing", "instead of recapturing", "prior to recapturing",
+        "postpone the recapture", "delays the recapture",
+        "first gives check", "first checks", "plays a check first",
+        "in-between check", "the in-between",
     ],
     "interference": [
         "interference", "interfer",
         "blocks the line",
-        "interposing",
+        "interposing", "interposes",
         "disconnect", "disconnects",
         "cutting off communication",
         "blocks the diagonal",
         "blocks the file",
+        "blocks the ray",
+        "cuts the connection", "severs the connection", "severs the line",
+        "interrupts the connection",
+        "cut the line", "sever the line",
+        "blocks the link", "cuts off the pieces",
     ],
     "back_rank": [
         "back rank", "back-rank", "backrank", "first rank mate", "back rank weakness",
@@ -192,6 +211,14 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "material is only temporary", "gives up material for",
         "long term investment",
         "sacrifices a pawn for",
+        "piece sac", "sacs a piece", "sac the piece",
+        "gambit spirit", "gambit-like",
+        "material is irrelevant", "material doesn't matter",
+        "compensation for the material", "compensation for the piece",
+        "offers a piece", "offers the exchange", "offers a pawn",
+        "sacrifices a piece", "sacrificing a piece",
+        "pawn offer", "pawn is offered",
+        "long-term concession", "material concession",
     ],
     "mating_attack": [
         "checkmate", "mating", "mating net", "mating attack",
@@ -460,12 +487,18 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
     "initiative": [
         "initiative", "seize the initiative", "holds the initiative",
         "keeps the initiative", "surrenders the initiative",
-        "dictates the pace", "forces the opponent to react",
+        "gaining the initiative", "seizes the initiative",
+        "dictates the pace", "dictates the play",
+        "forces the opponent to react",
         "keeps the pressure", "maintains the pressure",
         "opponent is on the defensive", "opponent cannot react",
+        "drives the game", "steering the game", "controls the pace",
         "tempo", "tempi", "gains a tempo", "wasted tempo",
         "gain of tempo", "loss of tempo", "loses a tempo",
         "tempo advantage", "with tempo",
+        "gain in tempo", "gaining tempo", "gains tempo",
+        "win a tempo", "wins a tempo", "winning a tempo",
+        "keeps the tempo", "holds the tempo",
         # folded from attacking_chances — dynamic/counterplay keywords
         "attacking chances", "attacking possibilities", "attacking play",
         "attacking position", "attack steadily", "press the attack",
@@ -473,6 +506,8 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "counterplay", "counter-play", "counter play",
         "counter chances", "counter-attack", "counter attack",
         "dynamic chances", "sufficient compensation", "good counterchances",
+        "dynamic play", "maintains the momentum", "keeps the momentum",
+        "opponent must react", "opponent is forced to",
     ],
     "zugzwang": [
         "zugzwang", "compulsion to move", "any move worsens",
@@ -493,6 +528,17 @@ CONCEPT_KEYWORDS: dict[str, list[str]] = {
         "stop the plan", "hinder the plan",
         "overprotect", "overprotection", "over-protect",
         "prevent the knight from", "prevent the bishop from",
+        "prophylactic thinking",
+        "preventive move", "prevention move",
+        "thwarts the plan", "thwart the plan",
+        "anticipates the opponent", "anticipate the opponent",
+        "prevents any counterplay", "prevents the counterplay",
+        "prevents the threat", "prevent the threat",
+        "stops the plan before",
+        "add extra protection", "adds extra protection",
+        "stops any counterplay",
+        "neutralizes the threat", "neutralize the threat",
+        "denies the opponent", "deny the opponent",
     ],
     "rook_endgame": [
         "rook endgame", "rook ending", "rook and pawn endgame",
@@ -707,7 +753,7 @@ def parse_file(pgn_path: Path, min_comment_len: int = 25, progress_every: int = 
                 })
 
                 comment = clean_comment(node.comment)
-                if len(comment) < min_comment_len:
+                if len(comment) < min_comment_len and not folder_concept:
                     continue
 
                 themes = _inject_folder_concept(extract_themes(comment), folder_concept)
@@ -861,6 +907,18 @@ def main() -> None:
                 idx = parts.index("lichess_studies")
                 if idx + 1 < len(parts):
                     candidate = parts[idx + 1]
+                    _FOLDER_ALIASES = {
+                        "attacking_chances": "initiative",
+                        "color_complex":     "bad_bishop",
+                        "coordination":      "piece_activity",
+                        "counterplay":       "initiative",
+                        "exchange_sacrifice":"sacrifice",
+                        "pawn_weakness":     "weak_square",
+                        "simplification":    "drawn_position",
+                        "square_control":    "weak_square",
+                        "tempo":             "initiative",
+                    }
+                    candidate = _FOLDER_ALIASES.get(candidate, candidate)
                     if candidate in CONCEPT_KEYWORDS:
                         folder_concept = candidate
 

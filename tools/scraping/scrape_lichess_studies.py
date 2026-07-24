@@ -119,10 +119,13 @@ CONCEPT_SEARCHES: dict[str, list[str]] = {
     "zwischenzug": [
         "zwischenzug", "in-between move", "intermediate move",
         "intermezzo chess", "zwischenzug tactic",
+        "before recapturing", "in-between check", "intermezzo tactic",
     ],
     "interference": [
         "interference tactic", "line interference", "piece interference",
         "blocking interposition", "interference sacrifice",
+        "cutting off the pieces", "severs the connection", "blocks the ray",
+        "interposes the piece",
     ],
     "back_rank": [
         "back rank mate", "back rank weakness", "first rank weakness",
@@ -276,14 +279,15 @@ CONCEPT_SEARCHES: dict[str, list[str]] = {
     "initiative": [
         "initiative chess", "seizing the initiative", "dynamic initiative",
         "keeping the initiative", "tempo initiative", "fighting for initiative",
+        "gain a tempo", "gaining tempo", "chess tempo play",
+        "dictating the game", "steering the game", "forcing the opponent to react",
+        "counterplay initiative", "dynamic compensation",
     ],
     "prophylaxis": [
         "prophylaxis", "prophylactic move", "preventive move",
         "prophylactic thinking", "stopping counterplay", "petrosian prophylaxis",
-    ],
-    "attacking_chances": [
-        "attacking chances", "kingside attack strategy", "build attack",
-        "attacking play positional", "creating attacking chances",
+        "anticipating the opponent", "preventive thinking", "thwarting the plan",
+        "prevention before attack", "neutralizing counterplay",
     ],
 }
 

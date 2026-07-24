@@ -3,33 +3,33 @@
 #
 # Architecture (Phase 3)
 # ---------------------------------
-#   Static input  1188  (1001 board + 128 move + 59 algo bits)
+#   Static input  1197  (1001 board + 128 move + 68 algo bits)
 #   GRU input      128  one-hot from-sq + to-sq per history step
-#   Combined      1444  = 1188 + 256 GRU hidden
+#   Combined      1453  = 1197 + 256 GRU hidden
 #   Layer1        1536  → BatchNorm → ReLU → Dropout(0.4)
 #   Layer2         768  → BatchNorm → ReLU → Dropout(0.2)
 #   Output          49  (raw logits)
 #
 # Architecture (Phase 4-B — phase4=True)
 # ------------------------------------------------------------------
-#   x layout     3013  [board(1001), move(128), algo_v4(1811), v3(59), sf(14)]
-#   Spatial proj 1811 → 256  Linear → ReLU → Dropout(0.3) compresses algo_v4
-#   v3 summary     59  bypasses bottleneck — direct actualized concept bits
+#   x layout     3702  [board(1001), move(128), algo_v4(2491), v3(68), sf(14)]
+#   Spatial proj 2491 → 256  Linear → ReLU → Dropout(0.3) compresses algo_v4
+#   v3 summary     68  bypasses bottleneck — direct actualized concept bits
 #   sf features    14  Stockfish classical eval per side; bypasses bottleneck
 #   GRU input     144  history_rich per-step (piece, capture, check, color)
-#   Combined     1714  = 1001 + 128 + 256 proj + 59 v3 + 14 sf + 256 GRU hidden
+#   Combined     1723  = 1001 + 128 + 256 proj + 68 v3 + 14 sf + 256 GRU hidden
 #   Layer1       1024  → BatchNorm → ReLU → Dropout(0.4)
 #   Layer2        512  → BatchNorm → ReLU → Dropout(0.2)
 #   Output         49  (raw logits)
 #
 # Architecture (Phase 5D — phase5=True)
 # ------------------------------------------------------------------
-#   x layout     5061  [nnue(2048), board(1001), move(128), algo_v4(1811), sf(14), v3(59)]
+#   x layout     5750  [nnue(2048), board(1001), move(128), algo_v4(2491), sf(14), v3(68)]
 #   NNUE proj   2048 → 256  Linear → ReLU → Dropout(0.3)  (SF evaluation signal)
-#   Algo proj   1811 → 256  Linear → ReLU → Dropout(0.3)  (explicit concept features)
-#   After proj   1714  [nnue_proj(256), board(1001), move(128), algo_proj(256), sf(14), v3(59)]
+#   Algo proj   2491 → 256  Linear → ReLU → Dropout(0.3)  (explicit concept features)
+#   After proj   1723  [nnue_proj(256), board(1001), move(128), algo_proj(256), sf(14), v3(68)]
 #   GRU input     144  history_rich per-step (same as Phase 4)
-#   Combined     1970  = 1714 static + 256 GRU hidden
+#   Combined     1979  = 1723 static + 256 GRU hidden
 #   Layer1       1024  → BatchNorm → ReLU → Dropout(0.4)
 #   Layer2        512  → BatchNorm → ReLU → Dropout(0.2)
 #   Output         49  (raw logits)
@@ -72,11 +72,11 @@ class ChessConceptClassifier(nn.Module):
             hidden1    = 1024
             hidden2    = 512
         elif phase4:
-            input_size = COMBINED_SIZE_V4B  # 1714 = 1458 projected + 256 GRU
+            input_size = COMBINED_SIZE_V4B  # 1723 = 1467 projected + 256 GRU
             hidden1    = 1024
             hidden2    = 512
         gru_in = MOVE_SIZE_V4 if (phase4 or phase5) else MOVE_SIZE
-        # Phase 4 + Phase 5D: compress algo_v4(1811) → 256 before the head.
+        # Phase 4 + Phase 5D: compress algo_v4(2491) → 256 before the head.
         self.spatial_proj = nn.Sequential(
             nn.Linear(ALGO_SIZE_V4, PROJ_SIZE_V4),
             nn.ReLU(),
@@ -129,9 +129,9 @@ class ChessConceptClassifier(nn.Module):
         no_hist = (seq_len == 0).float().unsqueeze(1).to(gru_out.device)
         gru_out = gru_out * (1.0 - no_hist)
 
-        # Phase 5D: two parallel bottlenecks — nnue_proj(2048→256) + spatial_proj(1811→256)
-        # x layout raw: [nnue(2048), board(1001), move(128), algo_v4(1811), sf(14), v3(59)]
-        # Phase 4:  spatial_proj only on algo_v4(1811) → 256
+        # Phase 5D: two parallel bottlenecks — nnue_proj(2048→256) + spatial_proj(2491→256)
+        # x layout raw: [nnue(2048), board(1001), move(128), algo_v4(2491), sf(14), v3(68)]
+        # Phase 4:  spatial_proj only on algo_v4(2491) → 256
         # Phase 3:  x passes through unchanged
         if self._phase5:
             _bm  = NNUE_SIZE + INPUT_SIZE + MOVE_SIZE              # board+move end = 3177
@@ -143,8 +143,8 @@ class ChessConceptClassifier(nn.Module):
             x = torch.cat([nnue_proj, board_move, algo_proj, sf_v3], dim=1)  # (B, 1714)
         elif self.spatial_proj is not None:
             board_move = x[:, :INPUT_SIZE + MOVE_SIZE]                     # (B, 1129)
-            spatial    = x[:, INPUT_SIZE + MOVE_SIZE:STATIC_SIZE_V4]       # (B, 1811)
-            v3_summary = x[:, STATIC_SIZE_V4:SF_BREAK]                     # (B,   59)
+            spatial    = x[:, INPUT_SIZE + MOVE_SIZE:STATIC_SIZE_V4]       # (B, 2491)
+            v3_summary = x[:, STATIC_SIZE_V4:SF_BREAK]                     # (B,   68)
             sf_t       = x[:, SF_BREAK:]                                    # (B,   14)
             x = torch.cat([board_move, self.spatial_proj(spatial), v3_summary, sf_t], dim=1)
 

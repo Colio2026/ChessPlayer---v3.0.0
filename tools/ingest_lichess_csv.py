@@ -67,7 +67,7 @@ LICHESS_TAG_MAP: dict[str, str] = {
     "decoy":              "deflection",
     "interference":       "interference",
     "overloading":        "overloading",
-    "capturingDefender":  "overloading",
+    "capturingDefender":  "deflection",
     "sacrifice":          "sacrifice",
     "trappedPiece":       "trapped_piece",
     "intermezzo":         "zwischenzug",

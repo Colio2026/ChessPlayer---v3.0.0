@@ -225,7 +225,7 @@ class ChessConceptDataset(Dataset):
             move_t = move_to_tensor(ex.get("move_uci", ""))
             ac_idx = ex.get("_ac")
 
-            # V3 summary (ALGO_SIZE = 59-dim): binary concept bits (all phases)
+            # V3 summary (ALGO_SIZE = 68-dim): binary concept bits (all phases)
             v3_cache = self._get_v3_cache()
             if v3_cache is not None and ac_idx is not None:
                 v3_t = torch.from_numpy(np.array(v3_cache[ac_idx], dtype=np.float32))
@@ -247,7 +247,7 @@ class ChessConceptDataset(Dataset):
                 board_t = fen_to_tensor(fen)
 
             if self._phase5:
-                # Phase 5D: NNUE (2048) + board (1001) + move (128) + algo_v4 (1811) + sf (14) + v3 (59)
+                # Phase 5D: NNUE (2048) + board (1001) + move (128) + algo_v4 (2491) + sf (14) + v3 (68)
                 nnue_cache = self._get_nnue_cache()
                 if nnue_cache is not None and ac_idx is not None:
                     nnue_t = torch.from_numpy(np.array(nnue_cache[ac_idx], dtype=np.float32))
@@ -260,7 +260,7 @@ class ChessConceptDataset(Dataset):
                     algo_t = torch.zeros(ALGO_SIZE_V4, dtype=torch.float32)
                 x = torch.cat([nnue_t, board_t, move_t, algo_t, sf_t, v3_t])
             elif self._phase4:
-                # Phase 4-B: board (1001) + move (128) + algo_v4 (1811) + v3 (59) + sf (14)
+                # Phase 4-B: board (1001) + move (128) + algo_v4 (2491) + v3 (68) + sf (14)
                 algo_cache = self._get_algo_cache()
                 if algo_cache is not None and ac_idx is not None:
                     algo_t = torch.from_numpy(np.array(algo_cache[ac_idx], dtype=np.float32))
@@ -270,7 +270,7 @@ class ChessConceptDataset(Dataset):
                              else torch.zeros(ALGO_SIZE_V4, dtype=torch.float32)
                 x = torch.cat([board_t, move_t, algo_t, v3_t, sf_t])
             else:
-                # Phase 3: board (1001) + move (128) + v3 (59) = STATIC_SIZE (1188)
+                # Phase 3: board (1001) + move (128) + v3 (68) = STATIC_SIZE (1197)
                 x = torch.cat([board_t, move_t, v3_t])
 
         except Exception:

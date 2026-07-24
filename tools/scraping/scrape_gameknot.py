@@ -168,51 +168,59 @@ def _try_network_intercept(page: Page, game_url: str) -> str | None:
 
 def _click_text(page: Page, texts: list[str], timeout: int = UI_TIMEOUT) -> bool:
     """
-    Try to click the first visible element whose inner text matches any of
-    the given strings (case-insensitive, partial match).
-    Returns True on success.
+    Click the first visible element matching any of the given strings
+    (case-insensitive, partial match).  Searches the main page first,
+    then every child frame — gameknot's interactive viewer loads inside
+    an iframe so frame-aware search is required for Save/Export / Get PGN.
     """
-    for text in texts:
-        try:
-            # getByText is the most robust selector for text-matched buttons
-            loc = page.get_by_text(re.compile(re.escape(text), re.IGNORECASE)).first
-            loc.wait_for(state="visible", timeout=timeout)
-            loc.click(timeout=timeout)
-            return True
-        except PWTimeout:
-            continue
-        except Exception:
-            continue
+    # Collect main frame + all child frames to search
+    frames = [page.main_frame] + [f for f in page.frames if f != page.main_frame]
+    frame_timeout = min(timeout, 3_000)   # shorter per-frame timeout for non-main frames
+
+    for fi, frame in enumerate(frames):
+        t = timeout if fi == 0 else frame_timeout
+        for text in texts:
+            try:
+                loc = frame.get_by_text(re.compile(re.escape(text), re.IGNORECASE)).first
+                loc.wait_for(state="visible", timeout=t)
+                loc.click(timeout=t)
+                return True
+            except Exception:
+                continue
     return False
 
 
 def _extract_pgn_from_dom(page: Page) -> str | None:
     """
     After the Get PGN button is clicked, look for the PGN text in the page.
-    Tries: <textarea>, <pre>, any element whose text starts with '[Event'.
+    Searches the main page and all child frames (the PGN textarea appears
+    inside the interactive viewer iframe on gameknot).
     """
-    # 1. Textarea (most common pattern for "copy this text" UIs)
-    for sel in ["textarea", "pre", ".pgn-text", "#pgn-text", "[class*='pgn']"]:
+    frames = [page.main_frame] + [f for f in page.frames if f != page.main_frame]
+
+    for frame in frames:
+        # 1. Known selectors for PGN text areas
+        for sel in ["textarea", "pre", ".pgn-text", "#pgn-text", "[class*='pgn']"]:
+            try:
+                el = frame.locator(sel).first
+                el.wait_for(state="visible", timeout=3_000)
+                text = el.input_value() if sel == "textarea" else el.inner_text()
+                if looks_like_pgn(text):
+                    return text.strip()
+            except Exception:
+                pass
+
+        # 2. Full DOM scan of the frame as fallback
         try:
-            el = page.locator(sel).first
-            el.wait_for(state="visible", timeout=4_000)
-            text = el.input_value() if sel == "textarea" else el.inner_text()
-            if looks_like_pgn(text):
-                return text.strip()
+            for el in frame.query_selector_all("*"):
+                try:
+                    txt = el.inner_text()
+                    if looks_like_pgn(txt) and len(txt) > 100:
+                        return txt.strip()
+                except Exception:
+                    continue
         except Exception:
             pass
-
-    # 2. Scan every visible text block for PGN content
-    try:
-        for el in page.query_selector_all("*"):
-            try:
-                txt = el.inner_text()
-                if looks_like_pgn(txt) and len(txt) > 100:
-                    return txt.strip()
-            except Exception:
-                continue
-    except Exception:
-        pass
 
     return None
 
@@ -220,8 +228,14 @@ def _extract_pgn_from_dom(page: Page) -> str | None:
 def get_pgn(page: Page, game: dict) -> str | None:
     """
     Full extraction pipeline for one game:
-        1. Network intercept (catches background XHR PGN responses)
-        2. UI automation: Interactive → Save/Export → Get PGN → extract text
+        1. Network intercept (catches background XHR PGN responses on page load)
+        2. UI automation: Interactive → Save/Export ▼ → Get PGN → extract text
+
+    GameKnot page flow (confirmed from screenshots):
+        - Default view: paginated annotated game (static HTML, multiple pages)
+        - "Interactive" link opens a JS board viewer — full page re-render, takes 2-4s
+        - "Save/Export ▼" is a dropdown at the bottom of the interactive viewer
+        - "Get PGN" appears in the dropdown menu
     """
     # ── Pass 1: network intercept ─────────────────────────────────────────────
     pgn = _try_network_intercept(page, game["url"])
@@ -229,36 +243,46 @@ def get_pgn(page: Page, game: dict) -> str | None:
         return pgn
 
     # ── Pass 2: UI automation ─────────────────────────────────────────────────
-    # We're already on the game page from pass 1.  Now click through the UI.
+    # Page is already loaded from pass 1 (the static annotated view).
 
-    # Step A: click "Interactive" (various label spellings seen on chess sites)
-    clicked = _click_text(page, ["Interactive", "interactive", "Play through"])
+    # Step A: click "Interactive" — this re-renders the page as a JS board viewer.
+    # Wait for the link to appear; gameknot sometimes loads it slightly after the
+    # rest of the static content.
+    clicked = _click_text(page, ["Interactive"], timeout=8_000)
     if not clicked:
         print("    ✗  Could not find 'Interactive' button")
         return None
-    page.wait_for_timeout(800)
 
-    # Step B: click "Save/Export" or "Export" or "Save"
-    clicked = _click_text(page, ["Save/Export", "Save / Export", "Export", "Save"])
+    # Wait for the interactive board to fully render.  It triggers a JS-driven
+    # page re-render (not a full navigation), so wait for networkidle to settle.
+    try:
+        page.wait_for_load_state("networkidle", timeout=10_000)
+    except PWTimeout:
+        pass  # continue anyway — the board may still be usable
+    page.wait_for_timeout(1_500)   # extra buffer for JS to finish painting the UI
+
+    # Step B: click "Save/Export" — it's a dropdown (▼ arrow) at the bottom of
+    # the interactive viewer.  Clicking it expands the menu.
+    clicked = _click_text(page, ["Save/Export", "Save / Export", "Export", "Save"],
+                          timeout=6_000)
     if not clicked:
         print("    ✗  Could not find 'Save/Export' button")
         return None
     page.wait_for_timeout(600)
 
-    # Step C: click "Get PGN" (sometimes also labelled "PGN", "Download PGN")
-    clicked = _click_text(page, ["Get PGN", "Get pgn", "PGN", "Download PGN"])
+    # Step C: click "Get PGN" from the expanded dropdown menu.
+    clicked = _click_text(page, ["Get PGN", "Get pgn", "PGN", "Download PGN"],
+                          timeout=4_000)
     if not clicked:
         print("    ✗  Could not find 'Get PGN' button")
         return None
     page.wait_for_timeout(800)
 
-    # Step D: extract the displayed PGN
+    # Step D: extract the displayed PGN text from the DOM.
     pgn = _extract_pgn_from_dom(page)
     if pgn:
         return pgn
 
-    # Step E: check if a new network response fired during the click sequence
-    #         (some sites serve PGN via fetch after a button click)
     print("    ✗  PGN not found in DOM after UI sequence")
     return None
 

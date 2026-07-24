@@ -1,0 +1,420 @@
+Device: cuda
+Loaded checkpoint: epoch=30  val_loss=0.6367  (Phase 4)
+
+Calibrating per-class thresholds on val split …
+Loading dataset from data\training_raw.jsonl ... 1,900,365 labeled examples found.
+  val: 190,036 examples  (train 1,520,292 / val 190,036 / test 190,037)
+  Algo cache:  algo_cache.npy  (lazy mmap, 32.42 GB)
+  V3 cache:    v3_cache.npy  (lazy mmap, 704 MB)
+  SF cache:    sf_cache.npy  (lazy mmap, 120 MB)
+  No NNUE cache — NNUE features inactive (run build_nnue_cache.py).
+  Board cache: board_cache.npy  (lazy mmap, 8.59 GB)
+
+Concept                 Threshold  Val positives
+────────────────────────────────────────────────
+pin                          0.85           8297
+fork                         0.85           6667
+skewer                       0.90           5820
+discovery                    0.85          10828
+x_ray                        0.80          10158
+double_check                 0.90           3844
+clearance                    0.80           8793
+deflection                   0.80           7126
+overloading                  0.80           9114
+zwischenzug                  0.80           7173
+interference                 0.75           9864
+back_rank                    0.95           7737
+sacrifice                    0.80          18970
+mating_attack                0.85           7991
+trapped_piece                0.85           7794
+outpost                      0.85          10058
+blockade                     0.80          11442
+bad_bishop                   0.75          12141
+good_bishop                  0.80          11125
+bishop_pair                  0.85          14031
+piece_activity               0.90           9432
+battery                      0.80          11767
+rook_seventh                 0.95           6035
+passed_pawn                  0.80           8752
+promotion                    0.95           7230
+isolated_pawn                0.80          13355
+backward_pawn                0.85           9048
+doubled_pawn                 0.90          11152
+pawn_majority                0.75          10427
+pawn_chain                   0.80          10655
+pawn_storm                   0.90           8458
+pawn_island                  0.80           9967
+king_safety                  0.90           7358
+king_activity                0.90           7202
+shouldering                  0.80            539
+opposition                   0.90           7681
+zugzwang                     0.90           7335
+rook_endgame                 0.90          11511
+pawn_endgame                 0.95           8216
+bishop_endgame               0.90           9576
+knight_endgame               0.95           6428
+queen_endgame                0.95           8892
+drawn_position               0.95           3124
+weak_square                  0.80          18177
+open_file                    0.75          12545
+space_advantage              0.95           6469
+development_lead             0.95           6302
+initiative                   0.85          15013
+prophylaxis                  0.80          12464
+Thresholds saved → data\thresholds.json
+Loading dataset from data\training_raw.jsonl ... 1,900,365 labeled examples found.
+  test: 190,037 examples  (train 1,520,292 / val 190,036 / test 190,037)
+  Algo cache:  algo_cache.npy  (lazy mmap, 32.42 GB)
+  V3 cache:    v3_cache.npy  (lazy mmap, 704 MB)
+  SF cache:    sf_cache.npy  (lazy mmap, 120 MB)
+  No NNUE cache — NNUE features inactive (run build_nnue_cache.py).
+  Board cache: board_cache.npy  (lazy mmap, 8.59 GB)
+
+── Dataset Metrics  (49/49 calibrated) ──────────────────────────────
+  Micro F1 : 0.6601
+  Macro F1 : 0.6768  (over 49 classes with support)
+
+Concept                  Prec    Rec     F1  Support  Thresh
+──────────────────────────────────────────────────────────────
+queen_endgame           0.953  0.952  0.952     8945    0.95  ███████████████████
+knight_endgame          0.933  0.950  0.941     6615    0.95  ██████████████████
+development_lead        0.971  0.907  0.938     6120    0.95  ██████████████████
+space_advantage         0.936  0.903  0.919     6424    0.95  ██████████████████
+rook_endgame            0.889  0.933  0.911    11484    0.90  ██████████████████
+bishop_endgame          0.819  0.940  0.875     9598    0.90  █████████████████
+rook_seventh            0.886  0.786  0.833     5966    0.95  ████████████████
+bishop_pair             0.767  0.891  0.824    14174    0.85  ████████████████
+drawn_position          0.924  0.726  0.813     3285    0.95  ████████████████
+skewer                  0.841  0.777  0.808     5857    0.90  ████████████████
+back_rank               0.836  0.737  0.783     7783    0.95  ███████████████
+pawn_storm              0.780  0.773  0.777     8590    0.90  ███████████████
+opposition              0.701  0.869  0.776     7704    0.90  ███████████████
+doubled_pawn            0.738  0.790  0.763    11245    0.90  ███████████████
+pawn_endgame            0.718  0.806  0.759     8071    0.95  ███████████████
+zugzwang                0.707  0.783  0.743     7415    0.90  ██████████████
+promotion               0.862  0.645  0.738     7122    0.95  ██████████████
+sacrifice               0.731  0.714  0.723    19206    0.80  ██████████████
+piece_activity          0.703  0.735  0.719     9165    0.90  ██████████████
+double_check            0.749  0.656  0.700     3899    0.90  █████████████
+zwischenzug             0.616  0.807  0.699     6892    0.80  █████████████
+clearance               0.600  0.821  0.694     8976    0.80  █████████████
+initiative              0.606  0.710  0.654    14818    0.85  █████████████
+good_bishop             0.554  0.787  0.650    11332    0.80  ████████████
+king_safety             0.623  0.676  0.649     7599    0.90  ████████████
+battery                 0.584  0.729  0.648    11888    0.80  ████████████
+bad_bishop              0.549  0.784  0.646    12385    0.75  ████████████
+discovery               0.581  0.695  0.633    11124    0.85  ████████████
+outpost                 0.530  0.740  0.618    10015    0.85  ████████████
+pin                     0.571  0.669  0.616     8425    0.85  ████████████
+blockade                0.565  0.677  0.616    11679    0.80  ████████████
+backward_pawn           0.565  0.673  0.614     9101    0.85  ████████████
+king_activity           0.644  0.558  0.598     7082    0.90  ███████████
+deflection              0.542  0.655  0.593     7342    0.80  ███████████
+open_file               0.510  0.690  0.586    12393    0.75  ███████████
+prophylaxis             0.517  0.672  0.584    12676    0.80  ███████████
+fork                    0.583  0.563  0.573     6681    0.85  ███████████
+isolated_pawn           0.530  0.603  0.564    13420    0.80  ███████████
+overloading             0.488  0.666  0.563     9352    0.80  ███████████
+shouldering             0.503  0.639  0.563      579    0.80  ███████████
+weak_square             0.537  0.586  0.560    18286    0.80  ███████████
+interference            0.428  0.661  0.520    10057    0.75  ██████████
+passed_pawn             0.462  0.591  0.519     8841    0.80  ██████████
+trapped_piece           0.442  0.617  0.515     7954    0.85  ██████████
+pawn_majority           0.428  0.633  0.511    10519    0.75  ██████████
+pawn_chain              0.420  0.578  0.487    10868    0.80  █████████
+x_ray                   0.400  0.596  0.479    10412    0.80  █████████
+mating_attack           0.443  0.473  0.457     7909    0.85  █████████
+pawn_island             0.391  0.549  0.457    10065    0.80  █████████
+
+── Spot Checks ────────────────────────────────────────────────────────
+
+  PASS — Pin — Bb5 pins Nc6 to king
+       expected : ['pin']
+       missing  : —
+       top preds: development_lead(0.97), pin(0.85), piece_activity(0.63), mating_attack(0.58), open_file(0.56)
+
+  PASS — Fork — Nc7 forks Ra8 and Ke8
+       context  : Complex endgame
+       expected : ['fork']
+       missing  : —
+       top preds: fork(0.87), mating_attack(0.80), pin(0.74), queen_endgame(0.72), outpost(0.68)
+
+  MISS — Skewer — Ba1 skewers Kd4 to Qg7
+       context  : Queen endgame
+       expected : ['skewer']
+       missing  : ['skewer']
+       top preds: pin(0.88), discovery(0.77), skewer(0.74), zugzwang(0.73), back_rank(0.63)
+
+  PASS — Discovery — moving Be3 reveals Re1 check
+       context  : Complex endgame
+       expected : ['discovery']
+       missing  : —
+       top preds: discovery(0.90), pin(0.88), mating_attack(0.73), double_check(0.72), back_rank(0.62)
+
+  MISS — X-ray — Ra1 defends through Ra4 to Ra8
+       context  : Rook endgame
+       expected : ['x_ray']
+       missing  : ['x_ray']
+       top preds: rook_endgame(0.92), skewer(0.80), pin(0.70), back_rank(0.69), opposition(0.64)
+
+  MISS — Double check — Ne6-c7 reveals rook check
+       context  : Complex endgame
+       expected : ['double_check']
+       missing  : ['double_check']
+       top preds: discovery(0.90), mating_attack(0.89), double_check(0.84), outpost(0.67), back_rank(0.65)
+
+  MISS — Clearance — rook vacates rank for queen
+       expected : ['clearance']
+       missing  : ['clearance']
+       top preds: rook_endgame(0.88), mating_attack(0.72), back_rank(0.70), open_file(0.63), piece_activity(0.62)
+
+  MISS — Deflection — luring queen away from defense
+       expected : ['deflection']
+       missing  : ['deflection']
+       top preds: mating_attack(0.84), trapped_piece(0.66), pin(0.65), weak_square(0.65), good_bishop(0.61)
+
+  MISS — Overloading — Re6 defends two targets
+       expected : ['overloading']
+       missing  : ['overloading']
+       top preds: back_rank(0.96), rook_endgame(0.88), mating_attack(0.78), doubled_pawn(0.67), pin(0.55)
+
+  MISS — Zwischenzug — in-between check before recapture
+       expected : ['zwischenzug']
+       missing  : ['zwischenzug']
+       top preds: discovery(0.72), clearance(0.68), bishop_pair(0.68), pin(0.68), overloading(0.66)
+
+  MISS — Interference — piece cuts rook's defense of key square
+       expected : ['interference']
+       missing  : ['interference']
+       top preds: discovery(0.84), pin(0.80), clearance(0.73), initiative(0.68), mating_attack(0.62)
+
+  PASS — Back rank — king has no luft, rook threatens
+       context  : Rook endgame
+       expected : ['back_rank']
+       missing  : —
+       top preds: back_rank(0.98), mating_attack(0.91), king_safety(0.62), trapped_piece(0.57), pin(0.56)
+
+  MISS — Sacrifice — exchange sac for positional compensation
+       expected : ['sacrifice']
+       missing  : ['sacrifice']
+       top preds: deflection(0.89), discovery(0.86), overloading(0.79), clearance(0.77), initiative(0.73)
+
+  MISS — Mating attack — smothered mate in one
+       expected : ['mating_attack']
+       missing  : ['mating_attack']
+       top preds: mating_attack(0.81), trapped_piece(0.81), back_rank(0.80), pin(0.75), zwischenzug(0.63)
+
+  MISS — Trapped piece — bishop on h6 with no escape
+       expected : ['trapped_piece']
+       missing  : ['trapped_piece']
+       top preds: pin(0.76), discovery(0.71), trapped_piece(0.70), bishop_pair(0.70), clearance(0.66)
+
+  MISS — Outpost — knight on d5 cannot be dislodged
+       expected : ['outpost']
+       missing  : ['outpost']
+       top preds: piece_activity(0.79), mating_attack(0.69), pawn_majority(0.65), pin(0.60), trapped_piece(0.59)
+
+  MISS — Blockade — knight sits in front of passed pawn
+       context  : Knight endgame
+       expected : ['blockade']
+       missing  : ['blockade']
+       top preds: knight_endgame(0.97), pawn_endgame(0.77), opposition(0.71), promotion(0.65), pin(0.58)
+
+  MISS — Bad bishop — bishop imprisoned by own pawns
+       expected : ['bad_bishop']
+       missing  : ['bad_bishop']
+       top preds: drawn_position(0.99), bishop_endgame(0.97), space_advantage(0.47), opposition(0.47), outpost(0.46)
+
+  MISS — Good bishop — pawns on opposite color, diagonal open
+       expected : ['good_bishop']
+       missing  : ['good_bishop']
+       top preds: bishop_endgame(0.98), piece_activity(0.61), weak_square(0.57), pawn_chain(0.56), outpost(0.56)
+
+  MISS — Bishop pair — both bishops vs knight and bishop
+       expected : ['bishop_pair']
+       missing  : ['bishop_pair']
+       top preds: mating_attack(0.84), initiative(0.68), bishop_pair(0.65), blockade(0.64), trapped_piece(0.62)
+
+  MISS — Piece activity — centralized knights dominate undeveloped side
+       expected : ['piece_activity']
+       missing  : ['piece_activity']
+       top preds: development_lead(0.99), trapped_piece(0.63), mating_attack(0.60), pin(0.59), zwischenzug(0.57)
+
+  MISS — Battery — doubled rooks on open file
+       expected : ['battery']
+       missing  : ['battery']
+       top preds: rook_endgame(0.91), mating_attack(0.88), back_rank(0.85), piece_activity(0.77), open_file(0.68)
+
+  MISS — Rook on seventh rank
+       context  : Rook endgame
+       expected : ['rook_seventh']
+       missing  : ['rook_seventh']
+       top preds: back_rank(0.94), mating_attack(0.88), pin(0.75), rook_endgame(0.68), trapped_piece(0.58)
+
+  MISS — Passed pawn — white passer on d6
+       context  : King and pawn(s)
+       expected : ['passed_pawn']
+       missing  : ['passed_pawn']
+       top preds: opposition(0.94), promotion(0.94), pawn_endgame(0.93), shouldering(0.65), pin(0.59)
+
+  PASS — Promotion — pawn on 7th rank
+       context  : King and pawn(s)
+       expected : ['promotion']
+       missing  : —
+       top preds: pawn_endgame(0.97), promotion(0.93), opposition(0.70), passed_pawn(0.69), drawn_position(0.61)
+
+  MISS — Isolated pawn — IQP on d4
+       expected : ['isolated_pawn', 'open_file']
+       missing  : ['isolated_pawn', 'open_file']
+       top preds: isolated_pawn(0.79), backward_pawn(0.77), discovery(0.68), pawn_majority(0.63), blockade(0.62)
+
+  MISS — Backward pawn — weak d6 pawn
+       expected : ['backward_pawn']
+       missing  : ['backward_pawn']
+       top preds: piece_activity(0.80), mating_attack(0.72), weak_square(0.70), space_advantage(0.65), blockade(0.61)
+
+  MISS — Doubled pawns — c-pawns doubled
+       expected : ['doubled_pawn']
+       missing  : ['doubled_pawn']
+       top preds: weak_square(0.73), pin(0.67), outpost(0.67), space_advantage(0.66), blockade(0.62)
+
+  MISS — Pawn majority — queenside majority vs minority
+       context  : King and pawn(s)
+       expected : ['pawn_majority']
+       missing  : ['pawn_majority']
+       top preds: promotion(0.92), opposition(0.90), pawn_endgame(0.88), passed_pawn(0.75), shouldering(0.66)
+
+  MISS — Pawn chain — locked chain, attack the base
+       expected : ['pawn_chain']
+       missing  : ['pawn_chain']
+       top preds: space_advantage(0.70), bishop_pair(0.68), weak_square(0.66), pawn_storm(0.65), pin(0.64)
+
+  MISS — Pawn storm — kingside pawns advancing on castled king
+       expected : ['pawn_storm']
+       missing  : ['pawn_storm']
+       top preds: piece_activity(0.81), bishop_pair(0.74), pin(0.72), weak_square(0.65), trapped_piece(0.63)
+
+  MISS — Pawn island — three isolated pawn groups
+       context  : King and pawn(s)
+       expected : ['pawn_island']
+       missing  : ['pawn_island']
+       top preds: pawn_endgame(0.92), passed_pawn(0.79), opposition(0.68), promotion(0.65), pin(0.63)
+
+  MISS — King safety — castled king stripped of pawn cover
+       expected : ['king_safety']
+       missing  : ['king_safety']
+       top preds: outpost(0.89), open_file(0.86), piece_activity(0.72), pin(0.68), trapped_piece(0.61)
+
+  MISS — King activity — centralized king in endgame
+       context  : King and pawn(s)
+       expected : ['king_activity']
+       missing  : ['king_activity']
+       top preds: zugzwang(0.97), pawn_endgame(0.93), opposition(0.77), king_activity(0.62), shouldering(0.51)
+
+  MISS — Shouldering — king blocks opposing king from key file
+       context  : King and pawn(s)
+       expected : ['shouldering']
+       missing  : ['shouldering']
+       top preds: pawn_endgame(0.94), opposition(0.92), promotion(0.83), shouldering(0.79), passed_pawn(0.76)
+
+  PASS — Opposition — kings in direct opposition
+       context  : King and pawn(s)
+       expected : ['opposition']
+       missing  : —
+       top preds: pawn_endgame(0.92), opposition(0.91), zugzwang(0.86), king_activity(0.68), passed_pawn(0.66)
+
+  MISS — Zugzwang — whoever moves loses
+       context  : King and pawn(s)
+       expected : ['zugzwang', 'opposition']
+       missing  : ['zugzwang']
+       top preds: pawn_endgame(0.94), opposition(0.93), zugzwang(0.84), king_activity(0.78), passed_pawn(0.74)
+
+  MISS — Rook endgame — Lucena position
+       context  : Rook endgame
+       expected : ['rook_endgame', 'passed_pawn', 'promotion']
+       missing  : ['passed_pawn', 'promotion']
+       top preds: rook_endgame(0.99), opposition(0.89), promotion(0.88), back_rank(0.66), bishop_endgame(0.65)
+
+  PASS — Pawn endgame — king and pawn
+       context  : King and pawn(s)
+       expected : ['pawn_endgame']
+       missing  : —
+       top preds: zugzwang(0.95), pawn_endgame(0.92), opposition(0.86), king_activity(0.69), pin(0.50)
+
+  PASS — Bishop endgame — opposite colored bishops
+       context  : Same-colour bishops
+       expected : ['bishop_endgame']
+       missing  : —
+       top preds: bishop_endgame(0.94), mating_attack(0.66), pin(0.64), opposition(0.63), zugzwang(0.54)
+
+  PASS — Knight endgame — knights and pawns
+       context  : Knight endgame
+       expected : ['knight_endgame']
+       missing  : —
+       top preds: knight_endgame(0.99), pin(0.59), fork(0.57), isolated_pawn(0.55), outpost(0.55)
+
+  PASS — Queen endgame — queens and pawns
+       context  : Queen endgame
+       expected : ['queen_endgame']
+       missing  : —
+       top preds: queen_endgame(0.92), pin(0.80), zugzwang(0.74), opposition(0.62), skewer(0.62)
+
+  MISS — Drawn position — insufficient material (K+B vs K)
+       context  : Bishop endgame
+       expected : ['drawn_position']
+       missing  : ['drawn_position']
+       top preds: opposition(0.94), bishop_endgame(0.78), pin(0.68), mating_attack(0.67), pawn_endgame(0.55)
+
+  MISS — Opening — Ruy Lopez Berlin (C65)
+       context  : C65 Ruy Lopez, Berlin defence
+       expected : ['development_lead', 'piece_activity']
+       missing  : ['development_lead', 'piece_activity']
+       top preds: mating_attack(0.74), blockade(0.72), bishop_pair(0.72), initiative(0.70), trapped_piece(0.65)
+
+  MISS — Opening — Nimzo-Indian classical (E32)
+       context  : E32 Nimzo-Indian, classical variation
+       expected : ['bishop_pair', 'development_lead']
+       missing  : ['development_lead']
+       top preds: pin(0.95), bishop_pair(0.88), pawn_storm(0.86), bad_bishop(0.84), good_bishop(0.83)
+
+  MISS — Opening — Sicilian Najdorf (B90)
+       context  : B90 Sicilian, Najdorf
+       expected : ['space_advantage', 'development_lead']
+       missing  : ['space_advantage', 'development_lead']
+       top preds: discovery(0.86), pin(0.78), clearance(0.77), bishop_pair(0.67), weak_square(0.64)
+
+  MISS — Opening — QGD Slav exchange (D10)
+       context  : D10 QGD Slav defence, Alekhine variation
+       expected : ['isolated_pawn', 'open_file']
+       missing  : ['isolated_pawn', 'open_file']
+       top preds: blockade(0.79), bishop_pair(0.79), good_bishop(0.75), weak_square(0.74), bad_bishop(0.72)
+
+  MISS — Weak square — dark square holes around king
+       expected : ['weak_square']
+       missing  : ['weak_square']
+       top preds: development_lead(0.89), mating_attack(0.77), open_file(0.65), outpost(0.65), sacrifice(0.62)
+
+  MISS — Open file — rooks dominate open d-file
+       expected : ['open_file']
+       missing  : ['open_file']
+       top preds: isolated_pawn(0.79), backward_pawn(0.77), discovery(0.68), pawn_majority(0.63), blockade(0.62)
+
+  MISS — Space advantage — advanced pawn wedge controls territory
+       expected : ['space_advantage']
+       missing  : ['space_advantage']
+       top preds: space_advantage(0.76), bishop_pair(0.73), weak_square(0.70), pawn_storm(0.67), blockade(0.64)
+
+  MISS — Development lead — all pieces active vs undeveloped side
+       expected : ['development_lead']
+       missing  : ['development_lead']
+       top preds: pin(0.71), mating_attack(0.69), bishop_pair(0.67), weak_square(0.65), trapped_piece(0.65)
+
+  MISS — Initiative — dictating pace with active play
+       expected : ['initiative']
+       missing  : ['initiative']
+       top preds: pin(0.87), mating_attack(0.77), open_file(0.66), outpost(0.64), trapped_piece(0.59)
+
+  MISS — Prophylaxis — restraining opponent's plan
+       expected : ['prophylaxis']
+       missing  : ['prophylaxis']
+       top preds: space_advantage(0.71), weak_square(0.66), trapped_piece(0.63), bishop_pair(0.62), good_bishop(0.59)

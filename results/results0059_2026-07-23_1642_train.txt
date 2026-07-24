@@ -1,0 +1,13 @@
+
+Device: cuda
+  GPU: NVIDIA GeForce RTX 2060
+
+Loading data from data\training_raw.jsonl
+Loading dataset from data\training_raw.jsonl ... 868,481 labeled examples found.
+  train: 694,784 examples  (train 694,784 / val 86,848 / test 86,849)
+  Algo cache:  algo_cache.npy  (lazy mmap, 16.92 GB)
+  V3 cache:    v3_cache.npy  (lazy mmap, 367 MB)
+  SF cache:    sf_cache.npy  (lazy mmap, 63 MB)
+  No NNUE cache — NNUE features inactive (run build_nnue_cache.py).
+  Board cache: board_cache.npy  (lazy mmap, 7.38 GB)
+Loading dataset from data\training_raw.jsonl ... 

@@ -17,11 +17,12 @@ CLASSIFIER_BEST  = DATA_DIR / "classifier_best.pt"
 CLASSIFIER_LAST  = DATA_DIR / "classifier_last.pt"
 
 # ── Calibration ───────────────────────────────────────────────────────────────
-THRESHOLDS       = DATA_DIR / "thresholds.json"
+THRESHOLDS            = DATA_DIR / "thresholds.json"
+ACTIVATE_THRESHOLDS   = DATA_DIR / "activate_thresholds.json"
 
 # ── Feature caches (indexed by _ac field in training_raw.jsonl) ───────────────
-ALGO_CACHE       = DATA_DIR / "algo_cache.npy"    # (N, 1811) float32  — algo_v4 spatial features
-V3_CACHE         = DATA_DIR / "v3_cache.npy"      # (N,   59) float32  — binary concept flags
+ALGO_CACHE       = DATA_DIR / "algo_cache.npy"    # (N, 2491) float32  — algo_v4 spatial features
+V3_CACHE         = DATA_DIR / "v3_cache.npy"      # (N,   68) float32  — binary concept flags
 SF_CACHE         = DATA_DIR / "sf_cache.npy"      # (N,   14) float32  — SF classical eval
 NNUE_CACHE       = DATA_DIR / "nnue_cache.npy"    # (N, 2048) float32  — SF16 FT activations
 BOARD_CACHE      = DATA_DIR / "board_cache.npy"   # (N, 1001) float32  — fen_to_tensor output

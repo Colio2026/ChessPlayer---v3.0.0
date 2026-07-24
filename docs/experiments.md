@@ -27,6 +27,7 @@ Eval detail: `results/results0031_2026-07-17_1840_eval.txt`
 | Phase 5C (NNUE-only) | 2026-07-20 | 1,748,017 | 1,591,442 | ~0.34 | early | 0039–0043 | Pure NNUE input. Stalled immediately. Task misalignment confirmed (see §Lessons). |
 | Phase 5D (NNUE, small) | 2026-07-20 | 1,350,961 | 1,591,442 | ~0.35 | 25 | 0044–0045 | Reduced head size didn't help. NNUE retired as training input. |
 | Phase 4B retrain | 2026-07-21 | 3,081,777 | 1,591,442 | in progress | — | 0046–0050 | Same arch as champion, +30% more data. Hypothesis: ≥0.58. |
+| Phase 4C prep | 2026-07-22 | N/A (code) | N/A | — | — | — | Detector expansion: 13 new binary detectors, B8 + B9 spatial maps. All 49 concepts now have detectors. v3: 59→82 dims. v4: 1811→3779 dims (+680 B8, +1288 B9). Keyword expansion: initiative (+synonyms: "gain in tempo", "gains tempo", "steering the game", etc.), interference, prophylaxis, sacrifice, clearance, deflection, zwischenzug all expanded. capturingDefender Lichess tag remapped to deflection (was overloading). Requires full re-ingest + cache rebuild before training. |
 
 ---
 
@@ -104,8 +105,34 @@ See: `docs/phase5_nnue_integration_plan.md` (marked ABANDONED).
 ### Phase 4B Retrain on 1.59M (runs 0046–0050+, 2026-07-21)
 **Hypothesis:** Champion Phase 4B architecture with +30% more training data should push Macro F1 past 0.58.  
 **Changes from champion run:** Dataset 1.23M → 1.59M, patience 10 → 20, `num_workers` 2 → 4, SF cache and board cache now added.  
-**Status:** In progress as of 2026-07-21.  
-**Expected outcome:** F1 ≥ 0.58. The marginal data gain matters most for low-support concepts (`shouldering`, `double_check`, `x_ray`).
+**Status:** In progress as of 2026-07-21. Uses 1811-dim / 59-dim features (pre-Phase-4C).  
+**Expected outcome:** F1 ≥ 0.58.
+
+---
+
+### Phase 4C Prep — Detector Expansion (2026-07-22, code change only)
+**Motivation:** Audit revealed six major concepts (`x_ray`, `discovery`, `double_check`, `zugzwang`, `shouldering`, `mating_attack`) had zero algorithmic labels despite the v4 vector already carrying rich geometry for several of them (e.g. `_xray_vec` is 384 dims in B6). Training data was severely label-sparse for these concepts because `label_position()` never set them. Also, `pin`, `fork`, and `isolated_pawn` had binary-only signals in v3 but no spatial per-square maps in v4 — the net couldn't learn which specific squares were relevant.
+
+**Changes (all in `tools/label_positions.py`):**
+- **9 new binary detectors** added to `DETECTABLE_CONCEPTS`, `label_position()`, `_PER_COLOR_DETECTORS`:
+  - Wave 1 (Phase 4C initial): `_has_x_ray()`, `_has_discovery()`, `_has_mating_attack()` per-color; `_has_double_check()`, `_has_zugzwang_heuristic()`, `_has_shouldering()` global
+  - Wave 2 (Phase 4C extension): `_has_interference()`, `_has_initiative()`, `_has_prophylaxis_pos()`
+  - Wave 3 (Phase 4C extension): `_has_sacrifice()` (piece under attack for less value + king-attack proxy), `_has_clearance()` (friendly non-slider blocks slider ray to enemy target), `_has_deflection()` (sole defender of enemy queen/rook that we attack), `_has_zwischenzug()` (losing exchange threatened + check available instead)
+- **14 new spatial maps** added to v4 (B8 after B7, then B9):
+  - `_pin_vec()` → 256 dims, `_fork_vec()` → 256 dims, `_isolated_pawn_vec()` → 128 dims, `_open_file_vec()` → 40 dims (B8)
+  - `_pawn_chain_vec()` → 128 dims, `_pawn_island_vec()` → 130 dims, `_mating_pressure_vec()` → 128 dims (B9 wave 1)
+  - `_interference_vec()` → 128 dims, `_initiative_vec()` → 130 dims, `_prophylaxis_vec()` → 130 dims (B9 wave 2)
+  - `_sacrifice_vec()` → 130 dims, `_clearance_vec()` → 128 dims, `_deflection_vec()` → 128 dims, `_zwischenzug_vec()` → 128 dims (B9 wave 3)
+
+**Dimension changes (all caches must be rebuilt):**
+- `ALGO_FEATURE_SIZE` v3: 59 → 82 (36 per-color × 2 = 72, + 10 global)
+- `ALGO_FEATURE_SIZE_V4` v4: 1811 → 3779 (+680 B8 +1288 B9 = +1968 total)
+- `COMBINED_SIZE_V4B`: 1714 → 1737 (+23 from v3 expansion; spatial_proj stays 256)
+- `SF_BREAK`: 3688 → 4990 (STATIC_SIZE_V4=4908, +ALGO_SIZE=82)
+
+**Files touched:** `tools/label_positions.py`, `src/chess_coach/ml/board_encoder.py`, `src/chess_coach/ml/classifier.py`, `src/chess_coach/ml/dataset.py`, `src/chess_coach/ml/paths.py`, `tools/build_algo_cache.py`
+
+**Next step:** Rebuild `algo_cache.npy` (3779-dim) and `v3_cache.npy` (82-dim), optionally re-scrape synonyms for x_ray and shouldering, then retrain from scratch as Phase 4C. All 49 concepts now have algorithmic detectors. The new spatial maps allow the network to localize which specific square is pinned / forked / an interference gap / a clearance blocker, not just whether the concept exists.
 
 ---
 
@@ -137,13 +164,15 @@ This is a necessary metric — it confirms the model can identify patterns at al
 
 ### What better evaluation looks like
 
-1. **Hysteresis coverage check** (`tools/survey_hysteresis.py`) — already implemented. Verifies that ACTIVATE_THRESHOLD (0.65) and HOLD_THRESHOLD (0.40) are well-calibrated against the actual probability distribution.
+1. **Calibrated F1 breakdown** (`python -m src.chess_coach.ml.evaluate --calibrate`) — per-class precision/recall/F1 on the test split with calibrated thresholds. The primary post-training metric. Run after every retrain.
 
-2. **Position spot-checks** — a chess-knowledgeable reviewer plays through 20–30 positions where the coach fires strong signals and evaluates: (a) is the concept present? (b) is the retrieved annotation appropriate? This is the real quality test. Even 20 annotated spot-checks per major architecture change would catch gross failures.
+2. **Hysteresis coverage check** (`python tools/survey_hysteresis.py`) — samples N positions and reports p50/p75/p90/p95/p99 probability percentiles per concept, plus the fraction that would fire at ACTIVATE=0.65 and remain at HOLD=0.40. Warns if any concept never reaches ACTIVATE or fires in >30% of positions. Run after calibration.
 
-3. **Consistency check** — replay a full game through `coach.analyze()` and verify that concept transitions happen at move boundaries that make sense (after captures, pawn breaks, piece exchanges) rather than on consecutive quiet moves.
+3. **False-positive / false-negative audit** (`python tools/audit_concepts.py`) — runs on the test split, ranks concepts by false-positive rate, and samples actual FEN positions for each misfiring concept. Outputs Lichess analysis links for manual review. Run on the bottom-5 concepts after every retrain to distinguish model errors from label noise.
 
-4. **False-positive audit** — identify the 5 highest-recall concepts (where the model fires most often) and manually examine 10 positions where they fired at p > 0.80 to estimate precision in the wild, independent of the test set.
+4. **Game consistency check** (`python tools/check_consistency.py --uci "..."`) — replays a full game through `coach.analyze()` and flags concept transitions that happen on quiet moves (no capture, check, pawn push, or exchange). A high suspicion rate (>30% of transitions on quiet moves) indicates the Schmitt-trigger thresholds need adjustment.
+
+5. **Human spot-checks** — open 10–20 of the Lichess URLs produced by the audit tool, assess: (a) is the concept actually present? (b) is the model's confidence proportional to how obvious the concept is? No tooling needed — this is the check that catches systematic label noise.
 
 None of this requires a large annotated corpus. Even irregular spot-checks are far more informative than watching macro F1 go from 0.56 to 0.58 on a test set that may share distributional assumptions with training.
 
@@ -154,6 +183,7 @@ None of this requires a large annotated corpus. Even irregular spot-checks are f
 | Priority | Hypothesis | Change | Metric to watch |
 |---|---|---|---|
 | 1 | More data → better recall on weak concepts | Phase 4B retrain on 1.59M (in progress) | Per-class F1 for `shouldering`, `x_ray`, `double_check` |
-| 2 | Patience 20 reaches the LR tail | Same as above | Whether best epoch appears after epoch 70 |
-| 3 | Human spot-check of champion model | 20 positions, manual review | Qualitative: relevance, annotation match |
-| 4 | SF-gated coach output | Post-classification: confirm concept vs. SF eval | Spot-check false-positive rate on `bishop_pair`, `clearance` |
+| 2 | All 49 concepts now have detectors → Phase 4C | Rebuild caches (3779/82-dim), retrain Phase 4C | Per-class F1 for `interference`, `initiative`, `prophylaxis`, `sacrifice`, `clearance`, `deflection`, `zwischenzug` (all had 0.22–0.47 in 4B) |
+| 3 | Scrape more x_ray / shouldering examples | Re-run Lichess CSV scraper for synonym terms | Label count for `x_ray`, `shouldering` in `training_raw.jsonl` |
+| 4 | Human spot-check of champion model | 20 positions, manual review | Qualitative: relevance, annotation match |
+| 5 | SF-gated coach output | Post-classification: confirm concept vs. SF eval | Spot-check false-positive rate on `bishop_pair`, `clearance` |

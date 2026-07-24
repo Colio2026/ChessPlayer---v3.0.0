@@ -15,6 +15,14 @@ Feature layout
     sf[3]  = white Passed  (main signal for passed_pawn quality)
     sf[10] = black Passed
 
+Design note
+-----------
+Stockfish is driven in per-batch mode: N positions are piped to a fresh SF
+process via subprocess.run(input=...).  Python's communicate() handles all
+pipe I/O in background threads — the only reliable way to drive a Windows
+console subprocess.  Persistent pipe handles raised OSError [Errno 22]
+(ERROR_INVALID_PARAMETER) on every eval write regardless of flags or mode.
+
 If Stockfish is not found the cache is written as all-zeros so the pipeline
 still runs — the model trains and works, just without SF classical eval signal.
 
@@ -44,6 +52,9 @@ _CANDIDATE_SF_PATHS = [
     Path("stockfish"),
 ]
 
+_DEFAULT_BATCH_SIZE    = 1000
+_DEFAULT_BATCH_TIMEOUT = 120.0   # seconds per batch (generous; 1000 × ~1 ms/eval = ~1 s real work)
+
 
 def _find_sf() -> str | None:
     env = os.environ.get("STOCKFISH_PATH")
@@ -59,9 +70,10 @@ def _find_sf() -> str | None:
 # ── SF classical eval output parser ──────────────────────────────────────────
 
 def _parse_classical_table(lines: list[str]) -> np.ndarray:
-    """Extract per-side values from the SF classical eval ASCII table.
+    """Extract per-side MG values from the SF classical eval ASCII table.
 
     Returns a 14-dim float32 vector: [white×7, black×7] in SF_TERMS order.
+    SF16 cells contain two values ("MG  EG"); we take MG (the first token).
     Unknown or '---' entries default to 0.0.
     """
     out = np.zeros(SF_DIM, dtype=np.float32)
@@ -78,87 +90,104 @@ def _parse_classical_table(lines: list[str]) -> np.ndarray:
         if idx is None:
             continue
 
-        def _f(raw: str) -> float:
-            raw = raw.strip()
-            return 0.0 if (not raw or raw == "---") else float(raw) if _is_num(raw) else 0.0
+        def _first_num(cell: str) -> float:
+            # SF16 cells contain "MG  EG"; take MG. SF14 single-value cells still work.
+            for tok in cell.split():
+                try:
+                    return float(tok)
+                except ValueError:
+                    pass
+            return 0.0
 
-        def _is_num(s: str) -> bool:
-            try:
-                float(s)
-                return True
-            except ValueError:
-                return False
-
-        out[idx]     = _f(parts[2])   # white
-        out[7 + idx] = _f(parts[3])   # black
+        out[idx]     = _first_num(parts[2])   # white MG
+        out[7 + idx] = _first_num(parts[3])   # black MG
 
     return out
 
 
-# ── Persistent SF process ─────────────────────────────────────────────────────
+# ── Batch SF driver ───────────────────────────────────────────────────────────
 
-class _SFProc:
-    """Long-lived Stockfish subprocess using UCI stdin/stdout protocol."""
+def _batch_stdin(fens: list[str]) -> bytes:
+    """Build complete stdin bytes for a batch of N positions.
 
-    def __init__(self, sf_path: str) -> None:
-        self._p = subprocess.Popen(
+    Protocol sent to SF:
+        uci                     → uciok  (+ option lines)
+        isready                 → readyok
+        for each fen:
+            position fen <fen>
+            eval
+            isready             → readyok  (marks end of that eval's output)
+        quit
+    """
+    cmds = ["uci", "isready"]
+    for fen in fens:
+        cmds.extend([f"position fen {fen}", "eval", "isready"])
+    cmds.append("quit")
+    return "\n".join(cmds).encode()
+
+
+def _run_sf_batch(
+    sf_path: str,
+    batch: list[tuple[int, str]],
+    timeout: float = _DEFAULT_BATCH_TIMEOUT,
+) -> tuple[list[np.ndarray], bool]:
+    """Run SF on a batch of (ac, fen) pairs; return (results, ok).
+
+    subprocess.run(input=...) calls communicate() internally: one thread
+    writes all stdin, another reads all stdout — no deadlock, no handle
+    lifecycle issues.
+
+    Output parsing splits on "readyok\\n":
+        segs[0]     UCI init output (id name …, uciok)
+        segs[1]     classical eval block for batch[0]
+        segs[2]     classical eval block for batch[1]
+        …
+        segs[N]     classical eval block for batch[N-1]
+    """
+    fens = [fen for _, fen in batch]
+    try:
+        result = subprocess.run(
             [sf_path],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
+            input=_batch_stdin(fens),
+            capture_output=True,
+            timeout=timeout,
         )
-        self._write("uci")
-        self._drain_until("uciok")
-        # Disable NNUE so the classical eval table shows per-side values.
-        # Silently ignored by engines that don't support this option.
-        self._write("setoption name Use NNUE value false")
-        self._write("isready")
-        self._drain_until("readyok")
-
-    def _write(self, cmd: str) -> None:
-        self._p.stdin.write(cmd + "\n")
-        self._p.stdin.flush()
-
-    def _drain_until(self, keyword: str, limit: int = 80) -> list[str]:
-        lines: list[str] = []
-        for _ in range(limit):
-            line = self._p.stdout.readline()
-            if not line:
-                break
-            lines.append(line)
-            if keyword in line:
-                break
-        return lines
-
-    def eval_fen(self, fen: str) -> np.ndarray:
-        self._write(f"position fen {fen}")
-        self._write("eval")
-        # SF16+ ends the eval block with "Classical evaluation"
-        # older SF may use "Final evaluation" — read whichever comes first
-        lines = self._drain_until("Classical evaluation", limit=80)
-        if not any("Classical evaluation" in l for l in lines):
-            lines += self._drain_until("Final evaluation", limit=20)
-        return _parse_classical_table(lines)
-
-    def close(self) -> None:
-        try:
-            self._write("quit")
-            self._p.wait(timeout=3)
-        except Exception:
-            self._p.kill()
+        stdout = (
+            result.stdout
+            .decode("utf-8", errors="replace")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+        )
+        segs = stdout.split("readyok\n")
+        arrays = [
+            _parse_classical_table(
+                (segs[i + 1] if i + 1 < len(segs) else "").split("\n")
+            )
+            for i in range(len(fens))
+        ]
+        return arrays, True
+    except subprocess.TimeoutExpired:
+        return [np.zeros(SF_DIM, dtype=np.float32)] * len(batch), False
+    except Exception:
+        return [np.zeros(SF_DIM, dtype=np.float32)] * len(batch), False
 
 
 # ── Cache builder ─────────────────────────────────────────────────────────────
 
-def build(jsonl_path: Path, cache_path: Path, sf_path: str | None) -> None:
+def build(
+    jsonl_path: Path,
+    cache_path: Path,
+    sf_path: str | None,
+    batch_size: int = _DEFAULT_BATCH_SIZE,
+    batch_timeout: float = _DEFAULT_BATCH_TIMEOUT,
+) -> None:
     algo_path = Path("data/algo_cache.npy")
     if algo_path.exists():
         probe = np.load(str(algo_path), mmap_mode="r")
         n     = probe.shape[0]
         del probe
     else:
-        print("algo_cache.npy not found — counting rows from JSONL (Phase 5 mode) ...")
+        print("algo_cache.npy not found — counting rows from JSONL ...")
         n = sum(1 for line in open(jsonl_path, "rb") if line.strip())
         print(f"  {n:,} rows")
 
@@ -168,21 +197,33 @@ def build(jsonl_path: Path, cache_path: Path, sf_path: str | None) -> None:
         str(cache_path), mode="w+", dtype="float32", shape=(n, SF_DIM)
     )
 
-    sf: _SFProc | None = None
-    if sf_path:
-        try:
-            sf = _SFProc(sf_path)
-            print(f"Stockfish: {sf_path}")
-        except Exception as exc:
-            print(f"Warning: Stockfish failed to start ({exc}) — writing zero cache")
-    else:
+    if sf_path is None:
         print("Warning: Stockfish not found.")
         print("  Set STOCKFISH_PATH env var or pass --sf-path to populate the cache.")
         print("  Writing zero cache — pipeline still runs; SF features will be inactive.")
+        del arr
+        return
 
-    t0 = time.time()
-    done = errors = 0
+    print(f"Stockfish: {sf_path}")
 
+    # ── Pre-flight probe ──────────────────────────────────────────────────────
+    startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    probe_results, probe_ok = _run_sf_batch(sf_path, [(0, startpos)], timeout=30.0)
+    if not probe_ok:
+        print("Warning: SF probe timed out after 30 s — writing zero cache.")
+        del arr
+        return
+    vec = probe_results[0]
+    if not np.any(vec):
+        print("Warning: SF probe returned an all-zero vector.")
+        print("  Check that the SF binary runs standalone and outputs a classical eval table.")
+        print("  Continuing — verify non-zero rows in the final summary.")
+    else:
+        print(f"  Probe OK  (Mobility white={vec[0]:.2f}  black={vec[7]:.2f})")
+
+    # ── Pass 1: collect (ac_idx, fen) pairs ──────────────────────────────────
+    print("Collecting positions from JSONL ...")
+    pairs: list[tuple[int, str]] = []
     with open(jsonl_path, encoding="utf-8", errors="replace") as fh:
         for raw in fh:
             raw = raw.strip()
@@ -193,37 +234,49 @@ def build(jsonl_path: Path, cache_path: Path, sf_path: str | None) -> None:
                 ac = ex.get("_ac")
                 if ac is None or not (0 <= ac < n):
                     continue
-                if sf is not None:
-                    try:
-                        arr[ac] = sf.eval_fen(ex["fen"])
-                    except Exception:
-                        errors += 1
-                done += 1
-                if done % 50_000 == 0:
-                    elapsed = time.time() - t0
-                    rate    = done / elapsed
-                    print(f"  {done:>8,} / {n:,}  {rate:>7,.0f}/s  errors={errors}",
-                          end="\r", flush=True)
+                pairs.append((ac, ex["fen"]))
             except Exception:
                 pass
+    print(f"  {len(pairs):,} positions to evaluate")
 
-    print(f"\n  {done:,} processed  {errors} errors  ({time.time() - t0:.0f}s)")
+    # ── Pass 2: batch evaluate ────────────────────────────────────────────────
+    t0             = time.time()
+    n_batches      = (len(pairs) + batch_size - 1) // batch_size
+    failed_batches = 0
 
-    # Validate: warn loudly if the cache is effectively all zeros.
+    for b in range(n_batches):
+        batch = pairs[b * batch_size : (b + 1) * batch_size]
+        results, ok = _run_sf_batch(sf_path, batch, timeout=batch_timeout)
+        if not ok:
+            failed_batches += 1
+        for (ac, _), vec in zip(batch, results):
+            arr[ac] = vec
+
+        done    = min((b + 1) * batch_size, len(pairs))
+        elapsed = time.time() - t0
+        rate    = done / elapsed if elapsed > 0 else 0
+        print(
+            f"  batch {b + 1:>5}/{n_batches}  "
+            f"{done:>8,}/{len(pairs):,}  "
+            f"{rate:>7,.0f} pos/s  "
+            f"failed_batches={failed_batches}",
+            end="\r", flush=True,
+        )
+
+    elapsed = time.time() - t0
+    print(f"\n  {len(pairs):,} positions  {failed_batches} failed batches  ({elapsed:.0f}s)")
+
+    # ── Validate ──────────────────────────────────────────────────────────────
     nonzero_rows = int(np.any(arr != 0, axis=1).sum())
     zero_frac    = 1.0 - nonzero_rows / n
     del arr   # flush mmap to disk
 
-    if sf is not None:
-        sf.close()
-
     print(f"SF cache → {cache_path}  ({cache_path.stat().st_size / 1e6:.1f} MB)")
     if zero_frac > 0.95:
-        print(f"\nWARNING: {zero_frac*100:.1f}% of rows are all-zero — SF features are inactive.")
-        print("  Check that Stockfish supports 'Use NNUE value false' and outputs a classical eval table.")
-        print("  If SF is unavailable, remove the 14 SF dims from the architecture to avoid wasted capacity.")
+        print(f"\nWARNING: {zero_frac * 100:.1f}% of rows are all-zero — SF features are inactive.")
+        print("  Check that Stockfish binary is correct and outputs a classical eval table.")
     else:
-        print(f"  Non-zero rows: {nonzero_rows:,} / {n:,}  ({(1-zero_frac)*100:.1f}% populated)")
+        print(f"  Non-zero rows: {nonzero_rows:,} / {n:,}  ({(1 - zero_frac) * 100:.1f}% populated)")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -232,13 +285,17 @@ def main() -> None:
     p = argparse.ArgumentParser(
         description="Build Stockfish classical eval feature cache (sf_cache.npy)"
     )
-    p.add_argument("--jsonl",    default="data/training_raw.jsonl",
+    p.add_argument("--jsonl",          default="data/training_raw.jsonl",
                    help="JSONL file with _ac indices (output of build_algo_cache.py)")
-    p.add_argument("--output",   default="data/sf_cache.npy")
-    p.add_argument("--sf-path",  default=None,
+    p.add_argument("--output",         default="data/sf_cache.npy")
+    p.add_argument("--sf-path",        default=None,
                    help="Path to Stockfish binary (default: auto-detect)")
-    p.add_argument("--force",    action="store_true",
+    p.add_argument("--force",          action="store_true",
                    help="Rebuild even if cache already exists")
+    p.add_argument("--batch-size",     type=int,   default=_DEFAULT_BATCH_SIZE,
+                   help=f"Positions per SF invocation (default: {_DEFAULT_BATCH_SIZE})")
+    p.add_argument("--batch-timeout",  type=float, default=_DEFAULT_BATCH_TIMEOUT,
+                   help=f"Seconds before a batch is abandoned as zero (default: {_DEFAULT_BATCH_TIMEOUT})")
     args = p.parse_args()
 
     jsonl_path = Path(args.jsonl)
@@ -252,7 +309,8 @@ def main() -> None:
         return
 
     sf_path = args.sf_path or _find_sf()
-    build(jsonl_path, cache_path, sf_path)
+    build(jsonl_path, cache_path, sf_path,
+          batch_size=args.batch_size, batch_timeout=args.batch_timeout)
     print("\nDone.  Run training next:")
     print("  python -m src.chess_coach.ml.train --phase4")
 

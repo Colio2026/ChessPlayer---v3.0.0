@@ -9,6 +9,9 @@ data/annotated_pgns/
 data/training_raw.jsonl
 data\training_raw.jsonl
 data
+results/*.pgi
+results/*.ini
+results/*.pgn
 
 # Engines
 *.exe

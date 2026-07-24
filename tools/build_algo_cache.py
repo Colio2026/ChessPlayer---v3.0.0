@@ -6,8 +6,8 @@ Run once after parse + ingest, before training:
 
 Outputs
 -------
-data/algo_cache.npy     float32 (N, algo_dim) — v4 spatial features (1811-dim)
-data/v3_cache.npy       float32 (N, 59)       — v3 summary features (algo_feature_vector)
+data/algo_cache.npy     float32 (N, algo_dim) — v4 spatial features (3779-dim)
+data/v3_cache.npy       float32 (N, 82)       — v3 summary features (algo_feature_vector)
 data/training_raw.jsonl rewritten without algo_features; each line gains "_ac" index
 
 The v3 cache eliminates the per-example algo_feature_vector(fen) call in dataset
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-V3_DIM = 59  # algo_feature_vector() output size (Phase 3 summary bits)
+V3_DIM = 82  # algo_feature_vector() output size — 36 per-color×2 + 10 global
 
 
 def _peek_has_field(jsonl_path: Path, field: str) -> bool:
@@ -58,7 +58,7 @@ def _scan(jsonl_path: Path) -> tuple[int, int]:
                 except Exception:
                     pass
     if algo_dim is None:
-        algo_dim = 1811   # Phase 4 default (B1-B7 including king_safety_vec)
+        algo_dim = 3779   # Phase 4 default (B1-B9 full spatial block)
     print(f"  {n:,} lines,  algo_dim={algo_dim}")
     return n, algo_dim
 
@@ -296,11 +296,11 @@ def main() -> None:
     else:
         # ── Stripped JSONL: algo_features already extracted in a prior run ─────
         # Recompute both caches from FEN. algo_feature_vector_v4 recomputes the
-        # 1811-dim features; algo_feature_vector recomputes the 59-dim v3 bits.
+        # 3779-dim features; algo_feature_vector recomputes the 82-dim v3 bits.
         # _ac indices are already stamped — no JSONL rewrite needed unless missing.
         from label_positions import algo_feature_vector, algo_feature_vector_v4
 
-        ALGO_DIM = 1811
+        ALGO_DIM = 3779
 
         print(f"Scanning {jsonl_path} for line count ...")
         n = 0
