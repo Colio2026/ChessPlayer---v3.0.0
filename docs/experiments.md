@@ -8,9 +8,10 @@ This file is the single source of truth for what was trained, when, why, and wha
 
 ## Current Champion
 
-**Phase 4B** — Macro F1 **0.5614** — calibrated on all 49 concepts, 122,696 test examples.  
-Checkpoint: `data/classifier_best.pt` (epoch 68, val_loss=0.7060)  
-Eval detail: `results/results0031_2026-07-17_1840_eval.txt`
+**Phase 4C** — Macro F1 **0.6768** — calibrated on all 49 concepts, 190,037 test examples.  
+Checkpoint: `data/classifier_best.pt` (epoch 30, val_loss=0.6367)  
+Eval detail: `results/results0061_2026-07-24_0901_eval.txt`  
+Inspect: `results/2026-07-24_0930_inspect.txt` | Hysteresis: `results/2026-07-24_0930_hysteresis.txt` | Audit: `results/2026-07-24_0930_audit.txt`
 
 ---
 
@@ -26,8 +27,9 @@ Eval detail: `results/results0031_2026-07-17_1840_eval.txt`
 | Phase 5 (NNUE, mixed) | 2026-07-19 | 1,743,921 | 1,070,507 | 0.4701 | 33 | 0036 | Algo+NNUE caches both present — ambiguous which features dominated. Worse than 4B. |
 | Phase 5C (NNUE-only) | 2026-07-20 | 1,748,017 | 1,591,442 | ~0.34 | early | 0039–0043 | Pure NNUE input. Stalled immediately. Task misalignment confirmed (see §Lessons). |
 | Phase 5D (NNUE, small) | 2026-07-20 | 1,350,961 | 1,591,442 | ~0.35 | 25 | 0044–0045 | Reduced head size didn't help. NNUE retired as training input. |
-| Phase 4B retrain | 2026-07-21 | 3,081,777 | 1,591,442 | in progress | — | 0046–0050 | Same arch as champion, +30% more data. Hypothesis: ≥0.58. |
-| Phase 4C prep | 2026-07-22 | N/A (code) | N/A | — | — | — | Detector expansion: 13 new binary detectors, B8 + B9 spatial maps. All 49 concepts now have detectors. v3: 59→82 dims. v4: 1811→3779 dims (+680 B8, +1288 B9). Keyword expansion: initiative (+synonyms: "gain in tempo", "gains tempo", "steering the game", etc.), interference, prophylaxis, sacrifice, clearance, deflection, zwischenzug all expanded. capturingDefender Lichess tag remapped to deflection (was overloading). Requires full re-ingest + cache rebuild before training. |
+| Phase 4B retrain | 2026-07-21 | 3,081,777 | 1,591,442 | 0.5057 | 37 | 0046–0052 | Same arch as champion, +30% more data. Actual result: 0.5057 — did not beat 4B. Parser had Lichess study folder alias bug; folder_concept injection blocked by comment-length gate. |
+| Phase 4C prep | 2026-07-22 | N/A (code) | N/A | — | — | — | Detector expansion: 13 new binary detectors, B8 + B9 spatial maps. All 49 concepts now have detectors. v3: 59→82 dims. v4: 1811→3779 dims (+680 B8, +1288 B9). Parser fixed: _FOLDER_ALIASES added for 9 unrecognised Lichess study folder names; comment-length gate bypassed when folder_concept set. SF cache rebuilt with batch subprocess approach (eliminated OSError [Errno 22] on Windows). |
+| Phase 4C | 2026-07-24 | 3,609,137 | 1,900,365 | **0.6768** | 30 | 0061 | **New champion. +34% relative F1 improvement over 4B.** Macro F1 0.6768, Micro F1 0.6601. Top concepts: queen_endgame(0.952), knight_endgame(0.941), development_lead(0.938), space_advantage(0.919), rook_endgame(0.911). Bottom: pawn_island(0.457), mating_attack(0.457), x_ray(0.479). 0/1024 dead neurons in L1. Key insight: many apparent FPs are correct model predictions on unlabeled positions — label coverage gap, not model error. Hysteresis audit flagged initiative (64.6% fire rate at ACTIVATE=0.40) and x_ray (51.1% at 0.43) as needing threshold raises. weak_square ACTIVATE=0.90 almost never reached — needs lowering to ~0.60. |
 
 ---
 
@@ -182,8 +184,9 @@ None of this requires a large annotated corpus. Even irregular spot-checks are f
 
 | Priority | Hypothesis | Change | Metric to watch |
 |---|---|---|---|
-| 1 | More data → better recall on weak concepts | Phase 4B retrain on 1.59M (in progress) | Per-class F1 for `shouldering`, `x_ray`, `double_check` |
-| 2 | All 49 concepts now have detectors → Phase 4C | Rebuild caches (3779/82-dim), retrain Phase 4C | Per-class F1 for `interference`, `initiative`, `prophylaxis`, `sacrifice`, `clearance`, `deflection`, `zwischenzug` (all had 0.22–0.47 in 4B) |
-| 3 | Scrape more x_ray / shouldering examples | Re-run Lichess CSV scraper for synonym terms | Label count for `x_ray`, `shouldering` in `training_raw.jsonl` |
-| 4 | Human spot-check of champion model | 20 positions, manual review | Qualitative: relevance, annotation match |
-| 5 | SF-gated coach output | Post-classification: confirm concept vs. SF eval | Spot-check false-positive rate on `bishop_pair`, `clearance` |
+| 1 | Hysteresis thresholds need adjustment | Raise ACTIVATE: initiative→0.75, x_ray→0.65, interference→0.65. Lower weak_square→0.60 | Fire rate per concept in survey_hysteresis.py |
+| 2 | Label coverage gaps inflate FP rate | Hand-label 100–200 FP positions from truth_positions PGN | True precision on x_ray, interference, mating_attack |
+| 3 | Phase 6A: wire RAG output into coach panel | Connect result["opening"] + result["annotations"] to coach panel UI | Opening name visible; literary reference visible |
+| 4 | Phase 6A: Syzygy tablebase in endgame | Download 3-4-5 piece tables, probe in coach.analyze() | Correct WDL on 5 K+P vs K test positions |
+| 5 | Phase 6B: Mixture of Experts gating network | New MoE architecture + ECO conditioning. Retrain from Phase 4C data. | Macro F1 ≥ 0.6768; bottom-quartile concepts ≥ 0.55 |
+| 6 | Phase 6C: SF-validated move recommendation | Post-classification connector: SF top-N moves + concept delta scoring | SF agreement rate ≥ 90%; coach explanation plausible |
