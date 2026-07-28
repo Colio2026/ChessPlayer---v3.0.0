@@ -77,7 +77,7 @@ def _build_both(
     """
     from label_positions import algo_feature_vector   # tools/ is on sys.path
 
-    zero_algo = np.zeros(algo_dim, dtype="float32")
+    zero_algo = np.zeros(algo_dim, dtype="float16")
     zero_v3   = np.zeros(V3_DIM,   dtype="float32")
     row = 0
 
@@ -91,7 +91,7 @@ def _build_both(
                 ex = json.loads(line)
                 af = ex.pop("algo_features", None)
                 ex["_ac"] = row
-                algo_arr[row] = np.array(af, dtype="float32") if af else zero_algo
+                algo_arr[row] = np.array(af, dtype="float16") if af else zero_algo
                 try:
                     v3_arr[row] = algo_feature_vector(ex["fen"]).astype("float32")
                 except Exception:
@@ -271,10 +271,10 @@ def main() -> None:
         # ── Full build: algo_cache + v3_cache in a single pass ────────────────
         n, algo_dim = _scan(jsonl_path)
 
-        cache_gb = n * algo_dim * 4 / 1e9
-        print(f"Allocating algo cache  {n:,} × {algo_dim}  ({cache_gb:.2f} GB) ...")
+        cache_gb = n * algo_dim * 2 / 1e9
+        print(f"Allocating algo cache  {n:,} × {algo_dim}  ({cache_gb:.2f} GB, float16) ...")
         algo_arr = np.lib.format.open_memmap(
-            str(algo_cache_path), mode="w+", dtype="float32", shape=(n, algo_dim)
+            str(algo_cache_path), mode="w+", dtype="float16", shape=(n, algo_dim)
         )
 
         v3_gb = n * V3_DIM * 4 / 1e9
@@ -311,10 +311,10 @@ def main() -> None:
         print(f"  {n:,} lines")
 
         if need_algo:
-            algo_gb = n * ALGO_DIM * 4 / 1e9
-            print(f"Allocating algo cache  {n:,} × {ALGO_DIM}  ({algo_gb:.2f} GB) ...")
+            algo_gb = n * ALGO_DIM * 2 / 1e9
+            print(f"Allocating algo cache  {n:,} × {ALGO_DIM}  ({algo_gb:.2f} GB, float16) ...")
             algo_arr = np.lib.format.open_memmap(
-                str(algo_cache_path), mode="w+", dtype="float32", shape=(n, ALGO_DIM)
+                str(algo_cache_path), mode="w+", dtype="float16", shape=(n, ALGO_DIM)
             )
         else:
             algo_arr = None
@@ -329,7 +329,7 @@ def main() -> None:
             v3_arr = None
 
         needs_rewrite = not has_ac
-        zero_algo = np.zeros(ALGO_DIM, dtype="float32")
+        zero_algo = np.zeros(ALGO_DIM, dtype="float16")
         zero_v3   = np.zeros(V3_DIM,   dtype="float32")
         row = 0
 
@@ -348,7 +348,7 @@ def main() -> None:
                     fen    = ex.get("fen", "")
                     if algo_arr is not None:
                         try:
-                            algo_arr[ac_idx] = algo_feature_vector_v4(fen).astype("float32")
+                            algo_arr[ac_idx] = algo_feature_vector_v4(fen).astype("float16")
                         except Exception:
                             algo_arr[ac_idx] = zero_algo
                     if v3_arr is not None:

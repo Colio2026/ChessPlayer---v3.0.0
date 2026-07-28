@@ -111,6 +111,30 @@ COMBINED_SIZE_V5D = STATIC_SIZE_V5D + GRU_HIDDEN                                
 # Max attack squares per piece type (for normalising mobility to [0, 1])
 _MOB_MAX = [2, 8, 13, 14, 27, 8]  # P  N  B  R  Q  K
 
+# Phase 6B: Syzygy tablebase signal appended to Phase 4B x vector
+# x layout raw: [board(1001), move(128), algo_v4(3779), v3(82), sf(14), tb(3)] = 5007
+# After spatial_proj: [board_move(1129), proj(256), v3(82), sf(14), tb(3)] = 1484 static
+TB_SIZE          = 3    # [wdl_norm, dtz_norm, is_tb]
+COMBINED_SIZE_V6 = INPUT_SIZE + MOVE_SIZE + PROJ_SIZE_V4 + ALGO_SIZE + SF_SIZE + TB_SIZE + GRU_HIDDEN  # 1740
+
+# ECO embedding: A00-E99 mapped to integers 1-500 (0=unknown)
+ECO_CLASSES = 501
+ECO_DIM     = 64
+
+
+def eco_to_idx(eco_code: str | None) -> int:
+    """Map ECO code string (e.g. 'B90') to integer 1-500. Returns 0 for unknown."""
+    if not eco_code or len(eco_code) < 3:
+        return 0
+    try:
+        letter = eco_code[0].upper()
+        num    = int(eco_code[1:3])
+        if letter not in "ABCDE" or not (0 <= num <= 99):
+            return 0
+        return (ord(letter) - ord("A")) * 100 + num + 1
+    except (ValueError, IndexError):
+        return 0
+
 
 # ── Phase 2 helpers ────────────────────────────────────────────────────────────
 

@@ -1,0 +1,28 @@
+
+Device: cuda
+  GPU: NVIDIA GeForce RTX 2060
+
+Loading data from data\training_raw.jsonl
+Loading dataset from data\training_raw.jsonl ... 1,900,365 labeled examples found.
+  train: 1,520,292 examples  (train 1,520,292 / val 190,036 / test 190,037)
+  Algo cache:  algo_cache.npy  (lazy mmap, 32.42 GB)
+  V3 cache:    v3_cache.npy  (lazy mmap, 704 MB)
+  SF cache:    sf_cache.npy  (lazy mmap, 120 MB)
+  No NNUE cache — NNUE features inactive (run build_nnue_cache.py).
+  Board cache: board_cache.npy  (lazy mmap, 8.59 GB)
+  TB cache:    tb_cache.npy  (lazy mmap, 26 MB)
+Loading dataset from data\training_raw.jsonl ... 1,900,365 labeled examples found.
+  val: 190,036 examples  (train 1,520,292 / val 190,036 / test 190,037)
+  Algo cache:  algo_cache.npy  (lazy mmap, 32.42 GB)
+  V3 cache:    v3_cache.npy  (lazy mmap, 704 MB)
+  SF cache:    sf_cache.npy  (lazy mmap, 120 MB)
+  No NNUE cache — NNUE features inactive (run build_nnue_cache.py).
+  Board cache: board_cache.npy  (lazy mmap, 8.59 GB)
+  TB cache:    tb_cache.npy  (lazy mmap, 26 MB)
+
+Model: 6,905,718 parameters
+  Architecture: Phase 6B MoE  (5 expert heads + gating network + ECO embedding)
+
+── Training  (100 epochs, batch 1024) ─────────────────────────────────────
+Epoch  Train Loss  Val Loss  Macro F1         LR    Time  Note
+───────────────────────────────────────────────────────────────────────────

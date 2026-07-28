@@ -106,7 +106,7 @@ def main() -> None:
     if not data_path.exists():
         sys.exit(f"JSONL not found: {data_path}")
 
-    from src.chess_coach.ml.classifier    import ChessConceptClassifier
+    from src.chess_coach.ml.classifier    import ChessConceptClassifier, MoEConceptClassifier
     from src.chess_coach.ml.concept_vocab import CONCEPTS, NUM_CONCEPTS
     from src.chess_coach.ml.dataset       import ChessConceptDataset
     from src.chess_coach.ml.evaluate      import load_thresholds
@@ -116,13 +116,17 @@ def main() -> None:
 
     ckpt      = torch.load(str(ckpt_path), map_location=device, weights_only=False)
     sd        = ckpt.get("state_dict", ckpt)
-    is_phase5 = any(k.startswith("nnue_proj")    for k in sd)
-    is_phase4 = any(k.startswith("spatial_proj") for k in sd) and not is_phase5
-    model     = ChessConceptClassifier(phase4=is_phase4, phase5=is_phase5).to(device)
+    is_phase6 = any(k.startswith("gate_network.") for k in sd)
+    is_phase5 = any(k.startswith("nnue_proj")     for k in sd) and not is_phase6
+    is_phase4 = any(k.startswith("spatial_proj")  for k in sd) and not is_phase5 and not is_phase6
+    if is_phase6:
+        model = MoEConceptClassifier().to(device)
+    else:
+        model = ChessConceptClassifier(phase4=is_phase4, phase5=is_phase5).to(device)
     model.load_state_dict(sd)
     model.eval()
     epoch = ckpt.get("epoch", "?")
-    phase = "Phase 5" if is_phase5 else ("Phase 4B" if is_phase4 else "Phase 3")
+    phase = "Phase 6B MoE" if is_phase6 else ("Phase 5" if is_phase5 else ("Phase 4B" if is_phase4 else "Phase 3"))
     print(f"Loaded {ckpt_path.name}  epoch={epoch}  ({phase})")
 
     thresholds = load_thresholds(default=args.threshold or 0.40)
@@ -130,20 +134,26 @@ def main() -> None:
 
     print(f"\nLoading test split (seed={args.seed}) ...")
     ds = ChessConceptDataset(data_path, split="test", seed=args.seed,
-                             phase4=is_phase4, phase5=is_phase5)
+                             phase4=is_phase4, phase5=is_phase5, phase6=is_phase6)
     dl = DataLoader(ds, batch_size=512, shuffle=False, num_workers=0)
 
     # --- Full test pass: collect probs and labels with dataset indices ---
     print(f"Running inference on {len(ds):,} test examples ...")
-    all_probs  = []   # list of (batch_size, NUM_CONCEPTS)
-    all_labels = []   # list of (batch_size, NUM_CONCEPTS)
+    all_probs  = []
+    all_labels = []
     t_dev = thresholds.to(device)
 
     with torch.no_grad():
-        for x, hist, seq_len, y in dl:
-            probs = torch.sigmoid(
-                model(x.to(device), hist.to(device), seq_len.to(device))
-            ).cpu()
+        for batch in dl:
+            if is_phase6:
+                x, hist, seq_len, y, eco_idx = batch
+                out = model(x.to(device), hist.to(device), seq_len.to(device),
+                            eco_idx=eco_idx.to(device))
+                logits = out[0] if isinstance(out, tuple) else out
+            else:
+                x, hist, seq_len, y = batch
+                logits = model(x.to(device), hist.to(device), seq_len.to(device))
+            probs = torch.sigmoid(logits).cpu()
             all_probs.append(probs)
             all_labels.append(y)
 

@@ -257,6 +257,15 @@ class CoachOutput:
     pv_san:             list[str]              = field(default_factory=list)
     pv_uci:             list[str]              = field(default_factory=list)
     pv_line_text:       str                    = ''   # "11. Nf3 Nc6  12. Bb5 a6"
+    # Phase 6 panel fields — opening/endgame bubble + RAG
+    opening_eco:        str                    = ''
+    opening_name:       str                    = ''
+    opening_depth:      int                    = 0
+    tablebase_wdl:      Optional[int]          = None
+    tablebase_dtz:      Optional[int]          = None
+    endgame_type:       str                    = ''
+    rag_annotation:     str                    = ''
+    rag_annotation_src: str                    = ''
 
     def __post_init__(self) -> None:
         if self.strategy_primary not in STRATEGIES:

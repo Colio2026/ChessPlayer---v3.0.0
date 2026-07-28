@@ -1,0 +1,1250 @@
+﻿Device: cuda
+Loaded classifier_best.pt  epoch=20  (Phase 6B MoE)
+Thresholds: 49/49 calibrated
+
+Loading test split (seed=42) ...
+Loading dataset from data\training_raw.jsonl ... 1,900,365 labeled examples found.
+  test: 190,037 examples  (train 1,520,292 / val 190,036 / test 190,037)
+  Algo cache:  algo_cache.npy  (lazy mmap, 16.21 GB)
+  V3 cache:    v3_cache.npy  (lazy mmap, 704 MB)
+  SF cache:    sf_cache.npy  (lazy mmap, 120 MB)
+  No NNUE cache ù NNUE features inactive (run build_nnue_cache.py).
+  Board cache: board_cache.npy  (lazy mmap, 8.59 GB)
+  TB cache:    tb_cache.npy  (lazy mmap, 26 MB)
+Running inference on 190,037 test examples ...
+Inference complete: 190,037 examples
+
+==============================================================================
+CONCEPT AUDIT REPORT
+Checkpoint : data\classifier_best.pt
+Test split : 190,037 examples  (seed=42)
+==============================================================================
+
+------------------------------------------------------------------------------
+CONCEPT: WEAK_SQUARE
+  Precision : 0.533   Recall : 0.585   F1 : 0.557
+  TP=10689  FP=9381  FN=7597  Support=18286
+  Threshold : 0.80
+
+  -- False Positives (9,381 total, showing 10) --
+     Model fired 'weak_square' but label=0.  Is the concept present?
+
+    FP  p=0.959
+    FEN : 1r5k/4P1p1/r1BP3p/p1p2p1P/5Pn1/2P5/1P2R3/2B4K b - - 0 62
+    URL : https://lichess.org/analysis/1r5k%2F4P1p1%2Fr1BP3p%2Fp1p2p1P%2F5Pn1%2F2P5%2F1P2R3%2F2B4K%20b%20-%20-%200%2062
+    Move: g4f6
+    Model fired   : blockade(0.97), weak_square(0.96), bishop_pair(0.92)
+    Labels say    : blockade
+
+    FP  p=0.977
+    FEN : 8/1p3pp1/p1p1k2p/P1P1p2P/1P4P1/8/4KP2/8 w - - 2 43
+    URL : https://lichess.org/analysis/8%2F1p3pp1%2Fp1p1k2p%2FP1P1p2P%2F1P4P1%2F8%2F4KP2%2F8%20w%20-%20-%202%2043
+    Move: f2f3
+    Model fired   : weak_square(0.98)
+    Labels say    : prophylaxis
+
+    FP  p=0.923
+    FEN : r2r2k1/2q2ppp/b1p1p3/p2nP1B1/Pp4PP/1B3N2/1P1Q1P2/1K1R3R b - - 4 23
+    URL : https://lichess.org/analysis/r2r2k1%2F2q2ppp%2Fb1p1p3%2Fp2nP1B1%2FPp4PP%2F1B3N2%2F1P1Q1P2%2F1K1R3R%20b%20-%20-%204%2023
+    Move: d5c3
+    Model fired   : pawn_storm(1.00), clearance(1.00), deflection(1.00), bishop_pair(1.00), discovery(1.00), open_file(0.99)
+    Labels say    : pawn_storm
+
+    FP  p=0.845
+    FEN : 6k1/p3rp2/4n3/1PrR2p1/4p3/6B1/1P3PP1/4R1K1 w - - 4 33
+    URL : https://lichess.org/analysis/6k1%2Fp3rp2%2F4n3%2F1PrR2p1%2F4p3%2F6B1%2F1P3PP1%2F4R1K1%20w%20-%20-%204%2033
+    Move: d5c5
+    Model fired   : initiative(0.99), zwischenzug(0.99), doubled_pawn(0.98), backward_pawn(0.97), open_file(0.97), prophylaxis(0.96)
+    Labels say    : zwischenzug, doubled_pawn
+
+    FP  p=0.935
+    FEN : 6k1/5pp1/4p2p/3nQ3/qr6/6P1/5P1P/R5K1 b - - 1 33
+    URL : https://lichess.org/analysis/6k1%2F5pp1%2F4p2p%2F3nQ3%2Fqr6%2F6P1%2F5P1P%2FR5K1%20b%20-%20-%201%2033
+    Move: a4e8
+    Model fired   : overloading(0.99), battery(0.99), open_file(0.99), pawn_majority(0.99), prophylaxis(0.98), sacrifice(0.96)
+    Labels say    : overloading, sacrifice, battery, open_file
+
+    FP  p=0.894
+    FEN : 5bk1/pp6/6R1/2p3Pn/8/2Pp4/1P1B4/2K5 b - - 0 30
+    URL : https://lichess.org/analysis/5bk1%2Fpp6%2F6R1%2F2p3Pn%2F8%2F2Pp4%2F1P1B4%2F2K5%20b%20-%20-%200%2030
+    Move: g8f7
+    Model fired   : back_rank(1.00), passed_pawn(1.00), bad_bishop(0.99), interference(0.99), blockade(0.99), pawn_majority(0.99)
+    Labels say    : back_rank, trapped_piece
+
+    FP  p=0.864
+    FEN : 1r2nrk1/2bq1ppp/p1p1p3/3pP3/3P1P2/5N2/PP2B1PP/2RQ1RK1 w - - 0 1
+    URL : https://lichess.org/analysis/1r2nrk1%2F2bq1ppp%2Fp1p1p3%2F3pP3%2F3P1P2%2F5N2%2FPP2B1PP%2F2RQ1RK1%20w%20-%20-%200%201
+    Model fired   : backward_pawn(0.94), prophylaxis(0.91), weak_square(0.86)
+    Labels say    : prophylaxis
+
+    FP  p=0.900
+    FEN : br1qkb1r/2pp1ppp/p1n1pn2/P7/8/2PP1NP1/2Q1PPBP/RNB2RK1 b k - 2 11
+    URL : https://lichess.org/analysis/br1qkb1r%2F2pp1ppp%2Fp1n1pn2%2FP7%2F8%2F2PP1NP1%2F2Q1PPBP%2FRNB2RK1%20b%20k%20-%202%2011
+    Move: b8b5
+    Model fired   : piece_activity(0.94), weak_square(0.90)
+    Labels say    : piece_activity
+
+    FP  p=0.854
+    FEN : r4qr1/ppp1pNbk/2np3p/4Pb1Q/2PP1B2/2N5/PP3PP1/2KR4 w - - 0 17
+    URL : https://lichess.org/analysis/r4qr1%2Fppp1pNbk%2F2np3p%2F4Pb1Q%2F2PP1B2%2F2N5%2FPP3PP1%2F2KR4%20w%20-%20-%200%2017
+    Move: h5f5
+    Model fired   : king_safety(1.00), pin(1.00), initiative(1.00), outpost(0.99), good_bishop(0.99), bishop_pair(0.99)
+    Labels say    : trapped_piece, king_safety
+
+    FP  p=0.983
+    FEN : 3r2k1/7p/bq2ppp1/p1R5/Pp2P2P/4QB2/1P3PP1/6K1 w - - 0 28
+    URL : https://lichess.org/analysis/3r2k1%2F7p%2Fbq2ppp1%2Fp1R5%2FPp2P2P%2F4QB2%2F1P3PP1%2F6K1%20w%20-%20-%200%2028
+    Move: e4e5
+    Model fired   : weak_square(0.98)
+    Labels say    : pawn_storm
+
+  -- False Negatives (7,597 total, showing 10) --
+     Label=1 but model didn't fire 'weak_square' at threshold 0.80.
+
+    FN  p=0.216  (threshold=0.80)
+    FEN : 3r4/1pr4p/5p2/1R1kpP2/3p2R1/1K3P2/1P4PP/8 b - - 13 38
+    URL : https://lichess.org/analysis/3r4%2F1pr4p%2F5p2%2F1R1kpP2%2F3p2R1%2F1K3P2%2F1P4PP%2F8%20b%20-%20-%2013%2038
+    Move: d5c6
+    Model fired   : opposition(1.00), rook_endgame(0.96)
+    Labels say    : skewer, x_ray, interference, blockade, passed_pawn, isolated_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, king_activity, opposition, rook_endgame, weak_square, open_file
+
+    FN  p=0.200  (threshold=0.80)
+    FEN : 4K3/4P1k1/8/8/8/8/r7/6R1 b - - 1 1
+    URL : https://lichess.org/analysis/4K3%2F4P1k1%2F8%2F8%2F8%2F8%2Fr7%2F6R1%20b%20-%20-%201%201
+    Move: g7h7
+    Model fired   : rook_endgame(0.99)
+    Labels say    : weak_square
+
+    FN  p=0.378  (threshold=0.80)
+    FEN : 4Q1rk/pR1Q3p/8/4P3/4qp2/4B2P/P4P1K/8 b - - 0 34
+    URL : https://lichess.org/analysis/4Q1rk%2FpR1Q3p%2F8%2F4P3%2F4qp2%2F4B2P%2FP4P1K%2F8%20b%20-%20-%200%2034
+    Move: e4g2
+    Model fired   : skewer(1.00), rook_seventh(0.99), piece_activity(0.97), pin(0.97), clearance(0.93), mating_attack(0.89)
+    Labels say    : pin, fork, skewer, discovery, x_ray, clearance, overloading, interference, sacrifice, mating_attack, piece_activity, battery, rook_seventh, passed_pawn, isolated_pawn, pawn_majority, pawn_island, weak_square, open_file, initiative, prophylaxis
+
+    FN  p=0.279  (threshold=0.80)
+    FEN : 8/1pQ1bp2/r3pk1p/3p2p1/3P3N/4P1P1/Pq3PP1/5RK1 w - - 0 27
+    URL : https://lichess.org/analysis/8%2F1pQ1bp2%2Fr3pk1p%2F3p2p1%2F3P3N%2F4P1P1%2FPq3PP1%2F5RK1%20w%20-%20-%200%2027
+    Move: c7e5
+    Model fired   : doubled_pawn(0.96), king_activity(0.93), double_check(0.92), trapped_piece(0.90), deflection(0.88)
+    Labels say    : discovery, x_ray, deflection, overloading, interference, sacrifice, mating_attack, blockade, good_bishop, isolated_pawn, doubled_pawn, pawn_chain, pawn_island, king_activity, weak_square
+
+    FN  p=0.721  (threshold=0.80)
+    FEN : r4rk1/pp1q2pp/3p1p2/2p2P2/5Q2/2Pn3P/PP1N1PP1/4RRK1 w - - 4 18
+    URL : https://lichess.org/analysis/r4rk1%2Fpp1q2pp%2F3p1p2%2F2p2P2%2F5Q2%2F2Pn3P%2FPP1N1PP1%2F4RRK1%20w%20-%20-%204%2018
+    Move: f4c4
+    Model fired   : zwischenzug(1.00), doubled_pawn(1.00), fork(1.00), initiative(0.99), overloading(0.97), sacrifice(0.97)
+    Labels say    : fork, x_ray, overloading, zwischenzug, interference, sacrifice, outpost, blockade, battery, doubled_pawn, pawn_majority, pawn_chain, pawn_island, weak_square, open_file, initiative, prophylaxis
+
+    FN  p=0.593  (threshold=0.80)
+    FEN : 3rb2k/1Q4bp/3p1q2/3P1p2/4pP2/4N1PP/4BK2/2R5 b - - 10 43
+    URL : https://lichess.org/analysis/3rb2k%2F1Q4bp%2F3p1q2%2F3P1p2%2F4pP2%2F4N1PP%2F4BK2%2F2R5%20b%20-%20-%2010%2043
+    Move: e8g6
+    Model fired   : piece_activity(1.00), bishop_pair(0.99), good_bishop(0.97), blockade(0.97), deflection(0.97), king_safety(0.97)
+    Labels say    : x_ray, deflection, interference, blockade, bad_bishop, good_bishop, bishop_pair, piece_activity, battery, isolated_pawn, backward_pawn, pawn_chain, pawn_island, weak_square, open_file
+
+    FN  p=0.761  (threshold=0.80)
+    FEN : r3r1k1/ppp2pp1/2n4p/3nP3/7q/P2B1P1P/1BPQ1P1K/R3R3 b - - 2 17
+    URL : https://lichess.org/analysis/r3r1k1%2Fppp2pp1%2F2n4p%2F3nP3%2F7q%2FP2B1P1P%2F1BPQ1P1K%2FR3R3%20b%20-%20-%202%2017
+    Move: d5f4
+    Model fired   : bishop_pair(0.99), pin(0.98), clearance(0.97), doubled_pawn(0.96), overloading(0.96), discovery(0.96)
+    Labels say    : pin, discovery, x_ray, clearance, overloading, interference, bishop_pair, battery, isolated_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, weak_square, prophylaxis
+
+    FN  p=0.263  (threshold=0.80)
+    FEN : 8/5p2/8/6p1/5qk1/3K4/4Q3/8 b - - 1 73
+    URL : https://lichess.org/analysis/8%2F5p2%2F8%2F6p1%2F5qk1%2F3K4%2F4Q3%2F8%20b%20-%20-%201%2073
+    Move: f4f3
+    Model fired   : queen_endgame(1.00)
+    Labels say    : passed_pawn, pawn_majority, king_activity, queen_endgame, weak_square, prophylaxis
+
+    FN  p=0.681  (threshold=0.80)
+    FEN : 7r/p3p1k1/3p1p2/8/1PQ1n1Pp/2P5/2P4P/qNK4R b - - 1 32
+    URL : https://lichess.org/analysis/7r%2Fp3p1k1%2F3p1p2%2F8%2F1PQ1n1Pp%2F2P5%2F2P4P%2FqNK4R%20b%20-%20-%201%2032
+    Move: a1b1
+    Model fired   : piece_activity(1.00), pin(1.00), zwischenzug(1.00), initiative(0.99), doubled_pawn(0.99), outpost(0.98)
+    Labels say    : pin, fork, x_ray, deflection, zwischenzug, interference, sacrifice, trapped_piece, outpost, piece_activity, passed_pawn, isolated_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, weak_square, initiative, prophylaxis
+
+    FN  p=0.317  (threshold=0.80)
+    FEN : 8/5P1k/4K2r/3p4/3P4/8/5R2/8 w - - 3 61
+    URL : https://lichess.org/analysis/8%2F5P1k%2F4K2r%2F3p4%2F3P4%2F8%2F5R2%2F8%20w%20-%20-%203%2061
+    Move: e6d7
+    Model fired   : promotion(0.99), rook_endgame(0.98), passed_pawn(0.89)
+    Labels say    : interference, blockade, passed_pawn, promotion, isolated_pawn, pawn_majority, pawn_island, king_activity, rook_endgame, weak_square, open_file
+
+------------------------------------------------------------------------------
+CONCEPT: PROPHYLAXIS
+  Precision : 0.502   Recall : 0.694   F1 : 0.583
+  TP=8798  FP=8732  FN=3878  Support=12676
+  Threshold : 0.80
+
+  -- False Positives (8,732 total, showing 10) --
+     Model fired 'prophylaxis' but label=0.  Is the concept present?
+
+    FP  p=0.932
+    FEN : 5rk1/pR3pbp/3Np1p1/3n4/8/5Q2/q4PPP/5RK1 b - - 1 20
+    URL : https://lichess.org/analysis/5rk1%2FpR3pbp%2F3Np1p1%2F3n4%2F8%2F5Q2%2Fq4PPP%2F5RK1%20b%20-%20-%201%2020
+    Move: a2a6
+    Model fired   : rook_seventh(1.00), passed_pawn(1.00), pawn_majority(0.99), isolated_pawn(0.99), clearance(0.99), discovery(0.98)
+    Labels say    : clearance, mating_attack, trapped_piece, outpost, good_bishop, rook_seventh
+
+    FP  p=0.862
+    FEN : rn1qk2r/pp3ppp/2p1pn2/5b2/PbBP4/2N1PN2/1P3PPP/R1BQ1RK1 b kq - 2 8
+    URL : https://lichess.org/analysis/rn1qk2r%2Fpp3ppp%2F2p1pn2%2F5b2%2FPbBP4%2F2N1PN2%2F1P3PPP%2FR1BQ1RK1%20b%20kq%20-%202%208
+    Move: b8d7
+    Model fired   : doubled_pawn(0.96), prophylaxis(0.86)
+    Labels say    : doubled_pawn
+
+    FP  p=0.831
+    FEN : r2qkbnr/p1npp1pp/b4p2/1p2N3/B1p1P3/3P1Q2/PPP2PPP/RNB2RK1 w kq - 0 9
+    URL : https://lichess.org/analysis/r2qkbnr%2Fp1npp1pp%2Fb4p2%2F1p2N3%2FB1p1P3%2F3P1Q2%2FPPP2PPP%2FRNB2RK1%20w%20kq%20-%200%209
+    Move: f3h5
+    Model fired   : bishop_pair(0.99), trapped_piece(0.99), zwischenzug(0.99), piece_activity(0.99), clearance(0.96), initiative(0.95)
+    Labels say    : zwischenzug, trapped_piece, bishop_pair, piece_activity
+
+    FP  p=0.969
+    FEN : 5rk1/p5pp/6b1/5p2/1r4P1/2N1q2P/PP3RQ1/5RK1 w - - 0 29
+    URL : https://lichess.org/analysis/5rk1%2Fp5pp%2F6b1%2F5p2%2F1r4P1%2F2N1q2P%2FPP3RQ1%2F5RK1%20w%20-%20-%200%2029
+    Move: c3d5
+    Model fired   : back_rank(0.99), skewer(0.99), fork(0.98), clearance(0.98), pin(0.98), pawn_majority(0.97)
+    Labels say    : pin, fork, skewer, discovery, clearance, overloading, back_rank, battery
+
+    FP  p=0.925
+    FEN : 7Q/1p4p1/2p1k2p/2bq4/4pK2/5nN1/1B2B2P/7R b - - 2 29
+    URL : https://lichess.org/analysis/7Q%2F1p4p1%2F2p1k2p%2F2bq4%2F4pK2%2F5nN1%2F1B2B2P%2F7R%20b%20-%20-%202%2029
+    Move: d5g5
+    Model fired   : king_safety(1.00), bishop_pair(0.99), zwischenzug(0.99), outpost(0.98), good_bishop(0.97), sacrifice(0.94)
+    Labels say    : zwischenzug, sacrifice, mating_attack, outpost, good_bishop, bishop_pair, king_safety, initiative
+
+    FP  p=0.937
+    FEN : rn1q1rk1/5pbp/3pb1p1/p1p5/1pP1n3/1P3N1P/PB1N1PP1/R2QKB1R w KQ - 0 13
+    URL : https://lichess.org/analysis/rn1q1rk1%2F5pbp%2F3pb1p1%2Fp1p5%2F1pP1n3%2F1P3N1P%2FPB1N1PP1%2FR2QKB1R%20w%20KQ%20-%200%2013
+    Move: b2g7
+    Model fired   : battery(1.00), bishop_pair(1.00), good_bishop(0.99), blockade(0.99), bad_bishop(0.99), backward_pawn(0.99)
+    Labels say    : clearance, zwischenzug, trapped_piece, bishop_pair, backward_pawn, king_safety
+
+    FP  p=0.897
+    FEN : 1k1r3r/pp6/1q2p2p/1b2Np2/4PQ2/1P5p/P1B3P1/2R4K w - - 0 27
+    URL : https://lichess.org/analysis/1k1r3r%2Fpp6%2F1q2p2p%2F1b2Np2%2F4PQ2%2F1P5p%2FP1B3P1%2F2R4K%20w%20-%20-%200%2027
+    Move: e5d7
+    Model fired   : doubled_pawn(0.98), double_check(0.97), bad_bishop(0.97), outpost(0.96), open_file(0.92), battery(0.91)
+    Labels say    : double_check
+
+    FP  p=0.935
+    FEN : 2rq1bk1/3b1pp1/p2p1n1r/3P3p/2PQ4/4RPPP/PB4B1/4R1K1 b - - 0 23
+    URL : https://lichess.org/analysis/2rq1bk1%2F3b1pp1%2Fp2p1n1r%2F3P3p%2F2PQ4%2F4RPPP%2FPB4B1%2F4R1K1%20b%20-%20-%200%2023
+    Move: d8c7
+    Model fired   : back_rank(1.00), bishop_pair(1.00), blockade(1.00), battery(1.00), backward_pawn(1.00), good_bishop(1.00)
+    Labels say    : discovery, interference, back_rank, blockade, bad_bishop, good_bishop, bishop_pair, battery, isolated_pawn, backward_pawn, pawn_majority, open_file
+
+    FP  p=0.979
+    FEN : r1bq1r2/4npkp/pp1pp1p1/4n1N1/P1BQPP2/2N5/1PP3PP/R4RK1 b - - 0 14
+    URL : https://lichess.org/analysis/r1bq1r2%2F4npkp%2Fpp1pp1p1%2F4n1N1%2FP1BQPP2%2F2N5%2F1PP3PP%2FR4RK1%20b%20-%20-%200%2014
+    Move: e7c6
+    Model fired   : pawn_storm(1.00), piece_activity(1.00), clearance(0.99), initiative(0.99), pin(0.99), bad_bishop(0.98)
+    Labels say    : pawn_storm
+
+    FP  p=0.935
+    FEN : rn3rk1/p4ppN/4p3/1pp4P/1n1Pq3/4P1Q1/PK3PP1/R6R w - - 2 26
+    URL : https://lichess.org/analysis/rn3rk1%2Fp4ppN%2F4p3%2F1pp4P%2F1n1Pq3%2F4P1Q1%2FPK3PP1%2FR6R%20w%20-%20-%202%2026
+    Move: h7f6
+    Model fired   : zwischenzug(1.00), king_safety(0.99), pin(0.99), outpost(0.99), overloading(0.98), sacrifice(0.98)
+    Labels say    : king_safety
+
+  -- False Negatives (3,878 total, showing 10) --
+     Label=1 but model didn't fire 'prophylaxis' at threshold 0.80.
+
+    FN  p=0.431  (threshold=0.80)
+    FEN : rn1qk2r/pbpp2bp/1p3np1/3P1p2/8/P1N2NP1/1P2PPBP/R1BQK2R b KQkq - 1 1
+    URL : https://lichess.org/analysis/rn1qk2r%2Fpbpp2bp%2F1p3np1%2F3P1p2%2F8%2FP1N2NP1%2F1P2PPBP%2FR1BQK2R%20b%20KQkq%20-%201%201
+    Move: b8a6
+    Model fired   : (none)
+    Labels say    : piece_activity, prophylaxis
+
+    FN  p=0.677  (threshold=0.80)
+    FEN : 1r3rk1/3q3p/pp1p2p1/2pPb2n/P1P5/2N4P/1PQ2RP1/4RBK1 w - - 0 26
+    URL : https://lichess.org/analysis/1r3rk1%2F3q3p%2Fpp1p2p1%2F2pPb2n%2FP1P5%2F2N4P%2F1PQ2RP1%2F4RBK1%20w%20-%20-%200%2026
+    Move: f2f8
+    Model fired   : skewer(1.00), deflection(0.99), backward_pawn(0.97), blockade(0.96), battery(0.96), overloading(0.95)
+    Labels say    : skewer, x_ray, deflection, overloading, interference, blockade, bad_bishop, battery, backward_pawn, pawn_chain, pawn_island, open_file, prophylaxis
+
+    FN  p=0.304  (threshold=0.80)
+    FEN : 7k/p5p1/3p3p/1Pp5/7P/P4q2/4KP2/8 w - - 0 37
+    URL : https://lichess.org/analysis/7k%2Fp5p1%2F3p3p%2F1Pp5%2F7P%2FP4q2%2F4KP2%2F8%20w%20-%20-%200%2037
+    Move: e2f3
+    Model fired   : queen_endgame(1.00)
+    Labels say    : overloading, sacrifice, piece_activity, passed_pawn, backward_pawn, queen_endgame, initiative, prophylaxis
+
+    FN  p=0.501  (threshold=0.80)
+    FEN : 1R6/8/3Kp3/3pPb2/2pB1P2/k1Pr4/8/8 b - - 28 56
+    URL : https://lichess.org/analysis/1R6%2F8%2F3Kp3%2F3pPb2%2F2pB1P2%2Fk1Pr4%2F8%2F8%20b%20-%20-%2028%2056
+    Move: d3d4
+    Model fired   : king_activity(1.00), backward_pawn(0.97), overloading(0.97), bad_bishop(0.94), blockade(0.88), open_file(0.81)
+    Labels say    : overloading, sacrifice, blockade, bad_bishop, backward_pawn, king_activity, open_file, prophylaxis
+
+    FN  p=0.794  (threshold=0.80)
+    FEN : 5n2/pp4RP/3kprN1/4p3/3p4/1P6/P1P3P1/6K1 w - - 1 36
+    URL : https://lichess.org/analysis/5n2%2Fpp4RP%2F3kprN1%2F4p3%2F3p4%2F1P6%2FP1P3P1%2F6K1%20w%20-%20-%201%2036
+    Move: g6f8
+    Model fired   : (none)
+    Labels say    : prophylaxis
+
+    FN  p=0.483  (threshold=0.80)
+    FEN : r1bq1rk1/pp3ppp/2n1pn2/2pp4/1bPP4/P1NBPN2/1P3PPP/R1BQ1RK1 b - - 0 8
+    URL : https://lichess.org/analysis/r1bq1rk1%2Fpp3ppp%2F2n1pn2%2F2pp4%2F1bPP4%2FP1NBPN2%2F1P3PPP%2FR1BQ1RK1%20b%20-%20-%200%208
+    Move: b4c3
+    Model fired   : sacrifice(0.91)
+    Labels say    : prophylaxis
+
+    FN  p=0.373  (threshold=0.80)
+    FEN : r1b2q1k/p1p1bp2/2pr1N1Q/4pP2/8/3B3R/PPP3PP/R5K1 b - - 0 23
+    URL : https://lichess.org/analysis/r1b2q1k%2Fp1p1bp2%2F2pr1N1Q%2F4pP2%2F8%2F3B3R%2FPPP3PP%2FR5K1%20b%20-%20-%200%2023
+    Move: f8h6
+    Model fired   : back_rank(1.00), doubled_pawn(0.99), king_safety(0.99), bishop_pair(0.99), fork(0.98), piece_activity(0.98)
+    Labels say    : fork, discovery, clearance, interference, back_rank, mating_attack, outpost, bad_bishop, good_bishop, bishop_pair, piece_activity, battery, passed_pawn, isolated_pawn, doubled_pawn, pawn_majority, pawn_island, king_safety, open_file, initiative, prophylaxis
+
+    FN  p=0.385  (threshold=0.80)
+    FEN : r1bqkbnr/pppppppp/2n5/8/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 1 2
+    URL : https://lichess.org/analysis/r1bqkbnr%2Fpppppppp%2F2n5%2F8%2F3P4%2F8%2FPPP1PPPP%2FRNBQKBNR%20w%20KQkq%20-%201%202
+    Move: g1f3
+    Model fired   : (none)
+    Labels say    : prophylaxis
+
+    FN  p=0.592  (threshold=0.80)
+    FEN : r4r2/ppp1k2p/8/2NQn2b/5q2/7P/PP4P1/7K w - - 12 30
+    URL : https://lichess.org/analysis/r4r2%2Fppp1k2p%2F8%2F2NQn2b%2F5q2%2F7P%2FPP4P1%2F7K%20w%20-%20-%2012%2030
+    Move: d5e6
+    Model fired   : king_safety(1.00), piece_activity(0.98), battery(0.85)
+    Labels say    : x_ray, interference, sacrifice, mating_attack, piece_activity, battery, isolated_pawn, pawn_majority, pawn_chain, pawn_island, king_safety, weak_square, open_file, prophylaxis
+
+    FN  p=0.282  (threshold=0.80)
+    FEN : N1bkr3/Bp1p1ppp/8/7n/2P5/5P2/q4PPP/3R1RK1 w - - 0 16
+    URL : https://lichess.org/analysis/N1bkr3%2FBp1p1ppp%2F8%2F7n%2F2P5%2F5P2%2Fq4PPP%2F3R1RK1%20w%20-%20-%200%2016
+    Move: a7b6
+    Model fired   : zwischenzug(0.98), trapped_piece(0.93), pin(0.92), doubled_pawn(0.86)
+    Labels say    : pin, skewer, x_ray, deflection, overloading, zwischenzug, interference, sacrifice, outpost, bad_bishop, good_bishop, battery, isolated_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, king_safety, weak_square, open_file, initiative, prophylaxis
+
+------------------------------------------------------------------------------
+CONCEPT: OPEN_FILE
+  Precision : 0.503   Recall : 0.699   F1 : 0.585
+  TP=8658  FP=8540  FN=3735  Support=12393
+  Threshold : 0.80
+
+  -- False Positives (8,540 total, showing 10) --
+     Model fired 'open_file' but label=0.  Is the concept present?
+
+    FP  p=0.963
+    FEN : 1r1r2k1/p4p2/2p2P1Q/4p1p1/4pb2/2N5/P4RPP/7K b - - 0 26
+    URL : https://lichess.org/analysis/1r1r2k1%2Fp4p2%2F2p2P1Q%2F4p1p1%2F4pb2%2F2N5%2FP4RPP%2F7K%20b%20-%20-%200%2026
+    Move: b8b1
+    Model fired   : clearance(1.00), doubled_pawn(1.00), discovery(0.99), blockade(0.98), passed_pawn(0.98), pawn_majority(0.97)
+    Labels say    : fork, clearance, sacrifice, mating_attack, doubled_pawn
+
+    FP  p=0.998
+    FEN : 2k1r2r/2pp3p/b4p1p/p2N4/Pb1nPQ2/7P/B4PP1/RR4K1 b - - 2 20
+    URL : https://lichess.org/analysis/2k1r2r%2F2pp3p%2Fb4p1p%2Fp2N4%2FPb1nPQ2%2F7P%2FB4PP1%2FRR4K1%20b%20-%20-%202%2020
+    Move: d4e2
+    Model fired   : pawn_storm(1.00), bishop_pair(1.00), outpost(1.00), zwischenzug(1.00), open_file(1.00), initiative(1.00)
+    Labels say    : fork, discovery, clearance, zwischenzug, outpost, blockade, bad_bishop, good_bishop, bishop_pair, passed_pawn, backward_pawn, doubled_pawn, pawn_storm, initiative
+
+    FP  p=0.984
+    FEN : 4q1k1/pRb5/4bQpB/8/8/7P/P4PPK/2r5 w - - 3 31
+    URL : https://lichess.org/analysis/4q1k1%2FpRb5%2F4bQpB%2F8%2F8%2F7P%2FP4PPK%2F2r5%20w%20-%20-%203%2031
+    Move: g2g3
+    Model fired   : rook_seventh(1.00), initiative(1.00), back_rank(1.00), good_bishop(0.99), bishop_pair(0.99), open_file(0.98)
+    Labels say    : back_rank, bishop_pair, rook_seventh, king_safety, initiative
+
+    FP  p=0.858
+    FEN : 4q1k1/p2n2p1/1p1Qp1p1/6Pp/2p1rN1P/8/PP3P2/1K1R4 w - - 2 26
+    URL : https://lichess.org/analysis/4q1k1%2Fp2n2p1%2F1p1Qp1p1%2F6Pp%2F2p1rN1P%2F8%2FPP3P2%2F1K1R4%20w%20-%20-%202%2026
+    Move: f2f3
+    Model fired   : pawn_storm(0.98), piece_activity(0.96), overloading(0.96), discovery(0.96), battery(0.96), blockade(0.95)
+    Labels say    : trapped_piece, pawn_storm
+
+    FP  p=0.907
+    FEN : 8/2R5/p3pk1p/1p3pqP/1P3P2/P2r1KP1/8/7Q w - - 3 40
+    URL : https://lichess.org/analysis/8%2F2R5%2Fp3pk1p%2F1p3pqP%2F1P3P2%2FP2r1KP1%2F8%2F7Q%20w%20-%20-%203%2040
+    Move: f3e2
+    Model fired   : king_activity(1.00), rook_seventh(1.00), pawn_storm(0.99), skewer(0.99), blockade(0.96), x_ray(0.94)
+    Labels say    : skewer, rook_seventh, backward_pawn, pawn_storm, king_activity
+
+    FP  p=0.948
+    FEN : 5r2/1p5R/2p1k3/p5K1/P3P3/1PP2P2/3r4/5R2 b - - 4 29
+    URL : https://lichess.org/analysis/5r2%2F1p5R%2F2p1k3%2Fp5K1%2FP3P3%2F1PP2P2%2F3r4%2F5R2%20b%20-%20-%204%2029
+    Move: d2g2
+    Model fired   : rook_endgame(1.00), rook_seventh(0.98), king_activity(0.98), open_file(0.95), clearance(0.92), blockade(0.91)
+    Labels say    : rook_endgame
+
+    FP  p=0.951
+    FEN : 6k1/p5pp/3p4/1N1n4/2r5/5P2/P3R2P/6K1 w - - 0 29
+    URL : https://lichess.org/analysis/6k1%2Fp5pp%2F3p4%2F1N1n4%2F2r5%2F5P2%2FP3R2P%2F6K1%20w%20-%20-%200%2029
+    Move: e2e8
+    Model fired   : passed_pawn(1.00), overloading(1.00), pawn_majority(0.99), isolated_pawn(0.99), fork(0.99), interference(0.98)
+    Labels say    : fork
+
+    FP  p=0.948
+    FEN : 4k3/3b1r1R/pq2p1N1/3p4/8/P7/KP6/8 w - - 3 38
+    URL : https://lichess.org/analysis/4k3%2F3b1r1R%2Fpq2p1N1%2F3p4%2F8%2FP7%2FKP6%2F8%20w%20-%20-%203%2038
+    Move: h7h8
+    Model fired   : rook_seventh(1.00), back_rank(1.00), zwischenzug(1.00), skewer(1.00), piece_activity(1.00), clearance(1.00)
+    Labels say    : skewer, back_rank, rook_seventh
+
+    FP  p=0.953
+    FEN : 8/4pp2/3pk1p1/1R3PP1/3KP3/2P2r2/8/8 b - - 0 52
+    URL : https://lichess.org/analysis/8%2F4pp2%2F3pk1p1%2F1R3PP1%2F3KP3%2F2P2r2%2F8%2F8%20b%20-%20-%200%2052
+    Move: g6f5
+    Model fired   : rook_endgame(1.00), blockade(0.98), interference(0.97), king_activity(0.97), pawn_storm(0.97), x_ray(0.96)
+    Labels say    : rook_endgame
+
+    FP  p=0.839
+    FEN : 1R6/4r1k1/P7/8/1K4p1/8/8/8 w - - 1 41
+    URL : https://lichess.org/analysis/1R6%2F4r1k1%2FP7%2F8%2F1K4p1%2F8%2F8%2F8%20w%20-%20-%201%2041
+    Move: b8b7
+    Model fired   : rook_endgame(1.00), promotion(0.94), passed_pawn(0.90), open_file(0.84)
+    Labels say    : rook_endgame
+
+  -- False Negatives (3,735 total, showing 10) --
+     Label=1 but model didn't fire 'open_file' at threshold 0.80.
+
+    FN  p=0.407  (threshold=0.80)
+    FEN : 5r1k/2q4p/3Q1bpP/2p5/2B1PP2/1p6/P7/1K1R4 b - - 0 31
+    URL : https://lichess.org/analysis/5r1k%2F2q4p%2F3Q1bpP%2F2p5%2F2B1PP2%2F1p6%2FP7%2F1K1R4%20b%20-%20-%200%2031
+    Move: b3a2
+    Model fired   : skewer(0.99), pawn_storm(0.99), zwischenzug(0.96), initiative(0.95), outpost(0.91), promotion(0.91)
+    Labels say    : fork, skewer, discovery, x_ray, clearance, deflection, overloading, zwischenzug, interference, outpost, blockade, good_bishop, battery, passed_pawn, isolated_pawn, pawn_majority, pawn_chain, pawn_storm, pawn_island, weak_square, open_file, initiative, prophylaxis
+
+    FN  p=0.488  (threshold=0.80)
+    FEN : 6k1/ppp2pb1/2n2p1p/8/3P4/2P1r1qQ/PP4PN/R3R1K1 b - - 1 23
+    URL : https://lichess.org/analysis/6k1%2Fppp2pb1%2F2n2p1p%2F8%2F3P4%2F2P1r1qQ%2FPP4PN%2FR3R1K1%20b%20-%20-%201%2023
+    Move: e3e1
+    Model fired   : skewer(1.00), doubled_pawn(0.97), king_safety(0.96), deflection(0.95), fork(0.94), pin(0.94)
+    Labels say    : pin, fork, skewer, discovery, deflection, overloading, mating_attack, bad_bishop, piece_activity, battery, doubled_pawn, open_file, initiative, prophylaxis
+
+    FN  p=0.694  (threshold=0.80)
+    FEN : r1b3k1/1p2rppp/p7/3Q4/8/1N6/Pq3PPP/R4R1K w - - 1 19
+    URL : https://lichess.org/analysis/r1b3k1%2F1p2rppp%2Fp7%2F3Q4%2F8%2F1N6%2FPq3PPP%2FR4R1K%20w%20-%20-%201%2019
+    Move: d5d8
+    Model fired   : deflection(0.98), pin(0.97), fork(0.97), trapped_piece(0.93), mating_attack(0.87), overloading(0.84)
+    Labels say    : pin, fork, x_ray, deflection, overloading, interference, mating_attack, bad_bishop, battery, isolated_pawn, pawn_majority, pawn_chain, pawn_island, weak_square, open_file
+
+    FN  p=0.293  (threshold=0.80)
+    FEN : r3k2r/p1p1qp2/B1ppbnpp/2b5/4PP2/1P5P/PBP3PK/RN1Q1R2 b kq - 0 13
+    URL : https://lichess.org/analysis/r3k2r%2Fp1p1qp2%2FB1ppbnpp%2F2b5%2F4PP2%2F1P5P%2FPBP3PK%2FRN1Q1R2%20b%20kq%20-%200%2013
+    Move: f6g4
+    Model fired   : (none)
+    Labels say    : open_file
+
+    FN  p=0.508  (threshold=0.80)
+    FEN : rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1
+    URL : https://lichess.org/analysis/rnbqkbnr%2Fpppppppp%2F8%2F8%2F4P3%2F8%2FPPPP1PPP%2FRNBQKBNR%20b%20KQkq%20-%200%201
+    Move: e7e5
+    Model fired   : (none)
+    Labels say    : open_file
+
+    FN  p=0.337  (threshold=0.80)
+    FEN : 8/1p5p/kP6/P4QP1/8/6P1/1r2rPK1/8 b - - 0 55
+    URL : https://lichess.org/analysis/8%2F1p5p%2FkP6%2FP4QP1%2F8%2F6P1%2F1r2rPK1%2F8%20b%20-%20-%200%2055
+    Move: e2f2
+    Model fired   : space_advantage(1.00)
+    Labels say    : pin, fork, blockade, battery, rook_seventh, passed_pawn, backward_pawn, doubled_pawn, pawn_storm, open_file, space_advantage
+
+    FN  p=0.361  (threshold=0.80)
+    FEN : 8/5P2/1p4R1/p1k5/6PK/8/8/7r w - - 1 57
+    URL : https://lichess.org/analysis/8%2F5P2%2F1p4R1%2Fp1k5%2F6PK%2F8%2F8%2F7r%20w%20-%20-%201%2057
+    Move: h4g5
+    Model fired   : rook_endgame(1.00), promotion(0.97), king_activity(0.95)
+    Labels say    : passed_pawn, promotion, king_activity, rook_endgame, open_file
+
+    FN  p=0.258  (threshold=0.80)
+    FEN : r1b4r/pp1k2p1/2nb2qp/1B1p2B1/3p3Q/8/PPP2PPP/3RR1K1 w - - 0 18
+    URL : https://lichess.org/analysis/r1b4r%2Fpp1k2p1%2F2nb2qp%2F1B1p2B1%2F3p3Q%2F8%2FPPP2PPP%2F3RR1K1%20w%20-%20-%200%2018
+    Move: h4g4
+    Model fired   : king_safety(0.99), zwischenzug(0.98), bishop_pair(0.95), doubled_pawn(0.90)
+    Labels say    : pin, discovery, x_ray, clearance, deflection, zwischenzug, interference, sacrifice, bad_bishop, good_bishop, bishop_pair, battery, isolated_pawn, backward_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, king_safety, weak_square, open_file, initiative, prophylaxis
+
+    FN  p=0.290  (threshold=0.80)
+    FEN : 8/1p4p1/p5P1/6k1/PP5r/2P3Kp/3R4/8 b - - 1 41
+    URL : https://lichess.org/analysis/8%2F1p4p1%2Fp5P1%2F6k1%2FPP5r%2F2P3Kp%2F3R4%2F8%20b%20-%20-%201%2041
+    Move: h3h2
+    Model fired   : opposition(1.00), rook_endgame(0.96), promotion(0.90)
+    Labels say    : x_ray, overloading, sacrifice, blockade, passed_pawn, isolated_pawn, pawn_majority, pawn_chain, pawn_island, opposition, rook_endgame, weak_square, open_file
+
+    FN  p=0.293  (threshold=0.80)
+    FEN : 2q3r1/1p5k/p6P/3pBb2/3Q4/bP1P4/P1r5/1K4RR w - - 0 36
+    URL : https://lichess.org/analysis/2q3r1%2F1p5k%2Fp6P%2F3pBb2%2F3Q4%2FbP1P4%2FP1r5%2F1K4RR%20w%20-%20-%200%2036
+    Move: g1g7
+    Model fired   : double_check(0.99), rook_seventh(0.98), king_safety(0.96), piece_activity(0.94)
+    Labels say    : discovery, x_ray, deflection, interference, sacrifice, mating_attack, outpost, blockade, bad_bishop, good_bishop, bishop_pair, piece_activity, battery, rook_seventh, passed_pawn, isolated_pawn, pawn_majority, pawn_chain, pawn_island, king_safety, weak_square, open_file, prophylaxis
+
+------------------------------------------------------------------------------
+CONCEPT: X_RAY
+  Precision : 0.411   Recall : 0.566   F1 : 0.476
+  TP=5893  FP=8432  FN=4519  Support=10412
+  Threshold : 0.85
+
+  -- False Positives (8,432 total, showing 10) --
+     Model fired 'x_ray' but label=0.  Is the concept present?
+
+    FP  p=0.871
+    FEN : 3r1rb1/p6k/2p2qp1/5p2/1P2P3/P3QBNP/2P2PP1/4R1K1 b - - 4 29
+    URL : https://lichess.org/analysis/3r1rb1%2Fp6k%2F2p2qp1%2F5p2%2F1P2P3%2FP3QBNP%2F2P2PP1%2F4R1K1%20b%20-%20-%204%2029
+    Move: f5f4
+    Model fired   : open_file(0.99), clearance(0.99), prophylaxis(0.98), backward_pawn(0.97), discovery(0.97), bad_bishop(0.96)
+    Labels say    : fork
+
+    FP  p=0.984
+    FEN : r5k1/pp1rppbp/6p1/q1pPn1B1/4P3/2P2B2/P2Q1PPP/2R2RK1 w - - 1 16
+    URL : https://lichess.org/analysis/r5k1%2Fpp1rppbp%2F6p1%2Fq1pPn1B1%2F4P3%2F2P2B2%2FP2Q1PPP%2F2R2RK1%20w%20-%20-%201%2016
+    Move: f3e2
+    Model fired   : clearance(1.00), discovery(1.00), bishop_pair(1.00), blockade(1.00), interference(1.00), overloading(1.00)
+    Labels say    : discovery, clearance, overloading, interference, blockade, bad_bishop, good_bishop, bishop_pair, battery, isolated_pawn
+
+    FP  p=0.866
+    FEN : 2rr1nk1/R4ppp/4p3/p2n4/3P4/q3PQ1P/5PP1/1B1R2K1 w - - 4 27
+    URL : https://lichess.org/analysis/2rr1nk1%2FR4ppp%2F4p3%2Fp2n4%2F3P4%2Fq3PQ1P%2F5PP1%2F1B1R2K1%20w%20-%20-%204%2027
+    Move: f3f7
+    Model fired   : rook_seventh(1.00), piece_activity(1.00), clearance(0.98), passed_pawn(0.98), open_file(0.96), discovery(0.96)
+    Labels say    : discovery, clearance, sacrifice, mating_attack, blockade, good_bishop, piece_activity, battery, rook_seventh, passed_pawn, open_file
+
+    FP  p=0.926
+    FEN : 8/1p6/4p1k1/1PpqB3/p1n2Pp1/P5P1/3r3R/4RQK1 b - - 3 33
+    URL : https://lichess.org/analysis/8%2F1p6%2F4p1k1%2F1PpqB3%2Fp1n2Pp1%2FP5P1%2F3r3R%2F4RQK1%20b%20-%20-%203%2033
+    Move: d2h2
+    Model fired   : rook_seventh(1.00), back_rank(1.00), open_file(0.99), king_safety(0.99), mating_attack(0.99), outpost(0.99)
+    Labels say    : double_check
+
+    FP  p=0.938
+    FEN : r4r2/pppk2pp/4R3/8/1n6/1B1pP3/PPP3PP/RN4K1 b - - 2 16
+    URL : https://lichess.org/analysis/r4r2%2Fpppk2pp%2F4R3%2F8%2F1n6%2F1B1pP3%2FPPP3PP%2FRN4K1%20b%20-%20-%202%2016
+    Move: b4c2
+    Model fired   : sacrifice(0.99), mating_attack(0.98), piece_activity(0.98), open_file(0.98), interference(0.96), battery(0.94)
+    Labels say    : sacrifice, trapped_piece, piece_activity
+
+    FP  p=0.856
+    FEN : r4rk1/pp3ppp/2n1b3/1N6/1Q4P1/3BB3/R1PK1P1P/7R b - - 0 18
+    URL : https://lichess.org/analysis/r4rk1%2Fpp3ppp%2F2n1b3%2F1N6%2F1Q4P1%2F3BB3%2FR1PK1P1P%2F7R%20b%20-%20-%200%2018
+    Move: c6b4
+    Model fired   : piece_activity(1.00), bishop_pair(1.00), king_safety(1.00), initiative(1.00), deflection(0.99), clearance(0.98)
+    Labels say    : discovery, clearance, deflection, overloading, interference, sacrifice, bad_bishop, bishop_pair, piece_activity, battery, passed_pawn, isolated_pawn, pawn_majority, king_safety, initiative
+
+    FP  p=0.971
+    FEN : r1bqkb1r/1pp2ppp/p1np1n2/4p3/B3P3/5N2/PPPP1PPP/RNBQ1RK1 w kq - 0 6
+    URL : https://lichess.org/analysis/r1bqkb1r%2F1pp2ppp%2Fp1np1n2%2F4p3%2FB3P3%2F5N2%2FPPPP1PPP%2FRNBQ1RK1%20w%20kq%20-%200%206
+    Move: d2d4
+    Model fired   : pin(1.00), battery(1.00), clearance(1.00), blockade(1.00), bishop_pair(1.00), discovery(1.00)
+    Labels say    : pin, discovery, clearance, blockade, bishop_pair, battery
+
+    FP  p=0.882
+    FEN : 8/8/4R3/1N1k4/1K6/2P2rr1/8/8 w - - 9 55
+    URL : https://lichess.org/analysis/8%2F8%2F4R3%2F1N1k4%2F1K6%2F2P2rr1%2F8%2F8%20w%20-%20-%209%2055
+    Move: b5c7
+    Model fired   : zwischenzug(1.00), mating_attack(0.99), outpost(0.99), king_activity(0.99), initiative(0.99), open_file(0.99)
+    Labels say    : zwischenzug, mating_attack, king_activity, initiative
+
+    FP  p=0.989
+    FEN : r1b2rk1/1pq1ppbp/2n3p1/pR6/2Pp4/P2P1NP1/1P3PBP/R1BQ2K1 w - - 7 16
+    URL : https://lichess.org/analysis/r1b2rk1%2F1pq1ppbp%2F2n3p1%2FpR6%2F2Pp4%2FP2P1NP1%2F1P3PBP%2FR1BQ2K1%20w%20-%20-%207%2016
+    Move: c1d2
+    Model fired   : clearance(1.00), discovery(1.00), overloading(1.00), bishop_pair(1.00), blockade(1.00), interference(1.00)
+    Labels say    : discovery, clearance, overloading, interference, blockade, bad_bishop, good_bishop, bishop_pair, pawn_majority, prophylaxis
+
+    FP  p=0.946
+    FEN : 5k2/pp4pQ/2p3Bp/3p4/8/2P2PKP/PP2q3/r7 w - - 0 29
+    URL : https://lichess.org/analysis/5k2%2Fpp4pQ%2F2p3Bp%2F3p4%2F8%2F2P2PKP%2FPP2q3%2Fr7%20w%20-%20-%200%2029
+    Move: h7h8
+    Model fired   : mating_attack(1.00), piece_activity(1.00), overloading(0.99), sacrifice(0.98), outpost(0.97), bad_bishop(0.97)
+    Labels say    : skewer, mating_attack, piece_activity
+
+  -- False Negatives (4,519 total, showing 10) --
+     Label=1 but model didn't fire 'x_ray' at threshold 0.85.
+
+    FN  p=0.837  (threshold=0.85)
+    FEN : 8/5ppk/3Q4/3PP3/5pPp/2N1qB2/6K1/8 b - - 0 40
+    URL : https://lichess.org/analysis/8%2F5ppk%2F3Q4%2F3PP3%2F5pPp%2F2N1qB2%2F6K1%2F8%20b%20-%20-%200%2040
+    Move: h4h3
+    Model fired   : pawn_storm(1.00), piece_activity(1.00), doubled_pawn(0.99), initiative(0.98), passed_pawn(0.96), deflection(0.96)
+    Labels say    : fork, x_ray, deflection, overloading, interference, blockade, bad_bishop, piece_activity, passed_pawn, isolated_pawn, doubled_pawn, pawn_majority, pawn_storm, pawn_island, king_safety, weak_square, initiative
+
+    FN  p=0.400  (threshold=0.85)
+    FEN : 8/8/2r5/2p5/2k3P1/4R3/3K2P1/8 b - - 1 53
+    URL : https://lichess.org/analysis/8%2F8%2F2r5%2F2p5%2F2k3P1%2F4R3%2F3K2P1%2F8%20b%20-%20-%201%2053
+    Move: c6a6
+    Model fired   : rook_endgame(1.00), king_activity(0.93)
+    Labels say    : x_ray, passed_pawn, isolated_pawn, doubled_pawn, pawn_majority, king_activity, rook_endgame, weak_square, open_file
+
+    FN  p=0.436  (threshold=0.85)
+    FEN : 5rk1/pR6/2npb2p/8/4B2N/b5P1/2P1N2P/6K1 b - - 0 24
+    URL : https://lichess.org/analysis/5rk1%2FpR6%2F2npb2p%2F8%2F4B2N%2Fb5P1%2F2P1N2P%2F6K1%20b%20-%20-%200%2024
+    Move: a3c5
+    Model fired   : rook_seventh(1.00), back_rank(0.98), zwischenzug(0.96), bishop_pair(0.95), initiative(0.87), outpost(0.82)
+    Labels say    : x_ray, zwischenzug, interference, back_rank, outpost, bad_bishop, good_bishop, bishop_pair, rook_seventh, passed_pawn, isolated_pawn, pawn_majority, pawn_chain, pawn_island, weak_square, open_file, initiative
+
+    FN  p=0.552  (threshold=0.85)
+    FEN : r3q3/5k1p/p3p2P/1p1pB3/b1pP2R1/2P2r2/PP1K2P1/8 w - - 0 32
+    URL : https://lichess.org/analysis/r3q3%2F5k1p%2Fp3p2P%2F1p1pB3%2Fb1pP2R1%2F2P2r2%2FPP1K2P1%2F8%20w%20-%20-%200%2032
+    Move: g4g7
+    Model fired   : pawn_storm(0.99), clearance(0.97), piece_activity(0.96), mating_attack(0.94), discovery(0.92), initiative(0.91)
+    Labels say    : discovery, x_ray, clearance, interference, sacrifice, mating_attack, outpost, blockade, bad_bishop, piece_activity, battery, isolated_pawn, backward_pawn, pawn_chain, pawn_storm, pawn_island, weak_square, open_file, initiative, prophylaxis
+
+    FN  p=0.336  (threshold=0.85)
+    FEN : r1b1kb1r/pp5p/2pp1q1p/1B1Qp3/4P3/2N5/PPP2PPP/R3K2R w KQkq - 0 11
+    URL : https://lichess.org/analysis/r1b1kb1r%2Fpp5p%2F2pp1q1p%2F1B1Qp3%2F4P3%2F2N5%2FPPP2PPP%2FR3K2R%20w%20KQkq%20-%200%2011
+    Move: b5c6
+    Model fired   : development_lead(1.00)
+    Labels say    : pin, fork, discovery, x_ray, clearance, overloading, interference, back_rank, blockade, bad_bishop, good_bishop, bishop_pair, isolated_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, weak_square, development_lead, prophylaxis
+
+    FN  p=0.295  (threshold=0.85)
+    FEN : 8/8/2R5/3kp1N1/1K6/r1p2p2/8/8 w - - 2 79
+    URL : https://lichess.org/analysis/8%2F8%2F2R5%2F3kp1N1%2F1K6%2Fr1p2p2%2F8%2F8%20w%20-%20-%202%2079
+    Move: c6c5
+    Model fired   : space_advantage(1.00)
+    Labels say    : x_ray, zwischenzug, interference, sacrifice, mating_attack, outpost, piece_activity, passed_pawn, isolated_pawn, pawn_majority, pawn_island, king_activity, weak_square, open_file, space_advantage
+
+    FN  p=0.351  (threshold=0.85)
+    FEN : r4k2/ppp2ppp/8/8/1n1q4/3N4/PP2Q1PP/n2KR3 w - - 2 22
+    URL : https://lichess.org/analysis/r4k2%2Fppp2ppp%2F8%2F8%2F1n1q4%2F3N4%2FPP2Q1PP%2Fn2KR3%20w%20-%20-%202%2022
+    Move: e2e7
+    Model fired   : back_rank(0.99), king_safety(0.99), zwischenzug(0.97), pin(0.92)
+    Labels say    : pin, discovery, x_ray, clearance, zwischenzug, interference, back_rank, sacrifice, mating_attack, outpost, battery, pawn_majority, pawn_island, king_safety, weak_square, open_file, initiative, prophylaxis
+
+    FN  p=0.832  (threshold=0.85)
+    FEN : r4rk1/p4pp1/1b5p/8/2R1NPQ1/3P3P/q1P3P1/5R1K b - - 2 24
+    URL : https://lichess.org/analysis/r4rk1%2Fp4pp1%2F1b5p%2F8%2F2R1NPQ1%2F3P3P%2Fq1P3P1%2F5R1K%20b%20-%20-%202%2024
+    Move: f7f5
+    Model fired   : pin(0.99), passed_pawn(0.98), bad_bishop(0.97), battery(0.96), overloading(0.96), pawn_chain(0.94)
+    Labels say    : pin, fork, x_ray, overloading, interference, bad_bishop, battery, passed_pawn, isolated_pawn, pawn_majority, pawn_chain, pawn_island, weak_square, prophylaxis
+
+    FN  p=0.300  (threshold=0.85)
+    FEN : r1k4r/ppp2Rpp/2n5/1B1Q4/8/1P2P3/P1qP1KPP/8 w - - 0 16
+    URL : https://lichess.org/analysis/r1k4r%2Fppp2Rpp%2F2n5%2F1B1Q4%2F8%2F1P2P3%2FP1qP1KPP%2F8%20w%20-%20-%200%2016
+    Move: d5d7
+    Model fired   : rook_seventh(1.00), king_safety(0.96)
+    Labels say    : pin, x_ray, overloading, interference, sacrifice, mating_attack, rook_seventh, passed_pawn, pawn_majority, pawn_chain, pawn_island, king_safety, weak_square, open_file
+
+    FN  p=0.375  (threshold=0.85)
+    FEN : 8/7p/5pp1/1rBk4/p2P4/1b1KP3/5PPP/1R6 b - - 11 38
+    URL : https://lichess.org/analysis/8%2F7p%2F5pp1%2F1rBk4%2Fp2P4%2F1b1KP3%2F5PPP%2F1R6%20b%20-%20-%2011%2038
+    Move: b3c4
+    Model fired   : opposition(1.00), king_activity(0.91)
+    Labels say    : discovery, x_ray, interference, sacrifice, outpost, blockade, bad_bishop, passed_pawn, isolated_pawn, pawn_majority, pawn_chain, pawn_island, king_activity, opposition, weak_square, open_file, initiative
+
+------------------------------------------------------------------------------
+CONCEPT: PAWN_ISLAND
+  Precision : 0.397   Recall : 0.537   F1 : 0.457
+  TP=5409  FP=8221  FN=4656  Support=10065
+  Threshold : 0.80
+
+  -- False Positives (8,221 total, showing 10) --
+     Model fired 'pawn_island' but label=0.  Is the concept present?
+
+    FP  p=0.868
+    FEN : 1kr5/pp2q1p1/8/3pp3/5R1N/2P5/PP2QPP1/K7 b - - 0 36
+    URL : https://lichess.org/analysis/1kr5%2Fpp2q1p1%2F8%2F3pp3%2F5R1N%2F2P5%2FPP2QPP1%2FK7%20b%20-%20-%200%2036
+    Move: e7g5
+    Model fired   : clearance(0.99), initiative(0.99), discovery(0.99), interference(0.97), x_ray(0.95), sacrifice(0.94)
+    Labels say    : discovery, clearance, sacrifice, initiative
+
+    FP  p=0.909
+    FEN : 2kr4/2p1R3/p7/2p5/2P3Np/1P3PbP/P5P1/5K2 b - - 2 32
+    URL : https://lichess.org/analysis/2kr4%2F2p1R3%2Fp7%2F2p5%2F2P3Np%2F1P3PbP%2FP5P1%2F5K2%20b%20-%20-%202%2032
+    Move: d8d1
+    Model fired   : rook_seventh(1.00), passed_pawn(0.99), bad_bishop(0.99), outpost(0.99), doubled_pawn(0.99), backward_pawn(0.99)
+    Labels say    : rook_seventh
+
+    FP  p=0.955
+    FEN : 6k1/pp2rrp1/1bp4p/3p4/4p3/1B5P/PP1QRPP1/5K2 b - - 1 27
+    URL : https://lichess.org/analysis/6k1%2Fpp2rrp1%2F1bp4p%2F3p4%2F4p3%2F1B5P%2FPP1QRPP1%2F5K2%20b%20-%20-%201%2027
+    Move: b6f2
+    Model fired   : pin(1.00), clearance(0.99), passed_pawn(0.99), pawn_majority(0.98), discovery(0.98), prophylaxis(0.97)
+    Labels say    : pin, fork, clearance
+
+    FP  p=0.911
+    FEN : 2r1k2r/4bpp1/p1q1p1p1/1p1nBn2/3P4/1BPQ3P/PP2NPP1/3RK1R1 b k - 3 23
+    URL : https://lichess.org/analysis/2r1k2r%2F4bpp1%2Fp1q1p1p1%2F1p1nBn2%2F3P4%2F1BPQ3P%2FPP2NPP1%2F3RK1R1%20b%20k%20-%203%2023
+    Move: h8h4
+    Model fired   : bishop_pair(1.00), doubled_pawn(1.00), good_bishop(1.00), battery(1.00), bad_bishop(1.00), clearance(1.00)
+    Labels say    : discovery, clearance, overloading, interference, blockade, bad_bishop, good_bishop, bishop_pair, battery, doubled_pawn, pawn_majority
+
+    FP  p=0.967
+    FEN : 5q1k/1pp2pr1/7p/3pP3/3P3N/7R/r6P/2Q4K w - - 4 34
+    URL : https://lichess.org/analysis/5q1k%2F1pp2pr1%2F7p%2F3pP3%2F3P3N%2F7R%2Fr6P%2F2Q4K%20w%20-%20-%204%2034
+    Move: c1h6
+    Model fired   : rook_seventh(1.00), outpost(1.00), blockade(1.00), back_rank(1.00), passed_pawn(1.00), open_file(1.00)
+    Labels say    : double_check
+
+    FP  p=0.858
+    FEN : 1r1r2k1/p1p1ppbp/1pb1n1p1/3NP3/1P3P2/B3P3/P5PP/R4RK1 w - - 0 17
+    URL : https://lichess.org/analysis/1r1r2k1%2Fp1p1ppbp%2F1pb1n1p1%2F3NP3%2F1P3P2%2FB3P3%2FP5PP%2FR4RK1%20w%20-%20-%200%2017
+    Move: d5e7
+    Model fired   : pawn_storm(1.00), zwischenzug(1.00), bishop_pair(1.00), doubled_pawn(0.99), overloading(0.98), good_bishop(0.98)
+    Labels say    : pawn_storm
+
+    FP  p=0.930
+    FEN : 7k/p4pbP/5n2/1p6/b7/P1KB1P2/2P3P1/4R2R b - - 0 28
+    URL : https://lichess.org/analysis/7k%2Fp4pbP%2F5n2%2F1p6%2Fb7%2FP1KB1P2%2F2P3P1%2F4R2R%20b%20-%20-%200%2028
+    Move: f6e4
+    Model fired   : discovery(1.00), piece_activity(1.00), back_rank(1.00), promotion(1.00), open_file(1.00), prophylaxis(0.99)
+    Labels say    : double_check
+
+    FP  p=0.989
+    FEN : r2qk2r/1p1n1ppp/p1pb1nb1/4p1P1/P2P3N/2N1P2P/1P3PB1/R1BQK2R b KQkq - 0 13
+    URL : https://lichess.org/analysis/r2qk2r%2F1p1n1ppp%2Fp1pb1nb1%2F4p1P1%2FP2P3N%2F2N1P2P%2F1P3PB1%2FR1BQK2R%20b%20KQkq%20-%200%2013
+    Move: e5d4
+    Model fired   : clearance(1.00), pawn_storm(1.00), bishop_pair(1.00), battery(1.00), discovery(1.00), blockade(1.00)
+    Labels say    : discovery, clearance, trapped_piece, blockade, bishop_pair, battery, pawn_storm
+
+    FP  p=0.923
+    FEN : r1b2rk1/1p2ppbp/1q1p2p1/8/8/pP3B1P/P1PQnPPB/R1N2RK1 w - - 3 18
+    URL : https://lichess.org/analysis/r1b2rk1%2F1p2ppbp%2F1q1p2p1%2F8%2F8%2FpP3B1P%2FP1PQnPPB%2FR1N2RK1%20w%20-%20-%203%2018
+    Move: c1e2
+    Model fired   : clearance(1.00), pin(1.00), fork(1.00), discovery(1.00), overloading(1.00), bishop_pair(0.99)
+    Labels say    : trapped_piece
+
+    FP  p=0.835
+    FEN : 5rk1/pQ3ppp/1n1br3/q5B1/8/P3PN2/1P3PPP/R4RK1 b - - 0 18
+    URL : https://lichess.org/analysis/5rk1%2FpQ3ppp%2F1n1br3%2Fq5B1%2F8%2FP3PN2%2F1P3PPP%2FR4RK1%20b%20-%20-%200%2018
+    Move: f8b8
+    Model fired   : clearance(0.98), deflection(0.98), discovery(0.98), overloading(0.96), trapped_piece(0.96), battery(0.95)
+    Labels say    : discovery, clearance, deflection, overloading, bad_bishop, battery
+
+  -- False Negatives (4,656 total, showing 10) --
+     Label=1 but model didn't fire 'pawn_island' at threshold 0.80.
+
+    FN  p=0.329  (threshold=0.80)
+    FEN : r2q1rkb/5p2/3B2pP/3P4/1p2N1p1/3P4/1pPQ4/1K5R w - - 0 28
+    URL : https://lichess.org/analysis/r2q1rkb%2F5p2%2F3B2pP%2F3P4%2F1p2N1p1%2F3P4%2F1pPQ4%2F1K5R%20w%20-%20-%200%2028
+    Move: h6h7
+    Model fired   : promotion(0.99), king_safety(0.88)
+    Labels say    : discovery, x_ray, clearance, interference, mating_attack, outpost, blockade, good_bishop, battery, passed_pawn, promotion, isolated_pawn, backward_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_storm, pawn_island, king_safety, weak_square, open_file, prophylaxis
+
+    FN  p=0.687  (threshold=0.80)
+    FEN : R2r1bk1/1q3pp1/2n1bn1p/1p2p3/2p1P2N/2P1N1P1/1PQ2PBP/2B1R1K1 b - - 0 23
+    URL : https://lichess.org/analysis/R2r1bk1%2F1q3pp1%2F2n1bn1p%2F1p2p3%2F2p1P2N%2F2P1N1P1%2F1PQ2PBP%2F2B1R1K1%20b%20-%20-%200%2023
+    Move: d8a8
+    Model fired   : skewer(1.00), bishop_pair(0.99), clearance(0.99), initiative(0.99), discovery(0.99), good_bishop(0.98)
+    Labels say    : skewer, discovery, clearance, interference, blockade, bad_bishop, good_bishop, bishop_pair, backward_pawn, pawn_island, open_file, initiative, prophylaxis
+
+    FN  p=0.674  (threshold=0.80)
+    FEN : rn3rk1/p1p2ppp/1p2b3/3Nbq2/2B5/1Q6/PPP2PPP/R1B2RK1 w - - 0 14
+    URL : https://lichess.org/analysis/rn3rk1%2Fp1p2ppp%2F1p2b3%2F3Nbq2%2F2B5%2F1Q6%2FPPP2PPP%2FR1B2RK1%20w%20-%20-%200%2014
+    Move: d5e7
+    Model fired   : piece_activity(0.95), double_check(0.92), bishop_pair(0.90), clearance(0.89), prophylaxis(0.89)
+    Labels say    : fork, discovery, x_ray, clearance, overloading, interference, bad_bishop, good_bishop, bishop_pair, piece_activity, battery, pawn_chain, pawn_island, weak_square, prophylaxis
+
+    FN  p=0.597  (threshold=0.80)
+    FEN : 2r2k2/3n1pbQ/p5p1/1p1qp1P1/4N3/PNB5/KP6/8 w - - 2 33
+    URL : https://lichess.org/analysis/2r2k2%2F3n1pbQ%2Fp5p1%2F1p1qp1P1%2F4N3%2FPNB5%2FKP6%2F8%20w%20-%20-%202%2033
+    Move: c3b4
+    Model fired   : zwischenzug(1.00), pin(0.99), clearance(0.99), fork(0.99), backward_pawn(0.98), initiative(0.98)
+    Labels say    : pin, fork, discovery, x_ray, clearance, overloading, zwischenzug, interference, trapped_piece, blockade, bad_bishop, good_bishop, passed_pawn, isolated_pawn, backward_pawn, pawn_majority, pawn_chain, pawn_island, weak_square, open_file, initiative, prophylaxis
+
+    FN  p=0.587  (threshold=0.80)
+    FEN : 1Q6/5pkp/2p1q1p1/1pr1P2P/8/P7/1P1n4/K3R3 b - - 2 33
+    URL : https://lichess.org/analysis/1Q6%2F5pkp%2F2p1q1p1%2F1pr1P2P%2F8%2FP7%2F1P1n4%2FK3R3%20b%20-%20-%202%2033
+    Move: d2f3
+    Model fired   : pawn_storm(0.99), clearance(0.95), outpost(0.94), mating_attack(0.91), backward_pawn(0.90)
+    Labels say    : discovery, x_ray, clearance, interference, mating_attack, outpost, blockade, isolated_pawn, backward_pawn, pawn_majority, pawn_chain, pawn_storm, pawn_island, weak_square, prophylaxis
+
+    FN  p=0.374  (threshold=0.80)
+    FEN : 8/8/2r5/1Rp1kppp/2P1p3/3rPP1P/4K1P1/3R4 b - - 4 43
+    URL : https://lichess.org/analysis/8%2F8%2F2r5%2F1Rp1kppp%2F2P1p3%2F3rPP1P%2F4K1P1%2F3R4%20b%20-%20-%204%2043
+    Move: d3d1
+    Model fired   : rook_endgame(1.00), zwischenzug(0.96), deflection(0.89), pin(0.86)
+    Labels say    : pin, x_ray, deflection, overloading, zwischenzug, sacrifice, blockade, isolated_pawn, pawn_chain, pawn_island, king_activity, rook_endgame, weak_square, open_file, initiative
+
+    FN  p=0.382  (threshold=0.80)
+    FEN : 3N2k1/p4pb1/2p3p1/2PRn2p/5P2/1P6/PB3PKP/8 b - - 0 28
+    URL : https://lichess.org/analysis/3N2k1%2Fp4pb1%2F2p3p1%2F2PRn2p%2F5P2%2F1P6%2FPB3PKP%2F8%20b%20-%20-%200%2028
+    Move: c6d5
+    Model fired   : doubled_pawn(0.88), clearance(0.86)
+    Labels say    : discovery, x_ray, clearance, overloading, interference, sacrifice, blockade, bad_bishop, good_bishop, isolated_pawn, backward_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, weak_square, open_file
+
+    FN  p=0.348  (threshold=0.80)
+    FEN : 8/Rp6/3p1kp1/2q2p2/8/1P1p2P1/P2Q2KP/8 b - - 2 34
+    URL : https://lichess.org/analysis/8%2FRp6%2F3p1kp1%2F2q2p2%2F8%2F1P1p2P1%2FP2Q2KP%2F8%20b%20-%20-%202%2034
+    Move: c5c2
+    Model fired   : rook_seventh(1.00), king_activity(0.97)
+    Labels say    : x_ray, interference, blockade, piece_activity, rook_seventh, passed_pawn, promotion, isolated_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, king_activity, weak_square, initiative
+
+    FN  p=0.777  (threshold=0.80)
+    FEN : 7R/1r3p1p/1p3Npk/p7/8/8/PPP1q1PP/5R1K w - - 8 30
+    URL : https://lichess.org/analysis/7R%2F1r3p1p%2F1p3Npk%2Fp7%2F8%2F8%2FPPP1q1PP%2F5R1K%20w%20-%20-%208%2030
+    Move: h8h7
+    Model fired   : zwischenzug(0.99), initiative(0.98), pin(0.97), outpost(0.96), overloading(0.91), pawn_majority(0.82)
+    Labels say    : pin, x_ray, overloading, zwischenzug, interference, mating_attack, outpost, pawn_majority, pawn_chain, pawn_island, weak_square, initiative
+
+    FN  p=0.393  (threshold=0.80)
+    FEN : r6k/pp2Np1p/2ppnPpQ/6P1/7r/1PB5/1PP2q1P/R6K w - - 6 27
+    URL : https://lichess.org/analysis/r6k%2Fpp2Np1p%2F2ppnPpQ%2F6P1%2F7r%2F1PB5%2F1PP2q1P%2FR6K%20w%20-%20-%206%2027
+    Move: h6g7
+    Model fired   : pin(0.98), deflection(0.97), clearance(0.97), trapped_piece(0.96), discovery(0.93), king_safety(0.92)
+    Labels say    : pin, discovery, x_ray, clearance, deflection, overloading, interference, sacrifice, mating_attack, trapped_piece, outpost, blockade, bad_bishop, piece_activity, passed_pawn, backward_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_storm, pawn_island, king_safety, weak_square
+
+------------------------------------------------------------------------------
+CONCEPT: OVERLOADING
+  Precision : 0.459   Recall : 0.721   F1 : 0.561
+  TP=6740  FP=7943  FN=2612  Support=9352
+  Threshold : 0.80
+
+  -- False Positives (7,943 total, showing 10) --
+     Model fired 'overloading' but label=0.  Is the concept present?
+
+    FP  p=0.979
+    FEN : 3r2k1/1p3rp1/p5Q1/8/4B3/2P5/1q5P/6RK w - - 0 36
+    URL : https://lichess.org/analysis/3r2k1%2F1p3rp1%2Fp5Q1%2F8%2F4B3%2F2P5%2F1q5P%2F6RK%20w%20-%20-%200%2036
+    Move: g6h7
+    Model fired   : pin(1.00), outpost(1.00), good_bishop(0.99), passed_pawn(0.99), battery(0.98), overloading(0.98)
+    Labels say    : pin
+
+    FP  p=0.901
+    FEN : rnb1k2r/ppp3pp/8/5pq1/2PPp3/1Q2n1bB/PP1N3P/R1B1K1NR w KQkq - 0 12
+    URL : https://lichess.org/analysis/rnb1k2r%2Fppp3pp%2F8%2F5pq1%2F2PPp3%2F1Q2n1bB%2FPP1N3P%2FR1B1K1NR%20w%20KQkq%20-%200%2012
+    Move: h2g3
+    Model fired   : back_rank(1.00), pawn_storm(0.99), king_safety(0.99), clearance(0.99), trapped_piece(0.97), discovery(0.92)
+    Labels say    : back_rank, trapped_piece, pawn_storm, king_safety
+
+    FP  p=0.833
+    FEN : 5rk1/2q2p2/2pr1bb1/p3p3/Pp2P3/1B3PQ1/1PP5/R3K2R w KQ - 0 24
+    URL : https://lichess.org/analysis/5rk1%2F2q2p2%2F2pr1bb1%2Fp3p3%2FPp2P3%2F1B3PQ1%2F1PP5%2FR3K2R%20w%20KQ%20-%200%2024
+    Move: g3g6
+    Model fired   : back_rank(0.99), king_safety(0.99), bishop_pair(0.99), bad_bishop(0.96), pin(0.95), good_bishop(0.92)
+    Labels say    : pin, back_rank, mating_attack, trapped_piece, bishop_pair, king_safety
+
+    FP  p=0.932
+    FEN : 2rq1b1r/pp3kpp/5p2/1B1n4/3PQ3/4P2P/PP1B1PP1/2R1K2R b K - 2 16
+    URL : https://lichess.org/analysis/2rq1b1r%2Fpp3kpp%2F5p2%2F1B1n4%2F3PQ3%2F4P2P%2FPP1B1PP1%2F2R1K2R%20b%20K%20-%202%2016
+    Move: c8c1
+    Model fired   : bishop_pair(0.99), deflection(0.99), king_safety(0.99), blockade(0.95), trapped_piece(0.95), overloading(0.93)
+    Labels say    : fork, bishop_pair, king_safety
+
+    FP  p=0.919
+    FEN : 1r2kb1r/5ppp/1p1p4/p1p5/2P3P1/NP2qB1P/PQ6/R4K2 w k - 0 22
+    URL : https://lichess.org/analysis/1r2kb1r%2F5ppp%2F1p1p4%2Fp1p5%2F2P3P1%2FNP2qB1P%2FPQ6%2FR4K2%20w%20k%20-%200%2022
+    Move: a1e1
+    Model fired   : pawn_storm(0.99), zwischenzug(0.98), back_rank(0.97), king_safety(0.97), initiative(0.97), bad_bishop(0.97)
+    Labels say    : pin, zwischenzug, back_rank, pawn_storm, king_safety, initiative
+
+    FP  p=0.980
+    FEN : 5rk1/5p1p/6pQ/3p4/2q5/6R1/r4PPP/5RK1 w - - 0 27
+    URL : https://lichess.org/analysis/5rk1%2F5p1p%2F6pQ%2F3p4%2F2q5%2F6R1%2Fr4PPP%2F5RK1%20w%20-%20-%200%2027
+    Move: g3h3
+    Model fired   : rook_seventh(1.00), piece_activity(0.99), pin(0.99), passed_pawn(0.98), overloading(0.98), interference(0.95)
+    Labels say    : rook_seventh
+
+    FP  p=0.903
+    FEN : r1b2r1k/2q2pp1/2pR3p/p1n1NB2/1pP5/1P5P/PBQ2PP1/4R1K1 b - - 0 1
+    URL : https://lichess.org/analysis/r1b2r1k%2F2q2pp1%2F2pR3p%2Fp1n1NB2%2F1pP5%2F1P5P%2FPBQ2PP1%2F4R1K1%20b%20-%20-%200%201
+    Move: c7d6
+    Model fired   : overloading(0.90)
+    Labels say    : back_rank
+
+    FP  p=0.928
+    FEN : r5k1/3Q2pp/p7/1p2p3/3Bb3/8/PPq3PP/5RK1 w - - 0 22
+    URL : https://lichess.org/analysis/r5k1%2F3Q2pp%2Fp7%2F1p2p3%2F3Bb3%2F8%2FPPq3PP%2F5RK1%20w%20-%20-%200%2022
+    Move: d7f7
+    Model fired   : outpost(0.98), mating_attack(0.98), bad_bishop(0.95), sacrifice(0.93), overloading(0.93), battery(0.91)
+    Labels say    : back_rank, mating_attack
+
+    FP  p=0.908
+    FEN : 8/8/p1p2p2/2p3p1/4PkP1/5P2/PP2K3/8 w - - 0 33
+    URL : https://lichess.org/analysis/8%2F8%2Fp1p2p2%2F2p3p1%2F4PkP1%2F5P2%2FPP2K3%2F8%20w%20-%20-%200%2033
+    Move: b2b3
+    Model fired   : pawn_endgame(0.99), doubled_pawn(0.91), blockade(0.91), overloading(0.91), backward_pawn(0.91)
+    Labels say    : zugzwang, pawn_endgame
+
+    FP  p=0.982
+    FEN : r2r2k1/2pq1pb1/2n2npp/1p2N3/1P2P1b1/B1P2NP1/4QPBP/R3R1K1 b - - 0 17
+    URL : https://lichess.org/analysis/r2r2k1%2F2pq1pb1%2F2n2npp%2F1p2N3%2F1P2P1b1%2FB1P2NP1%2F4QPBP%2FR3R1K1%20b%20-%20-%200%2017
+    Move: c6e5
+    Model fired   : clearance(0.99), bishop_pair(0.99), fork(0.99), discovery(0.99), overloading(0.98), backward_pawn(0.98)
+    Labels say    : trapped_piece
+
+  -- False Negatives (2,612 total, showing 10) --
+     Label=1 but model didn't fire 'overloading' at threshold 0.80.
+
+    FN  p=0.644  (threshold=0.80)
+    FEN : 5k2/4Nppp/4bn2/2N5/4P3/2PrP2P/r5P1/1R3RK1 b - - 0 26
+    URL : https://lichess.org/analysis/5k2%2F4Nppp%2F4bn2%2F2N5%2F4P3%2F2PrP2P%2Fr5P1%2F1R3RK1%20b%20-%20-%200%2026
+    Move: d3d2
+    Model fired   : rook_seventh(0.99), fork(0.98), zwischenzug(0.96), doubled_pawn(0.96), deflection(0.88)
+    Labels say    : fork, deflection, overloading, zwischenzug, interference, sacrifice, outpost, bad_bishop, battery, rook_seventh, passed_pawn, isolated_pawn, doubled_pawn, open_file, prophylaxis
+
+    FN  p=0.515  (threshold=0.80)
+    FEN : rnbqkb1r/1p2pppp/p1p2n2/3p4/P1PP4/4PN2/1P3PPP/RNBQKB1R b KQkq - 0 5
+    URL : https://lichess.org/analysis/rnbqkb1r%2F1p2pppp%2Fp1p2n2%2F3p4%2FP1PP4%2F4PN2%2F1P3PPP%2FRNBQKB1R%20b%20KQkq%20-%200%205
+    Move: e7e6
+    Model fired   : (none)
+    Labels say    : overloading
+
+    FN  p=0.796  (threshold=0.80)
+    FEN : 5r1k/1pR3p1/4Q3/4P1pp/3P2P1/5PKP/2Pq4/5R2 b - - 0 34
+    URL : https://lichess.org/analysis/5r1k%2F1pR3p1%2F4Q3%2F4P1pp%2F3P2P1%2F5PKP%2F2Pq4%2F5R2%20b%20-%20-%200%2034
+    Move: h5h4
+    Model fired   : rook_seventh(1.00), piece_activity(0.99), doubled_pawn(0.97), passed_pawn(0.95), backward_pawn(0.95), blockade(0.94)
+    Labels say    : discovery, x_ray, clearance, overloading, interference, sacrifice, mating_attack, blockade, piece_activity, rook_seventh, passed_pawn, isolated_pawn, backward_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, weak_square
+
+    FN  p=0.717  (threshold=0.80)
+    FEN : 7k/ppQ3p1/2p4p/5pq1/8/1B2Rn1P/PPP2P2/2K5 b - - 2 28
+    URL : https://lichess.org/analysis/7k%2FppQ3p1%2F2p4p%2F5pq1%2F8%2F1B2Rn1P%2FPPP2P2%2F2K5%20b%20-%20-%202%2028
+    Move: g5g1
+    Model fired   : skewer(1.00), piece_activity(0.99), zwischenzug(0.98), pin(0.98), initiative(0.92), mating_attack(0.92)
+    Labels say    : pin, skewer, x_ray, overloading, zwischenzug, mating_attack, outpost, bad_bishop, piece_activity, isolated_pawn, pawn_majority, pawn_chain, pawn_island, weak_square, open_file, initiative, prophylaxis
+
+    FN  p=0.363  (threshold=0.80)
+    FEN : 8/8/p7/1p4k1/2pP1r1p/4KP2/PP5R/8 w - - 1 59
+    URL : https://lichess.org/analysis/8%2F8%2Fp7%2F1p4k1%2F2pP1r1p%2F4KP2%2FPP5R%2F8%20w%20-%20-%201%2059
+    Move: h2g2
+    Model fired   : opposition(1.00), rook_endgame(0.99)
+    Labels say    : x_ray, overloading, interference, sacrifice, passed_pawn, isolated_pawn, pawn_chain, pawn_island, king_activity, opposition, rook_endgame, weak_square
+
+    FN  p=0.429  (threshold=0.80)
+    FEN : 8/8/7k/2p2N2/8/p3r1b1/6P1/5K2 b - - 0 53
+    URL : https://lichess.org/analysis/8%2F8%2F7k%2F2p2N2%2F8%2Fp3r1b1%2F6P1%2F5K2%20b%20-%20-%200%2053
+    Move: h6g5
+    Model fired   : trapped_piece(0.94), piece_activity(0.92), fork(0.87)
+    Labels say    : fork, overloading, interference, sacrifice, mating_attack, outpost, bad_bishop, piece_activity, passed_pawn, isolated_pawn, pawn_majority, open_file, initiative
+
+    FN  p=0.323  (threshold=0.80)
+    FEN : r3n2r/ppk3pp/2nb1q2/8/6Q1/2N5/PPP2PPP/R1B2RK1 w - - 0 15
+    URL : https://lichess.org/analysis/r3n2r%2Fppk3pp%2F2nb1q2%2F8%2F6Q1%2F2N5%2FPPP2PPP%2FR1B2RK1%20w%20-%20-%200%2015
+    Move: c3d5
+    Model fired   : development_lead(1.00)
+    Labels say    : fork, discovery, x_ray, clearance, overloading, interference, pawn_majority, pawn_island, king_safety, weak_square, development_lead, prophylaxis
+
+    FN  p=0.576  (threshold=0.80)
+    FEN : 2rq1r1k/1p4pb/p1np4/3Bp2P/4P1Q1/P3p3/1PP2P2/R3K1R1 w Q - 0 24
+    URL : https://lichess.org/analysis/2rq1r1k%2F1p4pb%2Fp1np4%2F3Bp2P%2F4P1Q1%2FP3p3%2F1PP2P2%2FR3K1R1%20w%20Q%20-%200%2024
+    Move: g4g7
+    Model fired   : king_safety(0.99), doubled_pawn(0.97), mating_attack(0.93), prophylaxis(0.90), clearance(0.88)
+    Labels say    : discovery, x_ray, clearance, overloading, interference, sacrifice, mating_attack, outpost, blockade, good_bishop, battery, isolated_pawn, backward_pawn, doubled_pawn, pawn_chain, pawn_island, king_safety, weak_square, prophylaxis
+
+    FN  p=0.760  (threshold=0.80)
+    FEN : 1r4rk/6np/8/p1p1q2p/N1Pp1Q2/1P1P2B1/P5R1/5KR1 b - - 0 39
+    URL : https://lichess.org/analysis/1r4rk%2F6np%2F8%2Fp1p1q2p%2FN1Pp1Q2%2F1P1P2B1%2FP5R1%2F5KR1%20b%20-%20-%200%2039
+    Move: b8f8
+    Model fired   : skewer(1.00), king_safety(1.00), zwischenzug(0.99), outpost(0.99), back_rank(0.98), doubled_pawn(0.97)
+    Labels say    : pin, skewer, discovery, x_ray, clearance, overloading, zwischenzug, interference, back_rank, outpost, blockade, good_bishop, battery, passed_pawn, isolated_pawn, backward_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, king_safety, weak_square, open_file, initiative, prophylaxis
+
+    FN  p=0.496  (threshold=0.80)
+    FEN : 3k4/pp2R1pp/3p4/3Nb1N1/4r3/P2p4/1P3P1P/5K2 b - - 1 29
+    URL : https://lichess.org/analysis/3k4%2Fpp2R1pp%2F3p4%2F3Nb1N1%2F4r3%2FP2p4%2F1P3P1P%2F5K2%20b%20-%20-%201%2029
+    Move: d3d2
+    Model fired   : rook_seventh(0.99), zwischenzug(0.96), doubled_pawn(0.86), outpost(0.82)
+    Labels say    : discovery, overloading, zwischenzug, back_rank, sacrifice, mating_attack, outpost, rook_seventh, passed_pawn, doubled_pawn, open_file, initiative
+
+------------------------------------------------------------------------------
+CONCEPT: BAD_BISHOP
+  Precision : 0.554   Recall : 0.772   F1 : 0.645
+  TP=9556  FP=7681  FN=2829  Support=12385
+  Threshold : 0.80
+
+  -- False Positives (7,681 total, showing 10) --
+     Model fired 'bad_bishop' but label=0.  Is the concept present?
+
+    FP  p=0.928
+    FEN : r5k1/p1p2pb1/b1Np2pp/2pP1q2/B1P1Q3/8/5PPP/4R1K1 w - - 8 31
+    URL : https://lichess.org/analysis/r5k1%2Fp1p2pb1%2Fb1Np2pp%2F2pP1q2%2FB1P1Q3%2F8%2F5PPP%2F4R1K1%20w%20-%20-%208%2031
+    Move: c6e7
+    Model fired   : skewer(1.00), deflection(1.00), doubled_pawn(1.00), bishop_pair(0.99), passed_pawn(0.99), backward_pawn(0.98)
+    Labels say    : skewer
+
+    FP  p=0.938
+    FEN : r2qk2r/p3bp1p/2p5/1B2Pb2/Q2nN1p1/8/PP3PPP/R1BR2K1 b kq - 0 16
+    URL : https://lichess.org/analysis/r2qk2r%2Fp3bp1p%2F2p5%2F1B2Pb2%2FQ2nN1p1%2F8%2FPP3PPP%2FR1BR2K1%20b%20kq%20-%200%2016
+    Move: c6b5
+    Model fired   : zwischenzug(1.00), bishop_pair(0.99), clearance(0.99), king_safety(0.99), deflection(0.99), initiative(0.98)
+    Labels say    : zwischenzug, bishop_pair, king_safety
+
+    FP  p=0.851
+    FEN : 1r1q1r1k/6pp/p3Bp2/1ppPn3/P1p1P2R/2Nn4/1P4PP/1R1Q2K1 w - - 5 22
+    URL : https://lichess.org/analysis/1r1q1r1k%2F6pp%2Fp3Bp2%2F1ppPn3%2FP1p1P2R%2F2Nn4%2F1P4PP%2F1R1Q2K1%20w%20-%20-%205%2022
+    Move: h4h7
+    Model fired   : doubled_pawn(0.98), pin(0.97), outpost(0.97), mating_attack(0.96), backward_pawn(0.93), clearance(0.92)
+    Labels say    : doubled_pawn
+
+    FP  p=0.973
+    FEN : 2r2k1r/1b1p1ppp/p1q5/4Q3/5P2/2P4P/2PBR1P1/6K1 w - - 2 24
+    URL : https://lichess.org/analysis/2r2k1r%2F1b1p1ppp%2Fp1q5%2F4Q3%2F5P2%2F2P4P%2F2PBR1P1%2F6K1%20w%20-%20-%202%2024
+    Move: e5e7
+    Model fired   : doubled_pawn(1.00), bad_bishop(0.97), good_bishop(0.97), mating_attack(0.96), overloading(0.95), passed_pawn(0.92)
+    Labels say    : back_rank, doubled_pawn
+
+    FP  p=0.921
+    FEN : 5r2/1p1P1p1p/p4Rp1/4k3/6PP/8/PPPK1P2/8 w - - 1 25
+    URL : https://lichess.org/analysis/5r2%2F1p1P1p1p%2Fp4Rp1%2F4k3%2F6PP%2F8%2FPPPK1P2%2F8%20w%20-%20-%201%2025
+    Move: g4g5
+    Model fired   : bad_bishop(0.92)
+    Labels say    : isolated_pawn
+
+    FP  p=0.920
+    FEN : 4R3/pp4k1/2pB1pp1/2P5/3P2PK/1r6/7P/8 b - - 2 38
+    URL : https://lichess.org/analysis/4R3%2Fpp4k1%2F2pB1pp1%2F2P5%2F3P2PK%2F1r6%2F7P%2F8%20b%20-%20-%202%2038
+    Move: g6g5
+    Model fired   : piece_activity(1.00), outpost(0.98), backward_pawn(0.97), blockade(0.97), passed_pawn(0.97), mating_attack(0.97)
+    Labels say    : piece_activity
+
+    FP  p=0.876
+    FEN : 5rk1/p2r2pp/1p1Q1n2/5p2/qP3P2/4P1R1/1B4PP/3R2K1 w - - 1 25
+    URL : https://lichess.org/analysis/5rk1%2Fp2r2pp%2F1p1Q1n2%2F5p2%2FqP3P2%2F4P1R1%2F1B4PP%2F3R2K1%20w%20-%20-%201%2025
+    Move: d6d7
+    Model fired   : skewer(1.00), pin(0.96), deflection(0.96), fork(0.95), backward_pawn(0.93), open_file(0.91)
+    Labels say    : skewer
+
+    FP  p=0.856
+    FEN : r1b4r/ppk2p1p/2n2p2/1B2p3/1b2P3/2N5/PPP2PPP/2KR3R w - - 0 12
+    URL : https://lichess.org/analysis/r1b4r%2Fppk2p1p%2F2n2p2%2F1B2p3%2F1b2P3%2F2N5%2FPPP2PPP%2F2KR3R%20w%20-%20-%200%2012
+    Move: c3d5
+    Model fired   : doubled_pawn(0.98), interference(0.97), backward_pawn(0.96), x_ray(0.93), pawn_majority(0.89), bishop_pair(0.88)
+    Labels say    : deflection, bishop_pair, doubled_pawn
+
+    FP  p=0.985
+    FEN : 6r1/p2brk2/1pp3q1/2Qp1p1p/1P3P2/5P2/PB2R1PP/6K1 w - - 0 28
+    URL : https://lichess.org/analysis/6r1%2Fp2brk2%2F1pp3q1%2F2Qp1p1p%2F1P3P2%2F5P2%2FPB2R1PP%2F6K1%20w%20-%20-%200%2028
+    Move: c5e7
+    Model fired   : zwischenzug(1.00), pin(0.99), doubled_pawn(0.99), bad_bishop(0.98), blockade(0.98), king_safety(0.98)
+    Labels say    : pin, zwischenzug, sacrifice, mating_attack, doubled_pawn, king_safety
+
+    FP  p=0.965
+    FEN : rr3k2/6b1/1q1p2P1/1pnPp3/8/P2B1P1Q/1Pp5/2KR3R w - - 0 26
+    URL : https://lichess.org/analysis/rr3k2%2F6b1%2F1q1p2P1%2F1pnPp3%2F8%2FP2B1P1Q%2F1Pp5%2F2KR3R%20w%20-%20-%200%2026
+    Move: h3f5
+    Model fired   : promotion(1.00), pawn_storm(0.99), blockade(0.99), back_rank(0.99), passed_pawn(0.98), battery(0.98)
+    Labels say    : promotion
+
+  -- False Negatives (2,829 total, showing 10) --
+     Label=1 but model didn't fire 'bad_bishop' at threshold 0.80.
+
+    FN  p=0.778  (threshold=0.80)
+    FEN : 3r2k1/p1b3p1/8/4qN2/1Bp1P3/P5PP/4Q2K/8 w - - 1 40
+    URL : https://lichess.org/analysis/3r2k1%2Fp1b3p1%2F8%2F4qN2%2F1Bp1P3%2FP5PP%2F4Q2K%2F8%20w%20-%20-%201%2040
+    Move: e2c4
+    Model fired   : pin(0.99), clearance(0.98), passed_pawn(0.94), overloading(0.89), discovery(0.89)
+    Labels say    : pin, discovery, clearance, bad_bishop, passed_pawn
+
+    FN  p=0.784  (threshold=0.80)
+    FEN : 3rr1k1/ppp2ppp/4p3/2PbB3/1P3P2/P3qBP1/1Q4KP/R4R2 b - - 1 23
+    URL : https://lichess.org/analysis/3rr1k1%2Fppp2ppp%2F4p3%2F2PbB3%2F1P3P2%2FP3qBP1%2F1Q4KP%2FR4R2%20b%20-%20-%201%2023
+    Move: d5f3
+    Model fired   : deflection(1.00), fork(0.99), pin(0.99), bishop_pair(0.99), clearance(0.98), overloading(0.97)
+    Labels say    : pin, fork, discovery, clearance, deflection, overloading, interference, bad_bishop, good_bishop, bishop_pair, battery, open_file, prophylaxis
+
+    FN  p=0.599  (threshold=0.80)
+    FEN : 6k1/p4p1p/6p1/8/Q1P3P1/1B5P/P2p1PK1/1r2r3 b - - 3 27
+    URL : https://lichess.org/analysis/6k1%2Fp4p1p%2F6p1%2F8%2FQ1P3P1%2F1B5P%2FP2p1PK1%2F1r2r3%20b%20-%20-%203%2027
+    Move: b1b3
+    Model fired   : promotion(1.00), deflection(0.92), open_file(0.84)
+    Labels say    : deflection, sacrifice, bad_bishop, battery, passed_pawn, promotion, open_file, prophylaxis
+
+    FN  p=0.682  (threshold=0.80)
+    FEN : 1br1k2r/1pq2pp1/p3p3/3Pn2n/2P5/2N4P/PP3PBB/R2Q1RK1 b k - 2 18
+    URL : https://lichess.org/analysis/1br1k2r%2F1pq2pp1%2Fp3p3%2F3Pn2n%2F2P5%2F2N4P%2FPP3PBB%2FR2Q1RK1%20b%20k%20-%202%2018
+    Move: e5f3
+    Model fired   : pawn_storm(0.98), bishop_pair(0.94), clearance(0.83)
+    Labels say    : discovery, x_ray, clearance, interference, mating_attack, bad_bishop, good_bishop, bishop_pair, battery, isolated_pawn, pawn_majority, pawn_chain, pawn_storm, pawn_island, weak_square, prophylaxis
+
+    FN  p=0.272  (threshold=0.80)
+    FEN : r3k2r/pp3p2/1qN1p2p/3p4/P7/8/1PPK1bPP/R2Q1B1R b kq - 1 17
+    URL : https://lichess.org/analysis/r3k2r%2Fpp3p2%2F1qN1p2p%2F3p4%2FP7%2F8%2F1PPK1bPP%2FR2Q1B1R%20b%20kq%20-%201%2017
+    Move: b6e3
+    Model fired   : king_safety(0.87)
+    Labels say    : x_ray, interference, sacrifice, mating_attack, outpost, bad_bishop, good_bishop, battery, passed_pawn, isolated_pawn, pawn_majority, pawn_chain, pawn_island, king_safety, weak_square, initiative, prophylaxis
+
+    FN  p=0.781  (threshold=0.80)
+    FEN : r1b1k2r/pp3pbp/2n1p2p/3pP3/3P4/5N2/Pq1NBPPP/R2Q1RK1 w kq - 2 11
+    URL : https://lichess.org/analysis/r1b1k2r%2Fpp3pbp%2F2n1p2p%2F3pP3%2F3P4%2F5N2%2FPq1NBPPP%2FR2Q1RK1%20w%20kq%20-%202%2011
+    Move: d2b3
+    Model fired   : pawn_storm(0.99), bishop_pair(0.97), fork(0.95), doubled_pawn(0.95), trapped_piece(0.93), overloading(0.88)
+    Labels say    : fork, x_ray, overloading, interference, trapped_piece, blockade, bad_bishop, good_bishop, bishop_pair, battery, isolated_pawn, backward_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_storm, pawn_island, weak_square, prophylaxis
+
+    FN  p=0.476  (threshold=0.80)
+    FEN : 1r6/R2b4/2pk1p1p/2Np4/P2Pp3/4P1P1/4KPP1/1rR5 b - - 2 30
+    URL : https://lichess.org/analysis/1r6%2FR2b4%2F2pk1p1p%2F2Np4%2FP2Pp3%2F4P1P1%2F4KPP1%2F1rR5%20b%20-%20-%202%2030
+    Move: b8b2
+    Model fired   : king_activity(1.00), trapped_piece(0.97), rook_seventh(0.96), zwischenzug(0.90)
+    Labels say    : x_ray, deflection, zwischenzug, interference, outpost, blockade, bad_bishop, battery, rook_seventh, passed_pawn, isolated_pawn, backward_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, king_activity, open_file, prophylaxis
+
+    FN  p=0.416  (threshold=0.80)
+    FEN : r1bq1rk1/pp2ppbp/2np1np1/1B6/3pP3/2P2N1P/PP3PP1/RNBQR1K1 w - - 0 9
+    URL : https://lichess.org/analysis/r1bq1rk1%2Fpp2ppbp%2F2np1np1%2F1B6%2F3pP3%2F2P2N1P%2FPP3PP1%2FRNBQR1K1%20w%20-%20-%200%209
+    Move: c3d4
+    Model fired   : sacrifice(0.87)
+    Labels say    : bad_bishop
+
+    FN  p=0.328  (threshold=0.80)
+    FEN : r5k1/pb2r1p1/1p2pQ2/2b1N3/5P2/PP5P/4p2K/4R1R1 b - - 1 33
+    URL : https://lichess.org/analysis/r5k1%2Fpb2r1p1%2F1p2pQ2%2F2b1N3%2F5P2%2FPP5P%2F4p2K%2F4R1R1%20b%20-%20-%201%2033
+    Move: c5g1
+    Model fired   : promotion(1.00), king_safety(0.90)
+    Labels say    : pin, discovery, x_ray, clearance, deflection, overloading, interference, sacrifice, mating_attack, outpost, blockade, bad_bishop, good_bishop, bishop_pair, piece_activity, battery, passed_pawn, promotion, isolated_pawn, backward_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_island, king_safety, weak_square, initiative, prophylaxis
+
+    FN  p=0.332  (threshold=0.80)
+    FEN : 5rrk/1pqb1p1p/p2ppR2/2p1n1BP/P3P3/3P4/1PP2Q2/6RK w - - 7 26
+    URL : https://lichess.org/analysis/5rrk%2F1pqb1p1p%2Fp2ppR2%2F2p1n1BP%2FP3P3%2F3P4%2F1PP2Q2%2F6RK%20w%20-%20-%207%2026
+    Move: f6f7
+    Model fired   : double_check(0.99), king_safety(0.86)
+    Labels say    : discovery, x_ray, clearance, overloading, interference, back_rank, sacrifice, mating_attack, blockade, bad_bishop, good_bishop, battery, isolated_pawn, pawn_majority, pawn_chain, pawn_island, king_safety, weak_square, open_file, prophylaxis
+
+------------------------------------------------------------------------------
+CONCEPT: INTERFERENCE
+  Precision : 0.447   Recall : 0.610   F1 : 0.516
+  TP=6134  FP=7595  FN=3923  Support=10057
+  Threshold : 0.85
+
+  -- False Positives (7,595 total, showing 10) --
+     Model fired 'interference' but label=0.  Is the concept present?
+
+    FP  p=0.985
+    FEN : 2r4k/3pQ1p1/p4nqp/B1P5/1P5P/4R3/5PP1/6K1 b - - 6 32
+    URL : https://lichess.org/analysis/2r4k%2F3pQ1p1%2Fp4nqp%2FB1P5%2F1P5P%2F4R3%2F5PP1%2F6K1%20b%20-%20-%206%2032
+    Move: c8e8
+    Model fired   : outpost(1.00), backward_pawn(0.99), pin(0.99), bad_bishop(0.99), battery(0.99), overloading(0.99)
+    Labels say    : pin, overloading, outpost, bad_bishop, battery, backward_pawn, open_file
+
+    FP  p=0.874
+    FEN : 8/4R1k1/p2p1r2/1p3q2/3Q2p1/2P2N2/1P2K3/8 b - - 1 39
+    URL : https://lichess.org/analysis/8%2F4R1k1%2Fp2p1r2%2F1p3q2%2F3Q2p1%2F2P2N2%2F1P2K3%2F8%20b%20-%20-%201%2039
+    Move: g7f8
+    Model fired   : skewer(0.99), rook_seventh(0.99), pin(0.98), deflection(0.97), piece_activity(0.97), passed_pawn(0.96)
+    Labels say    : pin, skewer, discovery, deflection, overloading, sacrifice, piece_activity, battery, rook_seventh, passed_pawn, isolated_pawn, open_file, initiative, prophylaxis
+
+    FP  p=1.000
+    FEN : 6k1/1p1n2p1/4p1Pp/7P/p2PP3/P1P1b1r1/1PR1Nr2/4KR2 w - - 0 31
+    URL : https://lichess.org/analysis/6k1%2F1p1n2p1%2F4p1Pp%2F7P%2Fp2PP3%2FP1P1b1r1%2F1PR1Nr2%2F4KR2%20w%20-%20-%200%2031
+    Move: f1f2
+    Model fired   : rook_seventh(1.00), blockade(1.00), pawn_storm(1.00), outpost(1.00), overloading(1.00), piece_activity(1.00)
+    Labels say    : back_rank, rook_seventh, pawn_storm
+
+    FP  p=0.943
+    FEN : 4rrk1/1p6/p1nR1q1p/5bp1/4Q3/6B1/PPP2PPP/4R1K1 w - - 5 24
+    URL : https://lichess.org/analysis/4rrk1%2F1p6%2Fp1nR1q1p%2F5bp1%2F4Q3%2F6B1%2FPPP2PPP%2F4R1K1%20w%20-%20-%205%2024
+    Move: e4e8
+    Model fired   : skewer(1.00), back_rank(1.00), zwischenzug(1.00), deflection(0.99), overloading(0.99), battery(0.98)
+    Labels say    : fork, skewer, deflection, zwischenzug, back_rank
+
+    FP  p=0.948
+    FEN : 2b1k2r/1p3p2/2n2q1p/r2p4/P5n1/B1P1p2P/2N1P1P1/RN2QBKR b k - 0 18
+    URL : https://lichess.org/analysis/2b1k2r%2F1p3p2%2F2n2q1p%2Fr2p4%2FP5n1%2FB1P1p2P%2F2N1P1P1%2FRN2QBKR%20b%20k%20-%200%2018
+    Move: f6f2
+    Model fired   : clearance(1.00), deflection(0.99), backward_pawn(0.99), overloading(0.99), piece_activity(0.99), sacrifice(0.99)
+    Labels say    : trapped_piece
+
+    FP  p=0.880
+    FEN : 8/1Q1nk1p1/1p2r2p/p6P/2P2PP1/P4K2/1b6/8 w - - 0 45
+    URL : https://lichess.org/analysis/8%2F1Q1nk1p1%2F1p2r2p%2Fp6P%2F2P2PP1%2FP4K2%2F1b6%2F8%20w%20-%20-%200%2045
+    Move: c4c5
+    Model fired   : pawn_storm(0.99), king_activity(0.99), piece_activity(0.96), outpost(0.95), blockade(0.94), overloading(0.93)
+    Labels say    : pin, outpost, piece_activity, backward_pawn, pawn_storm, king_activity
+
+    FP  p=0.968
+    FEN : 3q1r1k/3nbp1p/b3p2Q/4P2P/3p2N1/p2P2P1/Pr3PB1/R3R1K1 w - - 0 25
+    URL : https://lichess.org/analysis/3q1r1k%2F3nbp1p%2Fb3p2Q%2F4P2P%2F3p2N1%2Fp2P2P1%2FPr3PB1%2FR3R1K1%20w%20-%20-%200%2025
+    Move: g2e4
+    Model fired   : rook_seventh(1.00), backward_pawn(1.00), bishop_pair(0.99), pawn_majority(0.99), overloading(0.99), isolated_pawn(0.99)
+    Labels say    : pin, bishop_pair, rook_seventh
+
+    FP  p=0.962
+    FEN : 2r1k2r/pp3ppp/4p3/2qpPn2/5P2/3R3P/PPP3P1/R1BQ3K w k - 3 18
+    URL : https://lichess.org/analysis/2r1k2r%2Fpp3ppp%2F4p3%2F2qpPn2%2F5P2%2F3R3P%2FPPP3P1%2FR1BQ3K%20w%20k%20-%203%2018
+    Move: d3c3
+    Model fired   : pawn_storm(1.00), interference(0.96), pawn_island(0.93), pawn_chain(0.93), good_bishop(0.92), x_ray(0.90)
+    Labels say    : pawn_storm
+
+    FP  p=0.909
+    FEN : 7k/5pp1/3r4/3B4/2QK4/q4PP1/P3r3/3R1R2 b - - 2 31
+    URL : https://lichess.org/analysis/7k%2F5pp1%2F3r4%2F3B4%2F2QK4%2Fq4PP1%2FP3r3%2F3R1R2%20b%20-%20-%202%2031
+    Move: a3e3
+    Model fired   : rook_seventh(1.00), zwischenzug(0.99), pin(0.98), king_safety(0.98), passed_pawn(0.95), outpost(0.94)
+    Labels say    : rook_seventh, king_safety
+
+    FP  p=0.917
+    FEN : 8/p6k/3B2p1/2P2p1p/1P1pq2P/P2Qb2K/6P1/8 w - - 2 41
+    URL : https://lichess.org/analysis/8%2Fp6k%2F3B2p1%2F2P2p1p%2F1P1pq2P%2FP2Qb2K%2F6P1%2F8%20w%20-%20-%202%2041
+    Move: d3e4
+    Model fired   : skewer(1.00), fork(0.99), backward_pawn(0.99), initiative(0.99), passed_pawn(0.99), outpost(0.98)
+    Labels say    : skewer
+
+  -- False Negatives (3,923 total, showing 10) --
+     Label=1 but model didn't fire 'interference' at threshold 0.85.
+
+    FN  p=0.734  (threshold=0.85)
+    FEN : 2r3k1/pQ3pb1/1p2p2p/2p1q3/8/2P1P2P/PP3PP1/3r1RK1 w - - 0 23
+    URL : https://lichess.org/analysis/2r3k1%2FpQ3pb1%2F1p2p2p%2F2p1q3%2F8%2F2P1P2P%2FPP3PP1%2F3r1RK1%20w%20-%20-%200%2023
+    Move: b7c8
+    Model fired   : skewer(1.00), piece_activity(1.00), pin(0.98), initiative(0.98), bad_bishop(0.95), battery(0.93)
+    Labels say    : pin, skewer, x_ray, overloading, interference, bad_bishop, piece_activity, battery, isolated_pawn, pawn_majority, pawn_chain, pawn_island, weak_square, open_file, initiative, prophylaxis
+
+    FN  p=0.701  (threshold=0.85)
+    FEN : r3k3/3b1p2/1p2ppnr/1p6/3NPqBp/2R4P/P4PP1/3Q1RK1 w q - 0 21
+    URL : https://lichess.org/analysis/r3k3%2F3b1p2%2F1p2ppnr%2F1p6%2F3NPqBp%2F2R4P%2FP4PP1%2F3Q1RK1%20w%20q%20-%200%2021
+    Move: d1b3
+    Model fired   : doubled_pawn(0.98), clearance(0.95), backward_pawn(0.93), bad_bishop(0.91), blockade(0.89), battery(0.83)
+    Labels say    : discovery, clearance, overloading, interference, blockade, bad_bishop, battery, isolated_pawn, backward_pawn, doubled_pawn, pawn_majority, open_file
+
+    FN  p=0.386  (threshold=0.85)
+    FEN : 7k/5qp1/3P4/2pQ2P1/1p3p2/r4P2/P3n2N/2KR4 w - - 3 37
+    URL : https://lichess.org/analysis/7k%2F5qp1%2F3P4%2F2pQ2P1%2F1p3p2%2Fr4P2%2FP3n2N%2F2KR4%20w%20-%20-%203%2037
+    Move: c1b2
+    Model fired   : back_rank(0.99), skewer(0.97)
+    Labels say    : skewer, x_ray, overloading, interference, back_rank, outpost, blockade, battery, passed_pawn, isolated_pawn, backward_pawn, pawn_chain, pawn_island, weak_square, initiative, prophylaxis
+
+    FN  p=0.753  (threshold=0.85)
+    FEN : 8/1kp5/4p3/1pP2p2/1P3q1p/6rP/Q5PK/3R4 w - - 0 32
+    URL : https://lichess.org/analysis/8%2F1kp5%2F4p3%2F1pP2p2%2F1P3q1p%2F6rP%2FQ5PK%2F3R4%20w%20-%20-%200%2032
+    Move: c5c6
+    Model fired   : pawn_storm(0.99), open_file(0.94), overloading(0.90), fork(0.87), blockade(0.87)
+    Labels say    : discovery, overloading, interference, mating_attack, blockade, passed_pawn, isolated_pawn, backward_pawn, pawn_majority, pawn_storm, open_file
+
+    FN  p=0.373  (threshold=0.85)
+    FEN : 3r2k1/1p1P1ppp/8/p1r2nq1/PbN1p3/1Q2P1PP/1P3PB1/2RR2K1 w - - 1 26
+    URL : https://lichess.org/analysis/3r2k1%2F1p1P1ppp%2F8%2Fp1r2nq1%2FPbN1p3%2F1Q2P1PP%2F1P3PB1%2F2RR2K1%20w%20-%20-%201%2026
+    Move: c4b6
+    Model fired   : promotion(1.00)
+    Labels say    : discovery, x_ray, clearance, deflection, interference, trapped_piece, outpost, blockade, good_bishop, battery, passed_pawn, promotion, backward_pawn, pawn_majority, pawn_chain, pawn_island, open_file, prophylaxis
+
+    FN  p=0.389  (threshold=0.85)
+    FEN : r2qr3/1p3k2/6bp/pPPpQpp1/P7/5B1P/5PP1/4R2K w - - 2 31
+    URL : https://lichess.org/analysis/r2qr3%2F1p3k2%2F6bp%2FpPPpQpp1%2FP7%2F5B1P%2F5PP1%2F4R2K%20w%20-%20-%202%2031
+    Move: f3d5
+    Model fired   : skewer(1.00), deflection(0.88)
+    Labels say    : skewer, discovery, x_ray, deflection, overloading, interference, sacrifice, blockade, bad_bishop, battery, isolated_pawn, backward_pawn, pawn_chain, pawn_island, weak_square, open_file, prophylaxis
+
+    FN  p=0.848  (threshold=0.85)
+    FEN : 2r2rk1/5pbp/Nq4p1/1P1QPb2/1P3P2/4P3/3R2PP/R1B3K1 b - - 0 22
+    URL : https://lichess.org/analysis/2r2rk1%2F5pbp%2FNq4p1%2F1P1QPb2%2F1P3P2%2F4P3%2F3R2PP%2FR1B3K1%20b%20-%20-%200%2022
+    Move: b6e3
+    Model fired   : pawn_storm(1.00), pin(0.99), clearance(0.99), doubled_pawn(0.98), bishop_pair(0.98), backward_pawn(0.95)
+    Labels say    : pin, discovery, x_ray, clearance, overloading, interference, mating_attack, trapped_piece, outpost, blockade, bad_bishop, good_bishop, bishop_pair, battery, passed_pawn, isolated_pawn, backward_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_storm, pawn_island, open_file, prophylaxis
+
+    FN  p=0.315  (threshold=0.85)
+    FEN : r6r/p2k1p1p/b1p1p3/3NP1Q1/P2P4/3q4/2p2PPP/2R3K1 w - - 1 21
+    URL : https://lichess.org/analysis/r6r%2Fp2k1p1p%2Fb1p1p3%2F3NP1Q1%2FP2P4%2F3q4%2F2p2PPP%2F2R3K1%20w%20-%20-%201%2021
+    Move: g5e7
+    Model fired   : promotion(0.99)
+    Labels say    : x_ray, zwischenzug, interference, sacrifice, mating_attack, blockade, bad_bishop, piece_activity, battery, passed_pawn, promotion, isolated_pawn, backward_pawn, doubled_pawn, pawn_majority, pawn_chain, pawn_storm, pawn_island, weak_square, initiative
+
+    FN  p=0.469  (threshold=0.85)
+    FEN : 1B6/7p/P1k3p1/5p2/2K2P1P/b5P1/8/8 b - - 14 53
+    URL : https://lichess.org/analysis/1B6%2F7p%2FP1k3p1%2F5p2%2F2K2P1P%2Fb5P1%2F8%2F8%20b%20-%20-%2014%2053
+    Move: c6b6
+    Model fired   : bishop_endgame(1.00), opposition(0.99), king_activity(0.92)
+    Labels say    : x_ray, interference, outpost, blockade, bad_bishop, good_bishop, passed_pawn, isolated_pawn, backward_pawn, pawn_majority, pawn_chain, pawn_island, king_activity, opposition, bishop_endgame, weak_square, prophylaxis
+
+    FN  p=0.596  (threshold=0.85)
+    FEN : 8/2k5/6R1/8/3KP3/3P4/8/2r5 b - - 6 53
+    URL : https://lichess.org/analysis/8%2F2k5%2F6R1%2F8%2F3KP3%2F3P4%2F8%2F2r5%20b%20-%20-%206%2053
+    Move: c1a1
+    Model fired   : rook_endgame(1.00), piece_activity(0.95), open_file(0.81)
+    Labels say    : interference, piece_activity, passed_pawn, pawn_majority, king_activity, rook_endgame, open_file
+
+==============================================================================
+Overall test metrics for audited concepts:
+Concept                  Prec    Rec     F1      FP      FN  Support
+----------------------------------------------------------------------
+weak_square             0.533  0.585  0.557    9381    7597    18286
+prophylaxis             0.502  0.694  0.583    8732    3878    12676
+open_file               0.503  0.699  0.585    8540    3735    12393
+x_ray                   0.411  0.566  0.476    8432    4519    10412
+pawn_island             0.397  0.537  0.457    8221    4656    10065
+overloading             0.459  0.721  0.561    7943    2612     9352
+bad_bishop              0.554  0.772  0.645    7681    2829    12385
+interference            0.447  0.610  0.516    7595    3923    10057
+

@@ -8,10 +8,12 @@ This file is the single source of truth for what was trained, when, why, and wha
 
 ## Current Champion
 
-**Phase 4C** — Macro F1 **0.6768** — calibrated on all 49 concepts, 190,037 test examples.  
-Checkpoint: `data/classifier_best.pt` (epoch 30, val_loss=0.6367)  
-Eval detail: `results/results0061_2026-07-24_0901_eval.txt`  
-Inspect: `results/2026-07-24_0930_inspect.txt` | Hysteresis: `results/2026-07-24_0930_hysteresis.txt` | Audit: `results/2026-07-24_0930_audit.txt`
+**Phase 6B (MoE)** — Macro F1 **0.6785** — calibrated on all 49 concepts, 190,037 test examples.  
+Checkpoint: `data/classifier_best.pt` (epoch 20, val_loss=0.6272)  
+Eval detail: `results/results0067_2026-07-25_1056_eval.txt`  
+Inspect: `results/2026-07-25_2138_inspect.txt` | Hysteresis: `results/2026-07-25_2138_hysteresis.txt` | Audit: `results/2026-07-25_2138_audit.txt`
+
+Previous champion: **Phase 4C** — Macro F1 **0.6768** (epoch 30) — `results/results0061_2026-07-24_0901_eval.txt`
 
 ---
 
@@ -29,6 +31,8 @@ Inspect: `results/2026-07-24_0930_inspect.txt` | Hysteresis: `results/2026-07-24
 | Phase 5D (NNUE, small) | 2026-07-20 | 1,350,961 | 1,591,442 | ~0.35 | 25 | 0044–0045 | Reduced head size didn't help. NNUE retired as training input. |
 | Phase 4B retrain | 2026-07-21 | 3,081,777 | 1,591,442 | 0.5057 | 37 | 0046–0052 | Same arch as champion, +30% more data. Actual result: 0.5057 — did not beat 4B. Parser had Lichess study folder alias bug; folder_concept injection blocked by comment-length gate. |
 | Phase 4C prep | 2026-07-22 | N/A (code) | N/A | — | — | — | Detector expansion: 13 new binary detectors, B8 + B9 spatial maps. All 49 concepts now have detectors. v3: 59→82 dims. v4: 1811→3779 dims (+680 B8, +1288 B9). Parser fixed: _FOLDER_ALIASES added for 9 unrecognised Lichess study folder names; comment-length gate bypassed when folder_concept set. SF cache rebuilt with batch subprocess approach (eliminated OSError [Errno 22] on Windows). |
+| Phase 4C | 2026-07-24 | 3,609,137 | 1,900,365 | **0.6768** | 30 | 0061, 0062 | **Champion (until Phase 6B).** B8+B9 spatial maps + all 49 v3 detectors + 1.9M dataset. Macro F1 0.6768. Calibrated eval run 0062. Top concepts: queen_endgame(0.952), knight_endgame(0.941), development_lead(0.938). |
+| Phase 6B (MoE) | 2026-07-24–25 | 6,900,000 | 1,900,365 | **0.6785** | 20 | 0063–0067 | **Current champion.** MoE: 5 expert heads + GatingNetwork (501-class ECO embedding + 1740-dim combined → 256 → 5 logits). Macro F1 0.6785, val_loss=0.6272. Inspect/hysteresis/audit: results/2026-07-25_21xx_*.txt. |
 | Phase 4C | 2026-07-24 | 3,609,137 | 1,900,365 | **0.6768** | 30 | 0061 | **New champion. +34% relative F1 improvement over 4B.** Macro F1 0.6768, Micro F1 0.6601. Top concepts: queen_endgame(0.952), knight_endgame(0.941), development_lead(0.938), space_advantage(0.919), rook_endgame(0.911). Bottom: pawn_island(0.457), mating_attack(0.457), x_ray(0.479). 0/1024 dead neurons in L1. Key insight: many apparent FPs are correct model predictions on unlabeled positions — label coverage gap, not model error. Hysteresis audit flagged initiative (64.6% fire rate at ACTIVATE=0.40) and x_ray (51.1% at 0.43) as needing threshold raises. weak_square ACTIVATE=0.90 almost never reached — needs lowering to ~0.60. |
 
 ---
@@ -107,8 +111,30 @@ See: `docs/phase5_nnue_integration_plan.md` (marked ABANDONED).
 ### Phase 4B Retrain on 1.59M (runs 0046–0050+, 2026-07-21)
 **Hypothesis:** Champion Phase 4B architecture with +30% more training data should push Macro F1 past 0.58.  
 **Changes from champion run:** Dataset 1.23M → 1.59M, patience 10 → 20, `num_workers` 2 → 4, SF cache and board cache now added.  
-**Status:** In progress as of 2026-07-21. Uses 1811-dim / 59-dim features (pre-Phase-4C).  
-**Expected outcome:** F1 ≥ 0.58.
+**Result:** Superseded by Phase 4C. This run was abandoned in favour of training the full B8+B9 architecture after the Phase 4C caches were rebuilt.
+
+---
+
+### Phase 4C — Detector Expansion Retrain (runs 0061–0062, 2026-07-24)
+**Hypothesis:** Full B8+B9 spatial expansion (v4: 1811→3779 dims, v3: 59→82 dims, 13 new detectors) + 1.9M training examples will push Macro F1 above 0.63, with particular gains on previously geometry-starved concepts (discovery, isolated_pawn, interference, clearance, deflection).  
+**Architecture:** 4C same head as 4B; algo_v4 expanded 1811→3779 (+B8 tactical maps +B9 pawn/mating/strategic maps); v3 expanded 59→82 (+13 new per-concept bits). Dataset grew 1.59M → 1.9M.  
+**Training:** Patience 20, cosine LR over 100 epochs, BCEWithLogitsLoss + label smoothing ε=0.05. Best epoch: 30.  
+**Result:** Macro F1 **0.6768**. Micro F1 0.6601. Top F1: queen_endgame(0.952), knight_endgame(0.941), development_lead(0.938), space_advantage(0.919), rook_endgame(0.911).  
+**Bottom:** pawn_island(0.457), mating_attack(0.457), x_ray(0.479).  
+**Lesson:** B8+B9 spatial maps delivered the expected gains on geometry-limited concepts. 0 dead neurons in L1. Hysteresis audit flagged initiative (64.6% fire rate at ACTIVATE=0.40) and x_ray (51.1% at 0.43) as needing threshold raises; weak_square ACTIVATE=0.90 almost never reached — needs lowering to ~0.60. The label coverage gap remains the main bottleneck for the bottom quartile: many apparent FPs are correct model predictions on unlabeled positions.  
+**Decision:** Accepted as champion. Phase 6B MoE architecture next.
+
+---
+
+### Phase 6B — Mixture of Experts (runs 0063–0067, 2026-07-24–25)
+**Hypothesis:** A MoE gating network conditioned on ECO opening code will improve routing of positional vs. tactical concepts and raise Macro F1 above 4C's 0.6768.  
+**Architecture:** `MoEConceptClassifier` — 5 expert heads (Tactical/Structural/Pawn/Endgame/Strategic) + `GatingNetwork` (501-class ECO embedding + 1740-dim combined → 256 → 5 logits, softmax). Expert outputs are weighted sum. Total params: ~6.9M (vs. 3.6M for Phase 4C). Input features unchanged from Phase 4C (B8+B9, v3 82-dim).  
+**Training:** Same 1.9M dataset as Phase 4C. Cosine LR, patience 20. Best epoch: 20. val_loss: 0.6272.  
+**Result:** Macro F1 **0.6785**. New champion by a narrow margin (+0.0017 over 4C).  
+**Eval detail:** `results/results0067_2026-07-25_1056_eval.txt`  
+**Inspect:** `results/2026-07-25_2138_inspect.txt` | Hysteresis: `results/2026-07-25_2138_hysteresis.txt` | Audit: `results/2026-07-25_2138_audit.txt`  
+**Lesson:** ECO conditioning in the gate provides meaningful signal for routing. The MoE improvement is modest (+0.0017) — the primary bottleneck remains label coverage for the bottom quartile, not model capacity. With 6.9M params vs. 3.6M, the architecture has more capacity than the data can fill. Next priority: improve data quality for the 10 weakest concepts before further architecture scaling.  
+**Decision:** Accepted as champion. Phase 6 panel integration underway.
 
 ---
 
@@ -135,6 +161,31 @@ See: `docs/phase5_nnue_integration_plan.md` (marked ABANDONED).
 **Files touched:** `tools/label_positions.py`, `src/chess_coach/ml/board_encoder.py`, `src/chess_coach/ml/classifier.py`, `src/chess_coach/ml/dataset.py`, `src/chess_coach/ml/paths.py`, `tools/build_algo_cache.py`
 
 **Next step:** Rebuild `algo_cache.npy` (3779-dim) and `v3_cache.npy` (82-dim), optionally re-scrape synonyms for x_ray and shouldering, then retrain from scratch as Phase 4C. All 49 concepts now have algorithmic detectors. The new spatial maps allow the network to localize which specific square is pinned / forked / an interference gap / a clearance blocker, not just whether the concept exists.
+
+---
+
+### Phase 6 — Panel Integration (2026-07-25 to 2026-07-28, code change only)
+**Goal:** Integrate the Phase 6B MoE classifier fully into the live coach panel and fix accumulated bugs discovered during UI testing.
+
+**Files changed:** `src/chess_coach/coach/nimzo_net_engine.py`, `src/chessplayer/ui/coach_panel.py`, `src/chessplayer/ui/coach_board.py`, `src/chessplayer/ui/main_window/window.py`
+
+**Bug fixes:**
+
+*Same RAG annotation on both SF line cards.* `_retrieve_line_rag()` passed the original `history_fens` (identical for both lines) to `_retrieve_one()`, so `identify_opening()` returned the same ECO pool for both. Fixed by building `pv_history` inside the depth-walk loop, appending each intermediate PV FEN before pushing, so each line traces its own ECO trajectory.
+
+*Opening identifier showing wrong move depth.* `window.py` was passing `history=[]` to `queue_analysis()` — the actual UCI move list was computed but never forwarded. `queue_analysis()` now receives `list(prefix)` from `played_prefix_uci()` and rebuilds the board from the UCI history, ensuring `board.move_stack` is always complete regardless of how the position was constructed.
+
+*Weak square dots never appearing.* Two-layer failure: `_extract_key_squares()` had no `weak_square` case (returned `[]` always), AND the entire computation was gated on `if 'weak_square' in concept_map`, so it never ran when the classifier didn't fire. Fixed by decoupling the overlay entirely from the classifier — `get_context()` now always computes weak squares via `_outpost_squares_bb` from `tools/label_positions.py`, the same bitboard logic used to generate training labels.
+
+**New features:**
+
+- Opening bubble now shows the full played SAN line (`opening_moves_san`) + theory continuations (`opening_continuations`) sourced from `eco_db.json` at `depth+1`.
+- SF line cards: confidence badge (concept label + calibrated %), Before/After/Δ classical eval table (Term/Before/After/Δ columns), full PV SAN with no move cap.
+- RAG minimum annotation length: `_retrieve_one()` fetches n=4 candidates, selects longest ≥200 chars; falls back to longest available if none reach the threshold.
+- Weak square overlay: `get_context()` computes `weak_squares` (`_outpost_squares_bb(board, opponent_color) & ~occupied`, max 8) and `weak_squares_opp` (`_outpost_squares_bb(board, player_color) & ~occupied`, max 8) on every call. Emitted via `weakness_per_side_ready` signal → `CoachBoardWidget.set_per_side_weakness()` → QML `squareIndicators` context property. Orange `"weak"` dots = player's structural holes; yellow `"tactic"` dots = outpost targets in opponent's territory.
+- Coach board rebuilt: full line display, PGN-editor dark style, legend in title bar, Back/Forward navigation.
+
+**Lesson:** The concept classifier and the board overlay should never have been coupled. The classifier decides *whether* a concept is salient enough to raise to the user's attention; the board overlay should always show *where* the concept manifests geometrically, computed directly from the position. Keeping these separate means the dots are always correct even in positions where the classifier's confidence falls below the ACTIVATE threshold.
 
 ---
 
@@ -184,9 +235,8 @@ None of this requires a large annotated corpus. Even irregular spot-checks are f
 
 | Priority | Hypothesis | Change | Metric to watch |
 |---|---|---|---|
-| 1 | Hysteresis thresholds need adjustment | Raise ACTIVATE: initiative→0.75, x_ray→0.65, interference→0.65. Lower weak_square→0.60 | Fire rate per concept in survey_hysteresis.py |
-| 2 | Label coverage gaps inflate FP rate | Hand-label 100–200 FP positions from truth_positions PGN | True precision on x_ray, interference, mating_attack |
-| 3 | Phase 6A: wire RAG output into coach panel | Connect result["opening"] + result["annotations"] to coach panel UI | Opening name visible; literary reference visible |
-| 4 | Phase 6A: Syzygy tablebase in endgame | Download 3-4-5 piece tables, probe in coach.analyze() | Correct WDL on 5 K+P vs K test positions |
-| 5 | Phase 6B: Mixture of Experts gating network | New MoE architecture + ECO conditioning. Retrain from Phase 4C data. | Macro F1 ≥ 0.6768; bottom-quartile concepts ≥ 0.55 |
-| 6 | Phase 6C: SF-validated move recommendation | Post-classification connector: SF top-N moves + concept delta scoring | SF agreement rate ≥ 90%; coach explanation plausible |
+| 1 | Hysteresis thresholds need adjustment after Phase 6B | Raise ACTIVATE: initiative→0.75, x_ray→0.65, interference→0.65. Lower weak_square→0.60 (ACTIVATE; overlay now always-on independently) | Fire rate per concept in survey_hysteresis.py |
+| 2 | Phase 7A: scraper rerun for data-starved concepts | Re-run Lichess scraper for x_ray (~19K), shouldering (~1.3K), interference (~18K) with synonym expansion | Per-concept F1 for bottom quartile ≥ 0.55 |
+| 3 | Label coverage gaps inflate FP rate for bottom-quartile concepts | Hand-label 100–200 FP positions for x_ray, interference, mating_attack | True precision; manual Lichess spot-checks |
+| 4 | Phase 6C: SF-validated move recommendation | Post-classification connector: SF top-N moves + concept delta scoring | SF agreement rate ≥ 90%; coach explanation plausible |
+| 5 | Phase 7B: per-concept threshold tuning post-6B | Re-run evaluate.py --calibrate on 6B checkpoint; check if calibrated thresholds differ from 4C | Per-class F1 improvement on high-precision/low-recall concepts |

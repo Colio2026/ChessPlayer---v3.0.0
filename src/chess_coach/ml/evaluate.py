@@ -45,7 +45,7 @@ from torch.utils.data import DataLoader
 
 import chess as _chess
 
-from .classifier    import ChessConceptClassifier
+from .classifier    import ChessConceptClassifier, MoEConceptClassifier
 from .dataset       import ChessConceptDataset
 from .concept_vocab import CONCEPTS, NUM_CONCEPTS
 from .paths         import CLASSIFIER_BEST, TRAINING_JSONL, THRESHOLDS
@@ -388,28 +388,43 @@ def save_thresholds(thresholds: dict[str, float],
 
 # ── calibration ───────────────────────────────────────────────────────────────
 
-def calibrate_thresholds(model: ChessConceptClassifier,
+def _model_logits(model, batch, device, is_phase6: bool) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return (logits, y_true) from a batch, handling 4-tuple (phases 3/4/5) and
+    5-tuple (phase 6) collation, and unwrapping the MoE (logits, gates) return value."""
+    if is_phase6:
+        x, hist, seq_len, y, eco_idx = batch
+        out = model(x.to(device), hist.to(device), seq_len.to(device),
+                    eco_idx=eco_idx.to(device))
+    else:
+        x, hist, seq_len, y = batch
+        out = model(x.to(device), hist.to(device), seq_len.to(device))
+    logits = out[0] if isinstance(out, tuple) else out
+    return logits, y
+
+
+def calibrate_thresholds(model,
                           data_path: Path,
                           device: torch.device,
                           is_phase4: bool = False,
-                          is_phase5: bool = False) -> dict[str, float]:
+                          is_phase5: bool = False,
+                          is_phase6: bool = False) -> dict[str, float]:
     """
     Sweep thresholds 0.05–0.95 per class on the *val* split and pick the
     value that maximises F1 for each class.  Classes with no positives in
     val default to 0.5.
     """
     print("\nCalibrating per-class thresholds on val split …")
-    val_ds = ChessConceptDataset(data_path, split="val", phase4=is_phase4, phase5=is_phase5)
+    val_ds = ChessConceptDataset(data_path, split="val",
+                                 phase4=is_phase4, phase5=is_phase5, phase6=is_phase6)
     val_dl = DataLoader(val_ds, batch_size=256, shuffle=False, num_workers=0)
 
     all_probs  = []
     all_labels = []
     model.eval()
     with torch.no_grad():
-        for x, hist, seq_len, y in val_dl:
-            probs = torch.sigmoid(
-                model(x.to(device), hist.to(device), seq_len.to(device))
-            ).cpu()
+        for batch in val_dl:
+            logits, y = _model_logits(model, batch, device, is_phase6)
+            probs = torch.sigmoid(logits).cpu()
             all_probs.append(probs)
             all_labels.append(y)
 
@@ -465,13 +480,15 @@ def _f1(tp: torch.Tensor, fp: torch.Tensor,
     return prec, rec, f1
 
 
-def evaluate_dataset(model: ChessConceptClassifier,
+def evaluate_dataset(model,
                      data_path: Path,
                      device: torch.device,
                      thresholds: torch.Tensor,
                      is_phase4: bool = False,
-                     is_phase5: bool = False) -> None:
-    test_ds = ChessConceptDataset(data_path, split="test", phase4=is_phase4, phase5=is_phase5)
+                     is_phase5: bool = False,
+                     is_phase6: bool = False) -> None:
+    test_ds = ChessConceptDataset(data_path, split="test",
+                                  phase4=is_phase4, phase5=is_phase5, phase6=is_phase6)
     if len(test_ds) == 0:
         print("No test examples — skipping dataset evaluation.")
         return
@@ -485,11 +502,9 @@ def evaluate_dataset(model: ChessConceptClassifier,
 
     model.eval()
     with torch.no_grad():
-        for x, hist, seq_len, y_true in test_dl:
-            x      = x.to(device)
-            probs  = torch.sigmoid(
-                model(x, hist.to(device), seq_len.to(device))
-            )
+        for batch in test_dl:
+            logits, y_true = _model_logits(model, batch, device, is_phase6)
+            probs  = torch.sigmoid(logits)
             y_pred = (probs >= t_dev).float().cpu()
             y_true = y_true.float()
             tp += (y_pred * y_true).sum(dim=0)
@@ -592,26 +607,33 @@ def _endgame_type(fen: str) -> str | None:
     return "Complex endgame"
 
 
-def spot_check(model: ChessConceptClassifier,
+def spot_check(model,
                thresholds: torch.Tensor) -> None:
     print(f"\n── Spot Checks ────────────────────────────────────────────────────────")
     from .board_encoder import (
         fen_to_tensor, move_to_tensor, history_to_tensor, history_rich_to_tensor,
-        SF_SIZE,
+        SF_SIZE, TB_SIZE,
     )
     from tools.label_positions import algo_feature_vector, algo_feature_vector_v4
     from .board_encoder import NNUE_SIZE
     device    = next(model.parameters()).device
-    is_phase5 = model._phase5
-    is_phase4 = model.spatial_proj is not None
+    is_phase6 = isinstance(model, MoEConceptClassifier)
+    is_phase5 = not is_phase6 and getattr(model, "_phase5", False)
+    is_phase4 = not is_phase6 and not is_phase5 and model.spatial_proj is not None
 
     all_pass = True
     for sc in SPOT_CHECKS:
         fen     = sc["fen"]
         board_t = fen_to_tensor(fen)
         move_t  = move_to_tensor(sc.get("move_uci", ""))
-        if is_phase5:
-            # NNUE activations unavailable at eval time without cache — use zeros
+        if is_phase6:
+            algo_t = torch.from_numpy(algo_feature_vector_v4(fen))
+            v3_t   = torch.from_numpy(algo_feature_vector(fen))
+            sf_t   = torch.zeros(SF_SIZE, dtype=torch.float32)
+            tb_t   = torch.zeros(TB_SIZE, dtype=torch.float32)  # zeros for synthetic positions
+            x      = torch.cat([board_t, move_t, algo_t, v3_t, sf_t, tb_t]).unsqueeze(0).to(device)
+            hist_t, seq_len = history_rich_to_tensor([])
+        elif is_phase5:
             nnue_t = torch.zeros(NNUE_SIZE, dtype=torch.float32)
             algo_t = torch.from_numpy(algo_feature_vector_v4(fen))
             v3_t   = torch.from_numpy(algo_feature_vector(fen))
@@ -631,7 +653,8 @@ def spot_check(model: ChessConceptClassifier,
         hist_t    = hist_t.unsqueeze(0).to(device)
         seq_len_t = torch.tensor([seq_len])
 
-        probs = torch.sigmoid(model(x, hist_t, seq_len_t)).squeeze(0).cpu()
+        out   = model(x, hist_t, seq_len_t)
+        probs = torch.sigmoid(out[0] if isinstance(out, tuple) else out).squeeze(0).cpu()
         # Toy positions don't produce the same confidence as real game positions.
         # Cap spot-check thresholds at 0.90 so near-misses from the calibrator
         # setting high thresholds don't count as failures.  Production unchanged.
@@ -702,14 +725,20 @@ def _main() -> None:
     # Load model — detect phase from checkpoint weights
     ckpt      = torch.load(ckpt_path, map_location=device, weights_only=False)
     sd        = ckpt["state_dict"]
-    is_phase5 = any(k.startswith("nnue_proj") for k in sd)
-    is_phase4 = any(k.startswith("spatial_proj") for k in sd) and not is_phase5
-    model     = ChessConceptClassifier(phase4=is_phase4, phase5=is_phase5).to(device)
+    is_phase6 = any(k.startswith("gate_network.") for k in sd)
+    is_phase5 = any(k.startswith("nnue_proj")     for k in sd) and not is_phase6
+    is_phase4 = any(k.startswith("spatial_proj")  for k in sd) and not is_phase5 and not is_phase6
+
+    if is_phase6:
+        model = MoEConceptClassifier().to(device)
+    else:
+        model = ChessConceptClassifier(phase4=is_phase4, phase5=is_phase5).to(device)
     model.load_state_dict(sd)
     model.eval()
-    epoch    = ckpt.get("epoch", "?")
-    val_loss = ckpt.get("val_loss", float("nan"))
-    phase_tag = "Phase 5" if is_phase5 else ("Phase 4" if is_phase4 else "Phase 3")
+
+    epoch     = ckpt.get("epoch", "?")
+    val_loss  = ckpt.get("val_loss", float("nan"))
+    phase_tag = "Phase 6B MoE" if is_phase6 else ("Phase 5" if is_phase5 else ("Phase 4" if is_phase4 else "Phase 3"))
     print(f"Loaded checkpoint: epoch={epoch}  val_loss={val_loss:.4f}  ({phase_tag})")
 
     data_path = Path(args.data)
@@ -717,7 +746,8 @@ def _main() -> None:
     # Calibrate thresholds if requested, then save
     if args.calibrate:
         cal = calibrate_thresholds(model, data_path, device,
-                                   is_phase4=is_phase4, is_phase5=is_phase5)
+                                   is_phase4=is_phase4, is_phase5=is_phase5,
+                                   is_phase6=is_phase6)
         save_thresholds(cal)
 
     # Load thresholds (calibrated file if it exists, global fallback otherwise)
@@ -725,7 +755,8 @@ def _main() -> None:
 
     if not args.spot_check_only:
         evaluate_dataset(model, data_path, device, thresholds,
-                         is_phase4=is_phase4, is_phase5=is_phase5)
+                         is_phase4=is_phase4, is_phase5=is_phase5,
+                         is_phase6=is_phase6)
 
     spot_check(model, thresholds)
 

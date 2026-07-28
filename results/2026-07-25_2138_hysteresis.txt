@@ -1,0 +1,63 @@
+﻿Loaded classifier_best.pt  (Phase 6B MoE)
+Sampling 2000 positions from training_raw.jsonl ...
+
+Sampled 2000 positions  (0 errors)
+
+Concept                   p50    p75    p90    p95    p99    ACT    >ACT   >0.40
+------------------------------------------------------------------------------------
+pin                     0.458  0.562  0.842  0.952  0.993   0.73    12.8%    69.4%
+fork                    0.436  0.554  0.762  0.903  0.983   0.73    11.1%    64.0%
+skewer                  0.383  0.415  0.542  0.940  0.996   0.65     8.2%    35.9%
+discovery               0.359  0.589  0.904  0.950  0.989   0.65    22.9%    34.3%  <- fires very frequently; consider raising ACTIVATE
+x_ray                   0.423  0.688  0.818  0.876  0.949   0.43    49.2%    53.2%  <- fires very frequently; consider raising ACTIVATE
+double_check            0.372  0.400  0.453  0.580  0.942   0.45    10.2%    24.8%
+clearance               0.385  0.595  0.916  0.959  0.990   0.65    23.6%    41.9%  <- fires very frequently; consider raising ACTIVATE
+deflection              0.442  0.532  0.736  0.913  0.989   0.70    10.8%    65.3%
+overloading             0.375  0.472  0.866  0.942  0.989   0.88     9.2%    35.2%
+zwischenzug             0.392  0.423  0.532  0.904  0.991   0.65     8.4%    42.4%
+interference            0.352  0.623  0.853  0.919  0.973   0.45    34.5%    39.0%  <- fires very frequently; consider raising ACTIVATE
+back_rank               0.375  0.408  0.866  0.973  0.995   0.65    14.0%    27.3%
+sacrifice               0.321  0.447  0.705  0.870  0.980   0.65    12.7%    31.6%
+mating_attack           0.475  0.628  0.825  0.901  0.973   0.80    11.8%    69.4%
+trapped_piece           0.485  0.671  0.846  0.899  0.959   0.73    19.3%    66.5%
+outpost                 0.357  0.440  0.802  0.913  0.983   0.90     5.8%    30.2%
+blockade                0.331  0.512  0.840  0.925  0.981   0.90     6.4%    32.0%
+bad_bishop              0.304  0.564  0.822  0.901  0.973   0.90     5.1%    33.0%
+good_bishop             0.322  0.589  0.835  0.914  0.979   0.90     5.7%    34.6%
+bishop_pair             0.273  0.669  0.874  0.929  0.980   0.82    14.9%    32.2%
+piece_activity          0.374  0.468  0.856  0.941  0.985   0.82    11.2%    35.2%
+battery                 0.303  0.465  0.796  0.891  0.974   0.90     4.5%    27.1%
+rook_seventh            0.350  0.364  0.393  0.899  0.990   0.65     8.2%     9.5%
+passed_pawn             0.401  0.464  0.722  0.878  0.983   0.90     4.4%    50.9%
+promotion               0.375  0.405  0.658  0.840  0.994   0.65    10.2%    27.1%
+isolated_pawn           0.313  0.435  0.794  0.916  0.982   0.90     5.7%    27.4%
+backward_pawn           0.380  0.487  0.885  0.954  0.990   0.90     8.8%    36.0%
+doubled_pawn            0.324  0.360  0.849  0.934  0.989   0.80    11.6%    19.0%
+pawn_majority           0.357  0.492  0.849  0.928  0.980   0.90     6.9%    32.6%
+pawn_chain              0.382  0.682  0.855  0.905  0.961   0.90     5.4%    46.9%
+pawn_storm              0.373  0.411  0.926  0.968  0.995   0.80    14.9%    28.3%
+pawn_island             0.359  0.617  0.832  0.899  0.962   0.90     4.9%    40.0%
+king_safety             0.368  0.417  0.721  0.919  0.978   0.73     9.7%    28.9%
+king_activity           0.351  0.403  0.750  0.893  0.991   0.80     8.0%    25.6%
+shouldering             0.343  0.356  0.366  0.378  0.526   0.38     4.7%     2.6%
+opposition              0.349  0.370  0.589  0.911  0.997   0.65     9.7%    16.6%
+zugzwang                0.351  0.382  0.628  0.902  0.988   0.65     9.6%    20.5%
+rook_endgame            0.297  0.315  0.399  0.982  0.999   0.65     6.9%    10.0%
+pawn_endgame            0.350  0.369  0.445  0.945  0.987   0.65     8.1%    11.6%
+bishop_endgame          0.332  0.350  0.412  0.716  0.998   0.65     5.3%    10.7%
+knight_endgame          0.345  0.357  0.373  0.400  0.999   0.65     3.6%     4.8%
+queen_endgame           0.343  0.357  0.386  0.597  0.999   0.65     4.8%     7.1%
+drawn_position          0.349  0.362  0.384  0.438  0.976   0.45     3.8%     7.5%
+weak_square             0.354  0.650  0.788  0.838  0.937   0.90     1.9%    46.2%
+open_file               0.338  0.469  0.824  0.928  0.988   0.90     6.2%    33.9%
+space_advantage         0.358  0.377  0.472  0.723  1.000   0.65     5.5%    16.6%
+development_lead        0.351  0.363  0.388  0.790  0.997   0.65     5.1%     8.6%
+initiative              0.339  0.540  0.827  0.942  0.991   0.40    39.4%    39.4%  <- fires very frequently; consider raising ACTIVATE
+prophylaxis             0.344  0.712  0.876  0.918  0.975   0.65    28.2%    40.8%  <- fires very frequently; consider raising ACTIVATE
+
+Per-concept ACTIVATE loaded from data\activate_thresholds.json
+Global fallback: ACTIVATE=0.65  HOLD=0.4
+'ACT' = per-concept ACTIVATE threshold  '>ACT' = fire rate from cold.
+'>0.40' = fraction of positions where an active concept would remain active.
+
+Target: '>ACT' column should show 5-15% for most concepts.

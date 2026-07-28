@@ -49,19 +49,23 @@ def main() -> None:
     if not jsonl_path.exists():
         sys.exit(f"JSONL not found: {jsonl_path}")
 
-    from src.chess_coach.ml.classifier import ChessConceptClassifier
+    from src.chess_coach.ml.classifier import ChessConceptClassifier, MoEConceptClassifier
     from src.chess_coach.ml.concept_vocab import CONCEPTS, NUM_CONCEPTS
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt   = torch.load(str(ckpt_path), map_location=device, weights_only=False)
     sd     = ckpt.get("state_dict", ckpt)
-    is_phase5 = any(k.startswith("nnue_proj")    for k in sd)
-    is_phase4 = any(k.startswith("spatial_proj") for k in sd) and not is_phase5
-    model     = ChessConceptClassifier(phase4=is_phase4, phase5=is_phase5).to(device)
+    is_phase6 = any(k.startswith("gate_network.") for k in sd)
+    is_phase5 = any(k.startswith("nnue_proj")     for k in sd) and not is_phase6
+    is_phase4 = any(k.startswith("spatial_proj")  for k in sd) and not is_phase5 and not is_phase6
+    if is_phase6:
+        model = MoEConceptClassifier().to(device)
+    else:
+        model = ChessConceptClassifier(phase4=is_phase4, phase5=is_phase5).to(device)
     model.load_state_dict(sd)
     model.eval()
 
-    phase_tag = "Phase 5D" if is_phase5 else ("Phase 4B" if is_phase4 else "Phase 3")
+    phase_tag = "Phase 6B MoE" if is_phase6 else ("Phase 5D" if is_phase5 else ("Phase 4B" if is_phase4 else "Phase 3"))
     print(f"Loaded {ckpt_path.name}  ({phase_tag})")
     print(f"Sampling {args.n} positions from {jsonl_path.name} ...\n")
 

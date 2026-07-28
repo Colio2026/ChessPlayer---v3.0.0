@@ -1,0 +1,210 @@
+﻿
+Checkpoint : data\classifier_best.pt
+Phase      : 6B MoE
+Epoch 20  |  val_loss 0.6272
+
+=================================================================
+GATE NETWORK
+=================================================================
+Layer                                          Shape     Mean      Std    L2 norm
+-----------------------------------------------------------------
+  ECO embedding                            (501, 64)  -0.0076   0.8842     158.33
+  Gate L1 Linear                         (256, 1804)  -0.0181   0.1592     108.85
+  Gate L1 bias                                (256,)  -0.0596   0.0402       1.15
+  Gate L2 Linear                            (5, 256)  -0.0006   0.1029       3.68
+  Gate L2 bias                                  (5,)  -0.0857   0.3260       0.68
+
+=================================================================
+EXPERT LAYER STATISTICS
+=================================================================
+
+  -- Expert 0: Tactical (15 concepts) --
+  Layer                                          Shape     Mean      Std    L2 norm
+  -----------------------------------------------------------------
+  L1 Linear weight                       (512, 1740)   0.0025   0.1890     178.36
+  L1 BatchNorm gamma                          (512,)   0.6006   0.0678      13.68
+  L2 Linear weight                        (256, 512)  -0.0471   0.1779      66.61
+  L2 BatchNorm gamma                          (256,)   1.0030   0.1445      16.21
+  Out Linear weight                        (15, 256)   0.0525   0.3210      20.15
+
+  Output norms ù Tactical:
+    pin                        5.128  #################
+    fork                       5.247  #################
+    skewer                     5.707  ###################
+    discovery                  5.980  ###################
+    x_ray                      4.422  ##############
+    double_check               4.925  ################
+    clearance                  5.544  ##################
+    deflection                 5.403  ##################
+    overloading                5.375  #################
+    zwischenzug                4.793  ###############
+    interference               4.873  ################
+    back_rank                  5.661  ##################
+    sacrifice                  5.996  ####################
+    mating_attack              4.433  ##############
+    trapped_piece              4.116  #############
+
+  -- Expert 1: Structural (8 concepts) --
+  Layer                                          Shape     Mean      Std    L2 norm
+  -----------------------------------------------------------------
+  L1 Linear weight                       (512, 1740)   0.0075   0.1842     174.00
+  L1 BatchNorm gamma                          (512,)   0.5941   0.0644      13.52
+  L2 Linear weight                        (256, 512)  -0.0361   0.1839      67.85
+  L2 BatchNorm gamma                          (256,)   0.9802   0.2173      16.06
+  Out Linear weight                         (8, 256)   0.0870   0.3714      17.26
+
+  Output norms ù Structural:
+    outpost                    6.010  #################
+    blockade                   6.198  ##################
+    bad_bishop                 6.202  ##################
+    good_bishop                6.087  ##################
+    bishop_pair                6.728  ####################
+    piece_activity             5.634  ################
+    battery                    5.817  #################
+    rook_seventh               6.074  ##################
+
+  -- Expert 2: Pawn (9 concepts) --
+  Layer                                          Shape     Mean      Std    L2 norm
+  -----------------------------------------------------------------
+  L1 Linear weight                       (512, 1740)   0.0026   0.1887     178.08
+  L1 BatchNorm gamma                          (512,)   0.5943   0.0711      13.54
+  L2 Linear weight                        (256, 512)  -0.0340   0.1846      67.96
+  L2 BatchNorm gamma                          (256,)   0.9934   0.1733      16.13
+  Out Linear weight                         (9, 256)   0.1062   0.3997      19.85
+
+  Output norms ù Pawn:
+    passed_pawn                7.273  ##################
+    promotion                  5.591  ##############
+    isolated_pawn              7.844  ####################
+    backward_pawn              6.085  ###############
+    doubled_pawn               5.655  ##############
+    pawn_majority              7.292  ##################
+    pawn_chain                 7.137  ##################
+    pawn_storm                 5.527  ##############
+    pawn_island                6.678  #################
+
+  -- Expert 3: Endgame (11 concepts) --
+  Layer                                          Shape     Mean      Std    L2 norm
+  -----------------------------------------------------------------
+  L1 Linear weight                       (512, 1740)   0.0132   0.1838     173.95
+  L1 BatchNorm gamma                          (512,)   0.6221   0.0583      14.14
+  L2 Linear weight                        (256, 512)  -0.0645   0.1736      67.04
+  L2 BatchNorm gamma                          (256,)   0.7409   0.1817      12.20
+  Out Linear weight                        (11, 256)   0.0519   0.2747      14.83
+
+  Output norms ù Endgame:
+    king_safety                3.615  ##############
+    king_activity              4.463  #################
+    shouldering                3.433  #############
+    opposition                 4.365  #################
+    zugzwang                   4.811  ###################
+    rook_endgame               4.958  ###################
+    pawn_endgame               4.072  ################
+    bishop_endgame             4.378  #################
+    knight_endgame             4.980  ####################
+    queen_endgame              4.955  ###################
+    drawn_position             4.823  ###################
+
+  -- Expert 4: Strategic (6 concepts) --
+  Layer                                          Shape     Mean      Std    L2 norm
+  -----------------------------------------------------------------
+  L1 Linear weight                       (512, 1740)  -0.0001   0.1896     178.92
+  L1 BatchNorm gamma                          (512,)   0.5895   0.0549      13.40
+  L2 Linear weight                        (256, 512)  -0.0470   0.1700      63.85
+  L2 BatchNorm gamma                          (256,)   0.9760   0.1439      15.78
+  Out Linear weight                         (6, 256)   0.1051   0.4199      16.96
+
+  Output norms ù Strategic:
+    weak_square                7.128  ##################
+    open_file                  7.579  ####################
+    space_advantage            5.938  ###############
+    development_lead           7.043  ##################
+    initiative                 6.698  #################
+    prophylaxis                7.050  ##################
+
+=================================================================
+DEAD NEURON ESTIMATE  (BatchNorm gamma near zero)
+=================================================================
+
+  Expert 0 Tactical L1 BN  (512 neurons)
+    gamma < 0.1 (dead)  :    0 / 512  (0.0%)
+    gamma < 0.3 (weak)  :    0 / 512  (0.0%)
+    gamma mean          : 0.6006
+    gamma std           : 0.0678
+
+  Expert 0 Tactical L2 BN  (256 neurons)
+    gamma < 0.1 (dead)  :    0 / 256  (0.0%)
+    gamma < 0.3 (weak)  :    0 / 256  (0.0%)
+    gamma mean          : 1.0030
+    gamma std           : 0.1445
+
+  Expert 1 Structural L1 BN  (512 neurons)
+    gamma < 0.1 (dead)  :    0 / 512  (0.0%)
+    gamma < 0.3 (weak)  :    0 / 512  (0.0%)
+    gamma mean          : 0.5941
+    gamma std           : 0.0644
+
+  Expert 1 Structural L2 BN  (256 neurons)
+    gamma < 0.1 (dead)  :    0 / 256  (0.0%)
+    gamma < 0.3 (weak)  :    2 / 256  (0.8%)
+    gamma mean          : 0.9802
+    gamma std           : 0.2173
+
+  Expert 2 Pawn L1 BN  (512 neurons)
+    gamma < 0.1 (dead)  :    0 / 512  (0.0%)
+    gamma < 0.3 (weak)  :    0 / 512  (0.0%)
+    gamma mean          : 0.5943
+    gamma std           : 0.0711
+
+  Expert 2 Pawn L2 BN  (256 neurons)
+    gamma < 0.1 (dead)  :    0 / 256  (0.0%)
+    gamma < 0.3 (weak)  :    0 / 256  (0.0%)
+    gamma mean          : 0.9934
+    gamma std           : 0.1733
+
+  Expert 3 Endgame L1 BN  (512 neurons)
+    gamma < 0.1 (dead)  :    0 / 512  (0.0%)
+    gamma < 0.3 (weak)  :    0 / 512  (0.0%)
+    gamma mean          : 0.6221
+    gamma std           : 0.0583
+
+  Expert 3 Endgame L2 BN  (256 neurons)
+    gamma < 0.1 (dead)  :    0 / 256  (0.0%)
+    gamma < 0.3 (weak)  :   16 / 256  (6.2%)
+    gamma mean          : 0.7409
+    gamma std           : 0.1817
+
+  Expert 4 Strategic L1 BN  (512 neurons)
+    gamma < 0.1 (dead)  :    0 / 512  (0.0%)
+    gamma < 0.3 (weak)  :    0 / 512  (0.0%)
+    gamma mean          : 0.5895
+    gamma std           : 0.0549
+
+  Expert 4 Strategic L2 BN  (256 neurons)
+    gamma < 0.1 (dead)  :    0 / 256  (0.0%)
+    gamma < 0.3 (weak)  :    0 / 256  (0.0%)
+    gamma mean          : 0.9760
+    gamma std           : 0.1439
+
+=================================================================
+TUNING GUIDE
+=================================================================
+
+  PROBLEM                    LIKELY CAUSE              FIX
+  -------------------------------------------------------------
+  Concept norm is very low   Too few training examples  More data for that concept
+                             Keywords not matching      Expand keyword list
+                             Concept too abstract       Fold into a related concept
+
+  Many dead neurons (>20%)   Dropout too high           Lower dropout (0.3)
+                             LR too high initially      Reduce warmup LR
+
+  Weight std very large      Overfitting                Increase dropout / weight_decay
+  (L2 norm > 30 per neuron)                             More diverse training data
+
+  Weight std very small      Underfitting               Larger hidden layers
+  (L2 norm < 5 per neuron)   LR too low                 Increase LR or train longer
+
+  Concepts bleed into each   Keywords too broad         Tighten keywords
+  other (low precision)      Concepts overlap           Consider merging concepts
+

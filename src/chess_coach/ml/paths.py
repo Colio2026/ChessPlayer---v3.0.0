@@ -30,3 +30,5 @@ BOARD_CACHE      = DATA_DIR / "board_cache.npy"   # (N, 1001) float32  — fen_t
 # ── Engine / external ─────────────────────────────────────────────────────────
 ECO_DB           = DATA_DIR / "eco_db.json"
 NNUE_WEIGHTS     = DATA_DIR / "nn.nnue"            # Stockfish16 FT weights for NNUE cache builder
+TB_CACHE         = DATA_DIR / "tb_cache.npy"       # (N, 3) float32 — Syzygy WDL/DTZ/is_tb per position
+SYZYGY_PATH      = DATA_DIR / "syzygy"             # Syzygy tablebase files directory

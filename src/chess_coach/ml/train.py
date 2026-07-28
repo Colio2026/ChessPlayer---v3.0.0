@@ -58,7 +58,7 @@ def _next_results_path(tag: str) -> Path:
     return results_dir / f"results{n:04d}_{stamp}_{tag}.txt"
 
 from .dataset    import ChessConceptDataset
-from .classifier import ChessConceptClassifier
+from .classifier import ChessConceptClassifier, MoEConceptClassifier, load_balance_loss, _LOAD_BALANCE_W
 from .concept_vocab import CONCEPTS, NUM_CONCEPTS
 from .evaluate   import load_thresholds
 from .paths      import DATA_DIR, CLASSIFIER_BEST, CLASSIFIER_LAST, TRAINING_JSONL
@@ -76,6 +76,18 @@ def _collate(batch):
         torch.stack(hists),
         torch.tensor(seq_lens, dtype=torch.long),
         torch.stack(ys),
+    )
+
+
+def _collate_phase6(batch):
+    """Phase 6B collate: 5-tuple (x, hist, seq_len, y, eco_idx)."""
+    xs, hists, seq_lens, ys, eco_idxs = zip(*batch)
+    return (
+        torch.stack(xs),
+        torch.stack(hists),
+        torch.tensor(seq_lens, dtype=torch.long),
+        torch.stack(ys),
+        torch.tensor(eco_idxs, dtype=torch.long),
     )
 
 
@@ -103,10 +115,17 @@ def train(args: argparse.Namespace) -> None:
     data_path = Path(args.data)
     print(f"\nLoading data from {data_path}")
 
-    # Dataset discovers algo_cache.npy and v3_cache.npy automatically and opens
-    # them lazily inside __getitem__ — each worker gets its own mmap handle.
-    train_ds = ChessConceptDataset(data_path, split="train", phase4=args.phase4, phase5=args.phase5)
-    val_ds   = ChessConceptDataset(data_path, split="val",   phase4=args.phase4, phase5=args.phase5)
+    is_phase6 = args.phase6
+    collate_fn = _collate_phase6 if is_phase6 else _collate
+
+    train_ds = ChessConceptDataset(
+        data_path, split="train",
+        phase4=args.phase4, phase5=args.phase5, phase6=is_phase6,
+    )
+    val_ds = ChessConceptDataset(
+        data_path, split="val",
+        phase4=args.phase4, phase5=args.phase5, phase6=is_phase6,
+    )
 
     if args.quick:
         n = max(500, len(train_ds) // 10)
@@ -116,20 +135,27 @@ def train(args: argparse.Namespace) -> None:
 
     train_dl = DataLoader(
         train_ds, batch_size=args.batch_size,
-        shuffle=True, num_workers=4,
+        shuffle=True, num_workers=6, prefetch_factor=4,
         pin_memory=(device.type == "cuda"),
-        collate_fn=_collate,
+        persistent_workers=True,
+        collate_fn=collate_fn,
     )
     val_dl = DataLoader(
         val_ds, batch_size=args.batch_size * 2,
-        shuffle=False, num_workers=4,
-        collate_fn=_collate,
+        shuffle=False, num_workers=6, prefetch_factor=4,
+        persistent_workers=True,
+        collate_fn=collate_fn,
     )
 
     # ── model ─────────────────────────────────────────────────────────────────
-    model = ChessConceptClassifier(phase4=args.phase4, phase5=args.phase5).to(device)
+    if is_phase6:
+        model = MoEConceptClassifier().to(device)
+    else:
+        model = ChessConceptClassifier(phase4=args.phase4, phase5=args.phase5).to(device)
     total_params = sum(p.numel() for p in model.parameters())
     print(f"\nModel: {total_params:,} parameters")
+    if is_phase6:
+        print(f"  Architecture: Phase 6B MoE  (5 expert heads + gating network + ECO embedding)")
 
     # ── loss with class-imbalance correction ──────────────────────────────────
     pos_weight = train_ds.pos_weight.to(device)
@@ -163,12 +189,29 @@ def train(args: argparse.Namespace) -> None:
         # ── train ─────────────────────────────────────────────────────────────
         model.train()
         train_loss = 0.0
-        for x, hist, seq_len, y in train_dl:
-            x, hist, seq_len, y = (x.to(device), hist.to(device),
-                                    seq_len.to(device), y.to(device))
+        for batch in train_dl:
+            if is_phase6:
+                x, hist, seq_len, y, eco_idx = batch
+                x, hist, seq_len, y, eco_idx = (
+                    x.to(device), hist.to(device), seq_len.to(device),
+                    y.to(device), eco_idx.to(device),
+                )
+            else:
+                x, hist, seq_len, y = batch
+                x, hist, seq_len, y = (x.to(device), hist.to(device),
+                                        seq_len.to(device), y.to(device))
+                eco_idx = None
+
             optimizer.zero_grad()
             y_smooth = y * (1 - LABEL_SMOOTHING) + 0.5 * LABEL_SMOOTHING
-            loss = loss_fn(model(x, hist, seq_len), y_smooth)
+
+            if is_phase6:
+                logits, gate_weights = model(x, hist, seq_len, eco_idx=eco_idx)
+                loss = (loss_fn(logits, y_smooth)
+                        + _LOAD_BALANCE_W * load_balance_loss(gate_weights))
+            else:
+                loss = loss_fn(model(x, hist, seq_len), y_smooth)
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -182,10 +225,19 @@ def train(args: argparse.Namespace) -> None:
         all_preds   = []
         all_targets = []
         with torch.no_grad():
-            for x, hist, seq_len, y in val_dl:
-                x, hist, seq_len, y = (x.to(device), hist.to(device),
-                                        seq_len.to(device), y.to(device))
-                logits = model(x, hist, seq_len)
+            for batch in val_dl:
+                if is_phase6:
+                    x, hist, seq_len, y, eco_idx = batch
+                    x, hist, seq_len, y, eco_idx = (
+                        x.to(device), hist.to(device), seq_len.to(device),
+                        y.to(device), eco_idx.to(device),
+                    )
+                    logits, _ = model(x, hist, seq_len, eco_idx=eco_idx)
+                else:
+                    x, hist, seq_len, y = batch
+                    x, hist, seq_len, y = (x.to(device), hist.to(device),
+                                            seq_len.to(device), y.to(device))
+                    logits = model(x, hist, seq_len)
                 val_loss += loss_fn(logits, y).item()
                 all_preds.append((torch.sigmoid(logits) >= val_thresholds).cpu())
                 all_targets.append(y.cpu())
@@ -209,6 +261,7 @@ def train(args: argparse.Namespace) -> None:
                 "val_loss":   val_loss,
                 "macro_f1":   val_f1,
                 "concepts":   CONCEPTS,
+                "phase6":     is_phase6,
             }, CLASSIFIER_BEST)
             note = "✓ best"
         else:
@@ -231,7 +284,8 @@ def train(args: argparse.Namespace) -> None:
     print(f"\n── Done ──────────────────────────────────────────────────────────────")
     print(f"Best checkpoint : epoch {best_epoch}  macro_f1={best_macro_f1:.4f}")
     print(f"Saved to        : {CLASSIFIER_BEST}")
-    print(f"\nNext step: python -m src.chess_coach.ml.evaluate")
+    flag = " --phase6" if is_phase6 else ""
+    print(f"\nNext step: python -m src.chess_coach.ml.evaluate{flag} --calibrate")
 
 
 def main() -> None:
@@ -248,8 +302,13 @@ def main() -> None:
                         help="Use Phase 4 architecture (COMBINED_SIZE_V4, MOVE_SIZE_V4=144).")
     parser.add_argument("--phase5",     action="store_true",
                         help="Use Phase 5 architecture (NNUE FT perception, COMBINED_SIZE_V5=2518).")
+    parser.add_argument("--phase6",     action="store_true",
+                        help="Use Phase 6B MoE architecture (5 expert heads + gating + ECO + TB signal).")
     args = parser.parse_args()
-    if args.phase5:
+    if args.phase6:
+        args.phase4 = False   # phase6 has its own dataset/model path
+        args.phase5 = False
+    elif args.phase5:
         args.phase4 = False   # phase5 supersedes phase4
     log_path = _next_results_path("train")
     tee = _Tee(log_path)

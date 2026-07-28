@@ -31,10 +31,10 @@ from torch.utils.data import Dataset
 from .board_encoder import (
     fen_to_tensor, move_to_tensor, history_to_tensor, history_rich_to_tensor,
     STATIC_SIZE, STATIC_SIZE_V4, INPUT_SIZE, MOVE_SIZE, ALGO_SIZE, ALGO_SIZE_V4,
-    SF_SIZE, NNUE_SIZE, MAX_SEQ_LEN,
+    SF_SIZE, NNUE_SIZE, MAX_SEQ_LEN, TB_SIZE, eco_to_idx,
 )
 from .concept_vocab import CONCEPTS, CONCEPT_TO_IDX, NUM_CONCEPTS
-from .paths import ALGO_CACHE, V3_CACHE, SF_CACHE, NNUE_CACHE, BOARD_CACHE
+from .paths import ALGO_CACHE, V3_CACHE, SF_CACHE, NNUE_CACHE, BOARD_CACHE, TB_CACHE
 from tools.label_positions import algo_feature_vector
 
 
@@ -72,6 +72,7 @@ class ChessConceptDataset(Dataset):
         val_frac:    float       = 0.10,
         phase4:      bool        = False,
         phase5:      bool        = False,
+        phase6:      bool        = False,   # Phase 6B: Phase 4B features + TB signal + ECO index
     ) -> None:
         jsonl_path = Path(jsonl_path)
         if not jsonl_path.exists():
@@ -127,8 +128,9 @@ class ChessConceptDataset(Dataset):
         self._jsonl_path = str(jsonl_path.resolve())
         self._file: object = None   # opened lazily per DataLoader worker
 
-        self._phase4 = phase4
+        self._phase4 = phase4 or phase6   # phase6 uses the same feature set as phase4 + TB
         self._phase5 = phase5
+        self._phase6 = phase6
         print(f"  {split}: {len(self._offsets):,} examples  "
               f"(train {n_train:,} / val {n_val:,} / test {n - n_train - n_val:,})")
 
@@ -140,16 +142,19 @@ class ChessConceptDataset(Dataset):
         sf_path    = SF_CACHE.resolve()
         nnue_path  = NNUE_CACHE.resolve()
         board_path = BOARD_CACHE.resolve()
+        tb_path    = TB_CACHE.resolve()
         self._algo_cache_path:  str | None = str(algo_path)  if algo_path.exists()  else None
         self._v3_cache_path:    str | None = str(v3_path)    if v3_path.exists()    else None
         self._sf_cache_path:    str | None = str(sf_path)    if sf_path.exists()    else None
         self._nnue_cache_path:  str | None = str(nnue_path)  if (nnue_path.exists() and phase5)  else None
         self._board_cache_path: str | None = str(board_path) if board_path.exists() else None
+        self._tb_cache_path:    str | None = str(tb_path)    if (tb_path.exists() and phase6)    else None
         self._algo_cache:  np.ndarray | None = None   # opened on first __getitem__
         self._v3_cache:    np.ndarray | None = None
         self._sf_cache:    np.ndarray | None = None
         self._nnue_cache:  np.ndarray | None = None
         self._board_cache: np.ndarray | None = None
+        self._tb_cache:    np.ndarray | None = None
 
         if self._algo_cache_path:
             print(f"  Algo cache:  {algo_path.name}  (lazy mmap, {algo_path.stat().st_size / 1e9:.2f} GB)")
@@ -171,6 +176,11 @@ class ChessConceptDataset(Dataset):
             print(f"  Board cache: {board_path.name}  (lazy mmap, {board_path.stat().st_size / 1e9:.2f} GB)")
         else:
             print("  No board cache — board tensor computed per example (run build_board_cache.py).")
+        if phase6:
+            if self._tb_cache_path:
+                print(f"  TB cache:    {tb_path.name}  (lazy mmap, {tb_path.stat().st_size / 1e6:.0f} MB)")
+            else:
+                print("  No TB cache — TB features zeroed (run tools/build_tablebase_cache.py).")
 
     # ── Lazy mmap openers ─────────────────────────────────────────────────────
 
@@ -204,6 +214,12 @@ class ChessConceptDataset(Dataset):
             self._board_cache = np.load(self._board_cache_path, mmap_mode="r")
         return self._board_cache
 
+    def _get_tb_cache(self) -> np.ndarray | None:
+        """Open tb_cache mmap on first access (worker-local; picklable init)."""
+        if self._tb_cache is None and self._tb_cache_path:
+            self._tb_cache = np.load(self._tb_cache_path, mmap_mode="r")
+        return self._tb_cache
+
     # ── Dataset protocol ──────────────────────────────────────────────────────
 
     def __len__(self) -> int:
@@ -216,7 +232,7 @@ class ChessConceptDataset(Dataset):
         self._file.seek(self._offsets[idx])
         return json.loads(self._file.readline().decode("utf-8", errors="replace"))
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, int, torch.Tensor]:
+    def __getitem__(self, idx: int):
         ex = self._read_example(idx)
         y  = self._y[idx].clone()   # clone view → independent tensor
 
@@ -225,7 +241,7 @@ class ChessConceptDataset(Dataset):
             move_t = move_to_tensor(ex.get("move_uci", ""))
             ac_idx = ex.get("_ac")
 
-            # V3 summary (ALGO_SIZE = 68-dim): binary concept bits (all phases)
+            # V3 summary (ALGO_SIZE = 82-dim): binary concept bits (all phases)
             v3_cache = self._get_v3_cache()
             if v3_cache is not None and ac_idx is not None:
                 v3_t = torch.from_numpy(np.array(v3_cache[ac_idx], dtype=np.float32))
@@ -247,7 +263,7 @@ class ChessConceptDataset(Dataset):
                 board_t = fen_to_tensor(fen)
 
             if self._phase5:
-                # Phase 5D: NNUE (2048) + board (1001) + move (128) + algo_v4 (2491) + sf (14) + v3 (68)
+                # Phase 5D: NNUE (2048) + board (1001) + move (128) + algo_v4 (3779) + sf (14) + v3 (82)
                 nnue_cache = self._get_nnue_cache()
                 if nnue_cache is not None and ac_idx is not None:
                     nnue_t = torch.from_numpy(np.array(nnue_cache[ac_idx], dtype=np.float32))
@@ -259,8 +275,25 @@ class ChessConceptDataset(Dataset):
                 else:
                     algo_t = torch.zeros(ALGO_SIZE_V4, dtype=torch.float32)
                 x = torch.cat([nnue_t, board_t, move_t, algo_t, sf_t, v3_t])
+
+            elif self._phase6:
+                # Phase 6B: board (1001) + move (128) + algo_v4 (3779) + v3 (82) + sf (14) + tb (3)
+                algo_cache = self._get_algo_cache()
+                if algo_cache is not None and ac_idx is not None:
+                    algo_t = torch.from_numpy(np.array(algo_cache[ac_idx], dtype=np.float32))
+                else:
+                    af = ex.get("algo_features")
+                    algo_t = torch.tensor(af, dtype=torch.float32) if af is not None \
+                             else torch.zeros(ALGO_SIZE_V4, dtype=torch.float32)
+                tb_cache = self._get_tb_cache()
+                if tb_cache is not None and ac_idx is not None:
+                    tb_t = torch.from_numpy(np.array(tb_cache[ac_idx], dtype=np.float32))
+                else:
+                    tb_t = torch.zeros(TB_SIZE, dtype=torch.float32)
+                x = torch.cat([board_t, move_t, algo_t, v3_t, sf_t, tb_t])
+
             elif self._phase4:
-                # Phase 4-B: board (1001) + move (128) + algo_v4 (2491) + v3 (68) + sf (14)
+                # Phase 4B: board (1001) + move (128) + algo_v4 (3779) + v3 (82) + sf (14)
                 algo_cache = self._get_algo_cache()
                 if algo_cache is not None and ac_idx is not None:
                     algo_t = torch.from_numpy(np.array(algo_cache[ac_idx], dtype=np.float32))
@@ -269,23 +302,32 @@ class ChessConceptDataset(Dataset):
                     algo_t = torch.tensor(af, dtype=torch.float32) if af is not None \
                              else torch.zeros(ALGO_SIZE_V4, dtype=torch.float32)
                 x = torch.cat([board_t, move_t, algo_t, v3_t, sf_t])
+
             else:
-                # Phase 3: board (1001) + move (128) + v3 (68) = STATIC_SIZE (1197)
+                # Phase 3: board (1001) + move (128) + v3 (82) = STATIC_SIZE (1211)
                 x = torch.cat([board_t, move_t, v3_t])
 
         except Exception:
             if self._phase5:
                 x = torch.zeros(NNUE_SIZE + INPUT_SIZE + MOVE_SIZE + ALGO_SIZE_V4 + SF_SIZE + ALGO_SIZE,
                                 dtype=torch.float32)
+            elif self._phase6:
+                x = torch.zeros(INPUT_SIZE + MOVE_SIZE + ALGO_SIZE_V4 + ALGO_SIZE + SF_SIZE + TB_SIZE,
+                                dtype=torch.float32)
             elif self._phase4:
                 x = torch.zeros(STATIC_SIZE_V4 + ALGO_SIZE + SF_SIZE, dtype=torch.float32)
             else:
                 x = torch.zeros(STATIC_SIZE, dtype=torch.float32)
 
-        if self._phase4 or self._phase5:
+        if self._phase4 or self._phase5 or self._phase6:
             hist_t, seq_len = history_rich_to_tensor(ex.get("history_rich", []))
         else:
             hist_t, seq_len = history_to_tensor(ex.get("history_uci", []))
+
+        if self._phase6:
+            # 5-tuple: x also carries eco_idx as a separate int for the gating network
+            eco_idx = eco_to_idx(ex.get("eco"))
+            return x, hist_t, seq_len, y, eco_idx
 
         return x, hist_t, seq_len, y
 

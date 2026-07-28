@@ -1,5 +1,7 @@
-# Phase 4C: algo_cache (2491-dim) and v3_cache (68-dim) must be rebuilt.
-# Steps 1-3 (ingest), 5 (SF), 7 (board), 8 (RAG) unchanged -- commented out.
+# Phase 6B (MoE): builds on Phase 4C caches.  New cache: tb_cache.npy (tablebase WDL/DTZ).
+# Steps 1-8 (ingest / caches) unchanged from Phase 4C -- commented out.
+# Step 8.5 (TB cache) already built (162,924 positions / 7.6% coverage) -- commented out.
+# Run steps 9B → 10 → 11 → 12 → 13 to train, calibrate, and audit Phase 6B.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -34,10 +36,11 @@ function Step($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
 #     if (-not $?) { Write-Error "Game database ingest failed"; exit 1 }
 # }
 
-# -- 4. Build algo + v3 cache --------------------------------------------------
-# REQUIRED: dimensions changed (algo 1811->3779, v3 59->82).
-# Writes algo_cache.npy (3779-dim) and v3_cache.npy (82-dim). Stamps _ac indices.
-# Step "Building algo + v3 cache"
+# -- 4. Build algo + v3 cache (float16) ----------------------------------------
+# Converts algo_cache.npy from float32 (~32GB) to float16 (~16GB).
+# Reads existing training_raw.jsonl (_ac indices already stamped) -- no JSONL rewrite.
+# board_cache, sf_cache, tb_cache untouched.
+# Step "Building algo + v3 cache (float16)"
 # python tools/build_algo_cache.py --force
 # if (-not $?) { Write-Error "Algo cache build failed"; exit 1 }
 
@@ -63,15 +66,28 @@ function Step($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
 # python tools/build_rag_index.py --force
 # if (-not $?) { Write-Error "RAG index build failed"; exit 1 }
 
-# -- 9. Train (Phase 4C) -------------------------------------------------------
-# Step "Training (Phase 4C)"
+# -- 8.5. Build TB (tablebase WDL/DTZ) cache ----------------------------------
+# Already built 2026-07-21: 162,924 covered / 7.6%, 25.7 MB.
+# Re-run only if training_raw.jsonl is re-ingested with new positions.
+# Step "Building TB cache"
+# python tools/build_tablebase_cache.py --force
+# if (-not $?) { Write-Error "TB cache build failed"; exit 1 }
+
+# -- 9. Train ------------------------------------------------------------------
+# Phase 4C (archived -- superseded by Phase 6B):
+# Step "Training Nimzo-Net"
 # python -m src.chess_coach.ml.train --phase4
+
+# Phase 6B: 5-expert MoE + ECO embedding + TB gate conditioning.
+# Writes data/classifier_best.pt  (phase6=True flag baked into checkpoint).
+# Step "Training (Phase 6B MoE)"
+# python -m src.chess_coach.ml.train --phase6 --batch-size 1024
 # if (-not $?) { Write-Error "Train step failed"; exit 1 }
 
 # -- 10. Calibrate + evaluate --------------------------------------------------
-Step "Calibrating thresholds + evaluating"
-python -m src.chess_coach.ml.evaluate --calibrate
-if (-not $?) { Write-Error "Evaluate step failed"; exit 1 }
+# Step "Calibrating thresholds + evaluating"
+# python -m src.chess_coach.ml.evaluate --calibrate
+# if (-not $?) { Write-Error "Evaluate step failed"; exit 1 }
 
 # Timestamp prefix shared by all eval result files from this run
 $ts = Get-Date -Format "yyyy-MM-dd_HHmm"

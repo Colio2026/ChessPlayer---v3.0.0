@@ -52,7 +52,7 @@ The coaching layer is actively evolving from a deterministic phrase-based system
 - **Engine Analysis** — Stockfish UCI integration with multi-PV evaluation, animated eval bar, and best-move arrows; runs on a background thread so the UI stays responsive
 - **Continuation Statistics** — see how often a position arises in your loaded library and what the top continuations are, powered by an O(1) position-tree lookup
 - **Chess Coach (Deterministic)** — Nimzowitsch-style strategic coaching: classifies each position into one of four strategies (Blitz, Flank, Fortress, Feint) and generates natural-language guidance assembled from a curated phrase database
-- **Coach Nimzowitsch (Neural Network)** — a 49-class multi-label classifier (Phase 4B champion, 3.08M parameters) trained to identify chess concepts by name from board position, full move history via GRU, and 2,877-dim spatial heuristics; trained on 1.59M examples from master games, Lichess puzzles, and algorithmically-labelled positions; best validated Macro F1: **0.5614** (Phase 4B champion, calibrated); Phase 4C architecture (B8+B9 tactical/pawn maps, 68-dim v3) coded and pending training; direction-aware Schmitt-trigger hysteresis gates coach output during live game navigation
+- **Coach Nimzowitsch (Neural Network)** — a 49-class multi-label Mixture-of-Experts classifier (Phase 6B champion, 6.9M parameters) trained to identify chess concepts by name from board position, full move history via GRU, and 3,779-dim spatial heuristics; trained on 1.9M examples from master games, Lichess puzzles, and algorithmically-labelled positions; best validated Macro F1: **0.6785** (Phase 6B MoE champion, calibrated); ECO opening conditioning via a 501-class embedding gates the MoE routing network; direction-aware Schmitt-trigger hysteresis gates coach output during live game navigation; live coach panel shows opening/endgame bubble (ECO match or Syzygy tablebase), weak-square commentary, and per-line Pattern + Precedent explanation
 - **Offline-first** — all analysis, coaching, and database queries run locally
 
 ---
@@ -417,14 +417,14 @@ The full concept vocabulary, in output-neuron order (fixed — adding new concep
 
 ### Model Architecture
 
-**Phase 4C (current codebase — training pending)**
+**Phase 6B — MoE (current champion, `data/classifier_best.pt`)**
 
 ```
-Raw static input: 4,088-dim
+Raw static input: 5,004-dim
   - 1,001  board encoding  (12×64 piece channels, attack maps, pawn structure, king shelter, mobility)
   -   128  move one-hot    (64 from-square + 64 to-square — the key move being played)
-  - 2,877  algo_v4 features  (explicit geometric chess heuristics — B1-B9 blocks; see Theme Coverage)
-  -    68  v3 concept bits   (binary algorithmic concept flags — bypass the spatial bottleneck)
+  - 3,779  algo_v4 features  (explicit geometric chess heuristics — B1-B9 blocks; see Theme Coverage)
+  -    82  v3 concept bits   (binary algorithmic concept flags — bypass the spatial bottleneck)
   -    14  SF classical eval  (Mobility, King safety, Threats, Passed, Space, Pawns, Imbalance × 2 sides)
 
 Spatial bottleneck:  Linear(3779, 256) → ReLU → Dropout(0.3)   # compresses algo_v4
@@ -432,18 +432,28 @@ Spatial bottleneck:  Linear(3779, 256) → ReLU → Dropout(0.3)   # compresses 
 GRU:  144-dim per-step history  →  256-dim context
       (encodes piece type, capture, check, and side-to-move for each prior half-move)
 
-Combined (post-projection):  1,723-dim
-  = board(1001) + move(128) + spatial_proj(256) + v3(68) + sf(14) + gru(256)
+Combined (post-projection):  1,740-dim
+  = board(1001) + move(128) + spatial_proj(256) + v3(82) + sf(14) + gru(256) + tb(3)
 
-MLP head:
-  Hidden 1:  Linear(1737, 1024) → BatchNorm → ReLU → Dropout(0.4)
-  Hidden 2:  Linear(1024,  512) → BatchNorm → ReLU → Dropout(0.2)
-  Output:    Linear( 512,   49) → per-class sigmoid  (BCEWithLogitsLoss)
+GatingNetwork (MoE router):
+  ECO embedding: Linear(501, 32) → ReLU            # 501 ECO codes → 32-dim
+  Gate MLP:      Linear(1740+32, 256) → ReLU → Linear(256, 5) → Softmax  # 5 expert weights
 
-Parameters: ~3.08M  (head size unchanged; spatial_proj input grew 1811→3779)
+5 Expert heads (Tactical / Structural / Pawn / Endgame / Strategic):
+  Each:  Linear(1740, 512) → BatchNorm → ReLU → Dropout(0.3)
+         Linear(512, 256)  → BatchNorm → ReLU → Dropout(0.2)
+         Linear(256,  49)  # logits
+
+Output:  Σ(gate_weight_i × expert_logits_i) → per-class sigmoid  (BCEWithLogitsLoss)
+
+Parameters: ~6.9M
 ```
 
-*Phase 4B champion checkpoint (last trained model): algo_v4 1811-dim, v3 59-dim, combined 1714-dim, best Macro F1 0.5614 on 1.23M examples (epoch 68). Phase 4C caches must be rebuilt before training (`python tools/build_algo_cache.py --force`).*
+| Phase | Params | Dataset | Best Macro F1 | Epoch | Key change |
+|---|---|---|---|---|---|
+| Phase 4B | 3.07M | 1.23M | 0.5614 | 68 | Spatial bottleneck + GRU, B1-B7 |
+| Phase 4C | 3.61M | 1.90M | 0.6768 | 30 | B8+B9 spatial maps, all 49 detectors |
+| **Phase 6B** | **6.9M** | **1.90M** | **0.6785** | **20** | **MoE 5 experts + ECO gate** |
 
 **Training details:**
 - Loss: `BCEWithLogitsLoss` with per-class `pos_weight` clamped to (1.0, 20.0); label smoothing ε=0.05
@@ -654,19 +664,26 @@ The coach has been through four architectural phases. Phase 4B is the current pr
 
 **Phase 2 (superseded)** — Scaled MLP, ~1M examples. Macro F1: ~0.51. Good recall, poor precision — overfires.
 
-**Phase 4B (last trained champion)** — 3,013-dim raw input → 1,714-dim combined after spatial bottleneck + GRU(256). Spatial bottleneck (Linear 1811→256) compresses 1,811 explicit geometric heuristics into a 256-dim representation. GRU reads per-move (piece, capture, check, color) over up to 60 prior half-moves. Macro F1: **0.5614** (calibrated, 49 concepts, epoch 68). Champion run on 1.23M examples; retrain on 1.59M in progress at time of Phase 4C code upgrade.
+**Phase 4B** — 3,013-dim raw input → 1,714-dim combined. Spatial bottleneck (Linear 1811→256) + GRU(256). Macro F1: **0.5614** (epoch 68, 1.23M examples). Superseded by Phase 4C.
 
-**Phase 4C (code ready, training pending)** — 5,004-dim raw input → 1,737-dim combined. algo_v4 expanded 1,811 → 3,779 (+680 B8 tactical maps; +1,288 B9 pawn/mating/strategic/tactical maps: all six B9-wave-1/2 maps plus sacrifice_vec/clearance_vec/deflection_vec/zwischenzug_vec). v3 expanded 59 → 82 (+13 new detectors bringing coverage to all 49 concepts). Requires cache rebuild (`build_algo_cache.py --force`) before training.
+**Phase 4C** — 5,004-dim raw input → 1,737-dim combined. algo_v4 expanded 1,811 → 3,779 (+B8 tactical maps +B9 pawn/mating/strategic maps). v3 expanded 59 → 82 (+13 new detectors, all 49 concepts covered). Macro F1: **0.6768** (epoch 30, 1.90M examples). Superseded by Phase 6B.
 
-**Phase 5 variants (explored, abandoned)** — Three variants (5, 5C, 5D) substituted or augmented with Stockfish16 NNUE Feature Transformer activations (2,048-dim). All stalled at F1 ≤ 0.47, with pure NNUE runs at 0.33–0.35, due to task misalignment: NNUE represents centipawn evaluation, not concept identity. See [`docs/phase5_nnue_integration_plan.md`](docs/phase5_nnue_integration_plan.md) (ABANDONED) and [`docs/experiments.md`](docs/experiments.md) §Lessons.
+**Phase 5 variants (explored, abandoned)** — Three variants (5, 5C, 5D) substituted or augmented with Stockfish16 NNUE Feature Transformer activations (2,048-dim). All stalled at F1 ≤ 0.47 due to task misalignment: NNUE represents centipawn evaluation, not concept identity. See [`docs/phase5_nnue_integration_plan.md`](docs/phase5_nnue_integration_plan.md) (ABANDONED).
 
-**Next: Application integration**
-The Phase 4B classifier is ready for integration into the live chess coaching panel. The intended flow:
-1. User makes a move in the game browser.
-2. `coach.analyze(fen, history_uci=...)` runs concept classification with GRU history.
-3. Concepts above their calibrated thresholds (with Schmitt-trigger hysteresis) drive RAG retrieval.
-4. The Nimzowitsch phrase database returns natural-language explanation keyed to active concept labels.
-5. NNUE evaluation gates the coaching output: only surface concepts that make sense given Stockfish's assessment of the position.
+**Phase 6B (current champion)** — MoEConceptClassifier: 5 expert heads (Tactical/Structural/Pawn/Endgame/Strategic) + GatingNetwork (501-class ECO embedding → softmax over 5 experts). ~6.9M params. Macro F1: **0.6785** (epoch 20, 1.90M examples).
+
+**Phase 6 panel integration (complete)** — Live coach panel fully rebuilt across `nimzo_net_engine.py`, `coach_panel.py`, `coach_board.py`, and `window.py`:
+- **Opening Bubble**: ECO opening identified from full board history (not position snapshot); displays played SAN line + theory continuations from `eco_db.json`; RAG annotation sourced along the correct ECO trajectory; move depth always accurate
+- **Endgame Bubble**: Syzygy tablebase probe (≤7 pieces) with DTZ/WDL + RAG commentary
+- **Weak Square Bubble**: fires when classifier detects `weak_square`; action hint + RAG annotation (≥200 chars)
+- **SF Line Cards (top 2)**: confidence badge (concept label + calibrated %); Before/After/Δ SF classical eval table (Term × 4 columns, Δ colour-coded); full SAN line (no move cap); RAG precedent ≥200 chars sourced from n=4 candidates; each card builds its own ECO trajectory from the PV so annotations differ between the two lines
+- **Coach Board**: full recommended line with no truncation; PGN-editor-matching dark style (`#161616`, Segoe UI, teal active highlight); Back/Forward navigation; legend in title bar
+- **Weak Square Overlay**: computed directly from `_outpost_squares_bb` (same bitboard logic as training labels), always-on regardless of classifier — orange dots mark the player's structural holes, yellow dots mark outpost targets in the opponent's territory; overlay independent of whether `weak_square` concept fires
+
+**Next: Phase 7**
+- Hysteresis threshold tuning: initiative → 0.75, x_ray → 0.65, weak_square ACTIVATE → 0.60
+- Data scraper rerun for x_ray (~19K examples), shouldering (~1.3K), interference (~18K)
+- Phase 6C: SF-validated move recommendation using concept delta scoring
 
 ---
 
@@ -892,10 +909,11 @@ See [`docs/experiments.md`](docs/experiments.md) for the full training history i
 |---|---|---|---|---|
 | Phase 1 | ~1.2M | ~500K | 0.30 | MLP baseline, proof of concept |
 | Phase 2 | ~1.2M | ~1M | 0.51 | Scaled MLP, overfires |
-| Phase 4B | 3.07M | 1.23M | **0.5614** | Champion. Calibrated, 49 concepts. |
+| Phase 4B | 3.07M | 1.23M | 0.5614 | B1-B7 spatial + GRU, calibrated. |
 | Phase 5 | 1.74M | 1.07M | 0.47 | NNUE experiment — ambiguous signal |
 | Phase 5C/5D | 1.35–1.75M | 1.59M | 0.33–0.35 | Pure NNUE stalled. Task misalignment confirmed. |
-| Phase 4B retrain | 3.08M | 1.59M | in progress | More data, patience 20, full eval suite |
+| Phase 4C | 3.61M | 1.90M | 0.6768 | B8+B9 maps, all 49 detectors. |
+| **Phase 6B** | **6.9M** | **1.90M** | **0.6785** | **MoE 5 experts + ECO gate. Current champion.** |
 
 ---
 

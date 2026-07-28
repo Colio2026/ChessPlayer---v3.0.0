@@ -133,6 +133,9 @@ class MainWindow(QMainWindow):
         self._coach_panel.weakness_squares_ready.connect(
             self._coach_board.set_weakness_squares
         )
+        self._coach_panel.weakness_per_side_ready.connect(
+            self._coach_board.set_per_side_weakness
+        )
         # PGN panel right-click "Request Coach Note" → force analysis + insert
         self._pgn_panel.coach_help_requested.connect(self._coach_panel.request_help)
 
@@ -741,7 +744,7 @@ class MainWindow(QMainWindow):
         self.coachRequested.emit(
             self._editor.session.board.fen(), list(prefix)
         )
-        self._coach_panel.queue_analysis(self._editor.session.board, history=[], side='white' if white_to_move else 'black')
+        self._coach_panel.queue_analysis(self._editor.session.board, history=list(prefix), side='white' if white_to_move else 'black')
         # Always trigger analysis so eval updates on navigation, game load, etc.
         self._engine_panel.trigger_analysis(prefix, white_to_move)
 

@@ -121,16 +121,20 @@ class ChessCoach:
         if self._model is not None:
             return
 
-        from src.chess_coach.ml.classifier import ChessConceptClassifier
+        from src.chess_coach.ml.classifier import ChessConceptClassifier, MoEConceptClassifier
 
         ckpt = torch.load(str(self._ckpt_path), map_location=self._device, weights_only=False)
         sd   = ckpt.get("state_dict", ckpt)
 
-        # Phase detection: nnue_proj key is unique to Phase 5D; spatial_proj to Phase 4B.
-        is_phase5 = any(k.startswith("nnue_proj")     for k in sd)
-        is_phase4 = any(k.startswith("spatial_proj")  for k in sd) and not is_phase5
+        # Phase detection: gate_network → 6B MoE, nnue_proj → 5D, spatial_proj → 4B.
+        is_phase6 = any(k.startswith("gate_network.") for k in sd)
+        is_phase5 = any(k.startswith("nnue_proj")     for k in sd) and not is_phase6
+        is_phase4 = any(k.startswith("spatial_proj")  for k in sd) and not is_phase5 and not is_phase6
 
-        self._model = ChessConceptClassifier(phase4=is_phase4, phase5=is_phase5).to(self._device)
+        if is_phase6:
+            self._model = MoEConceptClassifier().to(self._device)
+        else:
+            self._model = ChessConceptClassifier(phase4=is_phase4, phase5=is_phase5).to(self._device)
         self._model.load_state_dict(sd)
         self._model.eval()
 
@@ -197,6 +201,14 @@ class ChessCoach:
         if history_uci:
             history_fens, history_rich = _build_history_rich(start_fen, history_uci)
 
+        # Identify opening first so the ECO code can condition the MoE gate.
+        opening = (
+            self._retriever._eco_db.get(eco_override) if eco_override
+            else self._retriever.identify_opening(history_fens) if history_fens
+            else None
+        )
+        eco_code = opening.get("eco") if opening else None
+
         # Direction-aware hysteresis: if the user navigated backward (ply decreased),
         # restore the concept state from that earlier ply instead of carrying forward
         # stale activations from a position that is no longer on screen.
@@ -208,12 +220,14 @@ class ChessCoach:
             # Get all concept probabilities above the hold floor so the Schmitt
             # trigger can see concepts rising toward ACTIVATE and falling below HOLD.
             raw = self._model.predict_concepts(
-                fen, history_rich=history_rich or None, threshold=HOLD_THRESHOLD * 0.5
+                fen, history_rich=history_rich or None,
+                threshold=HOLD_THRESHOLD * 0.5, eco_code=eco_code,
             )
             concepts = self._apply_hysteresis(raw)
         else:
             concepts = self._model.predict_concepts(
-                fen, history_rich=history_rich or None, threshold=threshold
+                fen, history_rich=history_rich or None,
+                threshold=threshold, eco_code=eco_code,
             )
 
         # Snapshot hysteresis state at this ply so backward navigation can restore it.
@@ -222,12 +236,6 @@ class ChessCoach:
             self._last_ply = current_ply
 
         concept_names = [name for name, _ in concepts]
-
-        opening = (
-            self._retriever._eco_db.get(eco_override) if eco_override
-            else self._retriever.identify_opening(history_fens) if history_fens
-            else None
-        )
 
         annotations = self._retriever.retrieve(
             fen,
